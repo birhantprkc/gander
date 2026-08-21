@@ -54,6 +54,55 @@
   }
   .vw-error .vw-error-title { margin-bottom: calc(6px * var(--vw-zoom)); }
   .vw-error .vw-error-detail { font-size: calc(13px * var(--vw-zoom)); }
+
+  /* The password prompt. Left in this file rather than app.css because a
+     password is a PDF concern: no other viewer here can be handed an encrypted
+     document it knows how to unlock. */
+  .vw-ask { text-align: left; }
+  .vw-ask-title { font-weight: 600; margin-bottom: calc(6px * var(--vw-zoom)); }
+  .vw-ask-label {
+    display: block;
+    font-size: calc(13px * var(--vw-zoom));
+    opacity: 0.85;
+    margin-bottom: calc(10px * var(--vw-zoom));
+  }
+  /* The retry line, in the error red rather than the label's grey: it reports
+     something that went wrong, where the label only instructs. */
+  .vw-ask-alert {
+    display: block;
+    font-size: calc(13px * var(--vw-zoom));
+    color: #8c1d18;
+    margin-bottom: calc(10px * var(--vw-zoom));
+  }
+  .vw-ask-row { display: flex; gap: calc(8px * var(--vw-zoom)); }
+  .vw-ask-input {
+    /* min-width:0 or the input refuses to shrink under its intrinsic size and
+       pushes the button out of the card on a narrow layout. */
+    flex: 1 1 auto;
+    min-width: 0;
+    font: inherit;
+    /* Stated rather than left to fall out of font and padding, which lands at
+       about 36 dp once zoomed where Android asks for 48. Sized at the 0.37 end,
+       where the zoom is smallest and the target is therefore tightest. */
+    box-sizing: border-box;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 calc(10px * var(--vw-zoom));
+    border: calc(1px * var(--vw-zoom)) solid #b0bec5;
+    border-radius: calc(6px * var(--vw-zoom));
+    background: #fff;
+    color: #37474f;
+  }
+  .vw-ask-btn {
+    flex: 0 0 auto;
+    font: inherit;
+    box-sizing: border-box;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 calc(16px * var(--vw-zoom));
+    border: 0;
+    border-radius: calc(6px * var(--vw-zoom));
+    background: #37474f;
+    color: #fff;
+  }
 </style>
 </head>
 <body>
@@ -163,6 +212,130 @@ function renderPage(doc, n, canvas) {
 }
 
 /*
+ * Asks for the password of an encrypted document, then hands it back to pdf.js.
+ *
+ * pdf.js stops mid-parse to ask and carries on from where it stopped once
+ * answered, so a password costs one round trip through this function and no
+ * re-read of the file. A wrong answer comes straight back here with
+ * INCORRECT_PASSWORD rather than failing the load, which is what makes retrying
+ * free.
+ *
+ * The prompt is drawn in the page rather than as a native dialog because Gander
+ * has no JavascriptInterface in either direction, and that absence is most of
+ * what keeps an untrusted document from reaching the app. GrapheneOS's PdfViewer
+ * answers the same question over a bridge; this is the cheaper half of that
+ * trade, not a worse version of it.
+ *
+ * There is no cancel. Back leaves the viewer, which is what a reader without the
+ * password would do anyway, and a cancel button would only trade that for an
+ * error card saying the same thing.
+ */
+function vwAskPassword(updatePassword, reason) {
+  var el = document.getElementById("vw-status");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "vw-status";
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.className = "vw-status vw-ask";
+  el.style.display = "";
+  el.innerHTML = "";
+
+  var title = document.createElement("div");
+  title.className = "vw-ask-title";
+  title.textContent = "This PDF is password protected";
+  el.appendChild(title);
+
+  /*
+   * The retry line is a node of its own rather than a rewrite of the label, and
+   * it carries role=alert.
+   *
+   * An alert is announced when it arrives, which is the only thing that works
+   * here: this card is built from nothing on every ask, so a live region would
+   * turn up already holding its text with no change for a screen reader to
+   * notice. Compare the search counter in ViewerActivity, which is a live region
+   * done the other way round, because that element stays put and only its text
+   * moves.
+   *
+   * It also names the field through aria-describedby, so the message is read a
+   * second time when focus lands below. Belt and braces on purpose: which of the
+   * two a given reader hears depends on their screen reader, and hearing it twice
+   * costs less than not hearing it.
+   */
+  var retryNote = null;
+  if (reason === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD) {
+    retryNote = document.createElement("div");
+    retryNote.id = "vw-pw-alert";
+    retryNote.className = "vw-ask-alert";
+    retryNote.setAttribute("role", "alert");
+    retryNote.textContent = "That password did not work.";
+    el.appendChild(retryNote);
+  }
+
+  var label = document.createElement("label");
+  label.className = "vw-ask-label";
+  label.htmlFor = "vw-pw";
+  label.textContent = "Enter its password to open it.";
+  el.appendChild(label);
+
+  /* A form, not a bare button, so the on-screen keyboard's Go key submits too. */
+  var row = document.createElement("form");
+  row.className = "vw-ask-row";
+
+  var input = document.createElement("input");
+  input.type = "password";
+  input.id = "vw-pw";
+  input.className = "vw-ask-input";
+  if (retryNote) input.setAttribute("aria-describedby", retryNote.id);
+  // A document password is not a site login; nothing should offer to save it.
+  input.autocomplete = "off";
+  input.setAttribute("autocapitalize", "none");
+  input.setAttribute("autocorrect", "off");
+  input.spellcheck = false;
+
+  var btn = document.createElement("button");
+  btn.type = "submit";
+  btn.className = "vw-ask-btn";
+  btn.textContent = "Open";
+
+  row.appendChild(input);
+  row.appendChild(btn);
+  el.appendChild(row);
+
+  row.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!input.value) {
+      input.focus();
+      return;
+    }
+    var pw = input.value;
+    /* Drop the answer out of the DOM on the way past, and put the status line
+       back so that decrypting a large document does not read as a dead tap. */
+    input.value = "";
+    vwStatus("Opening document…");
+    updatePassword(pw);
+  });
+
+  /* Focus, and not a keyboard. WebView raises the IME only for a field focused
+     by a gesture, and this runs from pdf.js's callback, so the reader still taps
+     to type either way. What it does buy is a screen reader landing on the field
+     and reading the label, and the alert with it, without being sent looking. */
+  input.focus();
+}
+
+/*
+ * getDocument hands back a loading task and the password callback lives on that
+ * task, so chaining .promise straight off the call throws away the only object
+ * that could have carried it. That was the whole of this bug: onPassword could
+ * never fire, and an encrypted PDF fell through to the bottom .catch to show its
+ * reader a raw PasswordException. Both ways in below go past here.
+ */
+function vwUnlockable(task) {
+  task.onPassword = vwAskPassword;
+  return task.promise;
+}
+
+/*
  * Two ways in. Small documents are read whole, which is a single request. Large
  * ones are range-requested so pdf.js pulls only what it is about to draw instead
  * of holding the entire file in memory for as long as it is open.
@@ -173,9 +346,9 @@ function renderPage(doc, n, canvas) {
 function vwOpenDoc() {
   return vwParams.get("ranged") !== "1"
     ? vwFetchDoc("buffer").then(function (buf) {
-        return pdfjsLib.getDocument({ data: buf }).promise;
+        return vwUnlockable(pdfjsLib.getDocument({ data: buf }));
       })
-    : pdfjsLib.getDocument({
+    : vwUnlockable(pdfjsLib.getDocument({
         url: vwDocUrl(),
         rangeChunkSize: 65536,
         // Both of these are needed, and they are not the same switch.
@@ -188,7 +361,68 @@ function vwOpenDoc() {
         // bytes without it, and under 5% before pdf.js hung up with it.
         disableAutoFetch: true,
         disableStream: true
-      }).promise;
+      }));
+}
+
+/*
+ * What to say when a document cannot be opened at all.
+ *
+ * Errors coming back from the worker are rebuilt into named classes on this side,
+ * and anything pdf.js has no class for arrives as UnknownErrorException still
+ * carrying the worker's own wording. So the name is worth reading and the message
+ * is not: "unsupported encryption algorithm" is a true sentence about a file and
+ * a useless one to hand somebody holding a phone.
+ *
+ * Encryption is the case this exists for. onPassword above covers the standard
+ * security handler, which is very nearly every protected PDF in circulation, and
+ * what it does not cover used to fall through to the raw exception text.
+ *
+ * The last line keeps that raw text deliberately. Once the name is none of these
+ * there is nothing truthful left to say about the cause, and the string is the
+ * only thing a bug report could be built out of.
+ */
+function vwFailure(e) {
+  /* Read before the name, because every encryption failure is a plain FormatError
+     in the worker and reaches here unrecognised, with only its wording to go on.
+     There are three, and they are not all worded alike: "unknown encryption
+     method" for a security handler that is not the standard one, "unsupported
+     encryption algorithm" for a /V outside 1, 2, 4 and 5, and "Unknown crypto
+     method" for a crypt filter pdf.js has no cipher for. That last one is why
+     this matches crypto as well; it is also the only one that arrives after a
+     password has already been accepted, since the key is checked before the
+     cipher is built. Matching wording is brittle in general and tolerable against
+     a pdf.js that is vendored and pinned; if it ever moves, the fallback below is
+     already the right answer. */
+  if (/encryption|crypto/i.test(String(e && e.message))) {
+    return [
+      "This PDF is protected in a way Gander cannot open",
+      "It is encrypted, but not with the password scheme its renderer reads, so " +
+      "there is nothing you could type here that would open it. Every other " +
+      "format Gander opens still works."
+    ];
+  }
+  switch (e && e.name) {
+    case "PasswordException":
+      return [
+        "This PDF could not be unlocked",
+        "The password was not accepted. If the file opens elsewhere, its " +
+        "protection is of a kind Gander cannot read yet."
+      ];
+    case "InvalidPDFException":
+      return [
+        "This file is not a PDF that can be read",
+        "It is either damaged or not a PDF at all, whatever it happens to be " +
+        "named. Every other format Gander opens still works."
+      ];
+    case "ResponseException":
+      return [
+        "This PDF could not be read to the end",
+        "Gander lost access to the file part way through loading it. Opening it " +
+        "again usually settles this."
+      ];
+    default:
+      return ["Could not render this PDF", String(e)];
+  }
 }
 
 /* Skipped entirely below the pdf.js floor. The card is already on screen from the
@@ -229,7 +463,10 @@ if (!vwPdfBlocked) {
         canvases.slice(1).forEach(function (c) { io.observe(c); });
       });
     })
-    .catch(function (e) { vwError("Could not render this PDF", String(e)); });
+    .catch(function (e) {
+      var said = vwFailure(e);
+      vwError(said[0], said[1]);
+    });
 }
 </script>
 </body>

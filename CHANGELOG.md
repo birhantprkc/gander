@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- A PDF that wants a password now asks you for it, rather than showing you the error
+  its renderer raised. Type it and the document opens; get it wrong and it says so and
+  lets you try again, as often as you like, without rereading the file. The prompt is
+  drawn in the page rather than as an Android dialog, because Gander deliberately has
+  no bridge between a document and the app in either direction and a password is not
+  worth opening one for. Nothing is kept: it lives as long as the document is on screen
+  and goes when you leave. A file encrypted in a way the renderer cannot read at all
+  now says so in a sentence too, instead of printing the exception at you
+  (thanks @juxuanu, who reported this and pointed at GrapheneOS's PdfViewer)
+
 - The cards the PDF viewer puts on screen, including the one explaining that a phone's
   browser engine is too old for PDFs, were being drawn at about a third of the size
   they were meant to be. A PDF page is laid out at a fixed width and zoomed to fit,
