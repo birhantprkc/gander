@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The cards the PDF viewer puts on screen, including the one explaining that a phone's
+  browser engine is too old for PDFs, were being drawn at about a third of the size
+  they were meant to be. A PDF page is laid out at a fixed width and zoomed to fit,
+  which is what keeps it sharp, and the cards had been quietly riding along with it.
+  They are sized for that zoom now rather than against it.
+
 - The file you are looking at can be kept, through **Save a copy** in the viewer menu.
   It is meant for the file that came from somewhere else: an attachment, or a document
   another app hands over, which Gander is allowed to read only for as long as that

@@ -20,6 +20,40 @@
     box-shadow: 0 1px 6px rgba(0,0,0,0.35);
     max-width: 100%;
   }
+
+  /*
+   * The card is restated here because this page is not in the coordinate space
+   * the other viewers are. There is no viewport meta (see the note in the head),
+   * so the WebView lays out at 980 CSS px and loadWithOverviewMode zooms that
+   * down to fit: about 0.42x on a 411 dp phone, 0.37x on a 360 dp one. That zoom
+   * is what keeps a page canvas sharp, and it costs nothing while the only thing
+   * in the card is a sentence. But app.css's 15px arrives at about 6 dp under it,
+   * and its 420px card at under half the screen, which is why the "too old to
+   * show PDFs" card has always been smaller here than it reads in the source.
+   *
+   * So every measurement app.css sets is multiplied back up by --vw-zoom, which
+   * is 980/360 rounded up: sized for the narrowest phone, so a wide one gets a
+   * card that is a little generous rather than one nobody can read. Written as
+   * calc() against app.css's own number so the relationship stays legible
+   * instead of arriving as pre-multiplied constants that look picked out of
+   * the air.
+   *
+   * A WebView without custom properties drops all of it and gets app.css back,
+   * which is the small card, not a broken one. That is Chromium below 49, and
+   * minSdk 26 shipped with 58.
+   */
+  :root { --vw-zoom: 2.75; }
+  .vw-status {
+    /* Not scaled. app.css's 420px cap never binds on a phone, where the card is
+       the screen less its margins, so filling 980 px less a gutter is that card. */
+    max-width: none;
+    margin: calc(24px * var(--vw-zoom)) calc(14px * var(--vw-zoom));
+    padding: calc(14px * var(--vw-zoom)) calc(18px * var(--vw-zoom));
+    border-radius: calc(10px * var(--vw-zoom));
+    font-size: calc(15px * var(--vw-zoom));
+  }
+  .vw-error .vw-error-title { margin-bottom: calc(6px * var(--vw-zoom)); }
+  .vw-error .vw-error-detail { font-size: calc(13px * var(--vw-zoom)); }
 </style>
 </head>
 <body>
