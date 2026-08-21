@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Gander is a good deal smaller to download. Its own code is under 1,700 lines, but the
+  Android UI libraries underneath it were being packaged whole whether or not anything
+  called into them: 14.8 MB of compiled code in the 1.12 build, of which 2.4 MB is all
+  the app can reach. R8 now runs over the release build and keeps the reachable part,
+  and the same pass drops the resources nothing asks for. The APK goes from 8.3 MB to
+  3.7 MB and the Play bundle from 7.6 MB to 5.1 MB. Nothing is missing from it: every
+  screen, every format and every menu item is the one that shipped in 1.12. Class names
+  are shortened on the way through, which buys no secrecy for an app whose source is
+  public, but file names and line numbers are kept deliberately, so a crash pasted into
+  an issue still points at a real line.
+
 ## 1.12 (2026-08-23)
 
 - Large PDFs no longer bring the phone to its knees. Gander lays out an empty box for
