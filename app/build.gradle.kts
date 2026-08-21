@@ -13,8 +13,8 @@ android {
         applicationId = "com.arjun.gander"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.10"
+        versionCode = 13
+        versionName = "1.11"
     }
 
     // The release keystore is intentionally not in the repo. Contributors without

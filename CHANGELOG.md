@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.11 (2026-08-21)
 
 - A PDF that wants a password now asks you for it, rather than showing you the error
   its renderer raised. Type it and the document opens; get it wrong and it says so and
