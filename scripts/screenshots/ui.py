@@ -55,7 +55,11 @@ def dump():
         if raw and "<hierarchy" in raw:
             try:
                 return ET.fromstring(raw)
-            except ET.ParseError:
+            except (ET.ParseError, ValueError):
+                # A truncated dump raises ParseError; defusedxml rejects an
+                # entity-bearing one with its own exception, which subclasses
+                # ValueError, not ParseError. Either way the dump is no good,
+                # so fall through and take it again.
                 pass
         time.sleep(1)
     raise RuntimeError("could not dump ui")

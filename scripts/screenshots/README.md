@@ -39,7 +39,7 @@ Willowmere, Harrowgate) were checked the same way.
 
 ## Requirements
 
-- **Python 3** with `python-docx`, `python-pptx`, `openpyxl`
+- **Python 3** with `python-docx`, `python-pptx`, `openpyxl`, `defusedxml`
 - **LibreOffice** (`soffice`) to convert the generated `.docx` to PDF
 - **ImageMagick** (`magick`)
 - **Chrome, Chromium or Brave** for caption rendering
