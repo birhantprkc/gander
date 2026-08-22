@@ -18,7 +18,24 @@
     margin: 0 auto 8px;
     background: #fff;
     box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+    width: 100%;
     max-width: 100%;
+    /*
+     * The shape of a page that has not been drawn yet.
+     *
+     * A canvas with no width or height attribute is 300x150, the HTML default, and
+     * an undrawn page standing at 300x150 was the whole of the bug this viewer had:
+     * visible as a column of small white boxes when a reader outran the renderer,
+     * and small enough that the look-ahead band held about fifty pages where it
+     * should hold a handful, every one of which began rendering at once.
+     *
+     * Page 1's shape is published here as a custom property once the document opens,
+     * so a 357-page document costs one write rather than one per page, and a page
+     * that has been drawn overrides it inline with its own. The fallback is A4
+     * portrait and applies only between the canvases existing and page 1 being
+     * measured, which is spent behind the "Rendering document" card.
+     */
+    aspect-ratio: var(--pg-ratio, 0.7071);
   }
 
   /*
@@ -192,9 +209,29 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "./lib/pdf.worker.min.mjs";
 
 var pages = document.getElementById("pages");
 
-/* Render at the screen's pixel density so text stays sharp, but cap it: a
-   200-page document at 3x on a dense screen is a lot of bitmap for no gain. */
+/*
+ * How much bitmap a page is worth, and the multiplier on everything below.
+ *
+ * This reads as a sharpness knob and is really the memory budget. The page lays out
+ * at 980 CSS px and is zoomed down to fit (see the note in the head), so at 2 this
+ * draws a 1960 px canvas for a page shown across about 1080 device px. The extra is
+ * not waste: it is the headroom that keeps a page sharp when pinched, to about 10x
+ * rather than 5x. It is also why one A4 page costs about 21 MB rather than 6.
+ *
+ * Anything that has to move the memory ceiling a long way should move this, and
+ * should say it is trading pinch sharpness for it rather than pretending otherwise.
+ */
 var DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+/*
+ * The width every page is laid out at, read once.
+ *
+ * There is no viewport meta, so this is Chromium's fixed 980 CSS px default and
+ * cannot change, not on rotation either. Reading clientWidth flushes style and
+ * layout, and doing that once per page drawn, between two writes that dirty it, is a
+ * relayout of a several-hundred-child block flow to re-learn a constant.
+ */
+var PAGE_WIDTH = pages.clientWidth || window.innerWidth;
 
 /*
  * How many pages may be rasterising at once.
@@ -246,9 +283,8 @@ var inFlight = 0;
  * nothing at all once it has been released. Chromium has had aspect-ratio since 88
  * and pdf.js already requires 125, so there is no floor to check here.
  */
-function shape(slot, unscaled) {
-  slot.canvas.style.width = "100%";
-  slot.canvas.style.aspectRatio = String(unscaled.width / unscaled.height);
+function shape(canvas, unscaled) {
+  canvas.style.aspectRatio = String(unscaled.width / unscaled.height);
 }
 
 /* Distance from the middle of the viewport. During a fling the queue fills mostly
@@ -260,14 +296,21 @@ function distance(slot) {
   return Math.abs(r.top + r.height / 2 - window.innerHeight / 2);
 }
 
-/* Ask for a page. Idempotent: a page already queued, drawing or drawn is left
-   alone, which is what makes it safe to call from an observer that reports the same
-   target more than once. */
+/*
+ * Ask for a page. Idempotent: a page already queued, drawing or drawn is left alone,
+ * which is what makes it safe to call from an observer that reports the same target
+ * more than once.
+ *
+ * It queues and does not draw. Draining here instead meant the first MAX_IN_FLIGHT
+ * pages of an arriving batch were dispatched before there was a queue to choose
+ * from, so they went in the order the observer reported them, which is page order,
+ * which during a fling is the pages furthest behind the reader. The caller pumps
+ * once the whole batch is in.
+ */
 function want(slot) {
   if (slot.state !== "blank") return;
   slot.state = "queued";
   queue.push(slot);
-  pump();
 }
 
 /*
@@ -302,6 +345,15 @@ function unwant(slot) {
  */
 function release(slot) {
   if (slot.state !== "drawn") return;
+  blank(slot);
+}
+
+/*
+ * Put a slot back to holding nothing: no bitmap, no decoded artwork, and free to be
+ * asked for again. Every path that gives a page up ends here, so the two statements
+ * that actually reclaim memory live in one place.
+ */
+function blank(slot) {
   slot.canvas.width = 0;
   slot.canvas.height = 0;
   slot.state = "blank";
@@ -330,8 +382,10 @@ function release(slot) {
 function pump() {
   while (inFlight < MAX_IN_FLIGHT && queue.length) {
     var next = 0;
+    var best = distance(queue[0]);
     for (var i = 1; i < queue.length; i++) {
-      if (distance(queue[i]) < distance(queue[next])) next = i;
+      var d = distance(queue[i]);
+      if (d < best) { next = i; best = d; }
     }
     draw(queue.splice(next, 1)[0]);
   }
@@ -341,20 +395,15 @@ function draw(slot) {
   slot.state = "drawing";
   inFlight++;
   return doc.getPage(slot.n).then(function (page) {
-    /* The reader may have flung past this page while its dictionary was being
-       fetched, in which case unwant has already put it back to blank and there is
-       nothing left to draw into. */
-    if (slot.state !== "drawing") throw new Error("no longer wanted");
-
     slot.page = page;
 
     var unscaled = page.getViewport({ scale: 1 });
     /* Correct the placeholder to this page's own shape. Page 1's shape was a
        stand-in for it until now, and in a document of uniform pages it was exact. */
-    shape(slot, unscaled);
+    shape(slot.canvas, unscaled);
 
-    var scale = (pages.clientWidth || window.innerWidth) / unscaled.width;
-    var viewport = page.getViewport({ scale: scale * DPR });
+    /* clone rather than a second getViewport: the same matrix, already built. */
+    var viewport = unscaled.clone({ scale: (PAGE_WIDTH / unscaled.width) * DPR });
     var canvas = slot.canvas;
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -365,20 +414,12 @@ function draw(slot) {
     return slot.task.promise;
   }).then(function () {
     slot.state = "drawn";
-    slot.task = null;
-    inFlight--;
-    pump();
   }, function () {
-    /* Cancelled, overtaken, or genuinely broken. All three end the same way: no
-       bitmap held, and free to be asked for again if the reader comes back to it. */
+    /* Cancelled or genuinely broken. Both end the same way: nothing held, and free
+       to be asked for again if the reader comes back to it. */
+    blank(slot);
+  }).then(function () {
     slot.task = null;
-    slot.canvas.width = 0;
-    slot.canvas.height = 0;
-    slot.state = "blank";
-    if (slot.page) {
-      slot.page.cleanup();
-      slot.page = null;
-    }
     inFlight--;
     pump();
   });
@@ -598,6 +639,40 @@ function vwFailure(e) {
   }
 }
 
+/*
+ * Two bands rather than one.
+ *
+ * A page is drawn when it reaches the inner band and released only when it falls
+ * outside the wider one. The gap between them is what stops a reader who scrolls
+ * down a screen and back up again watching the page they just left get thrown away
+ * and rebuilt. With a single band every small change of direction costs a redraw.
+ *
+ * Neither observer unobserves anything. The first version of this dropped each
+ * target as it fired, which was how it guaranteed a page was drawn once, and it also
+ * meant a page leaving the band was never heard about again. Being told when a page
+ * goes away is the whole basis of cancelling and releasing, so the guarantee has
+ * moved into the slot state instead: want() ignores anything not blank.
+ */
+function observePages() {
+  var draws = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) want(e.target._slot); else unwant(e.target._slot);
+    });
+    pump();
+  }, { rootMargin: "200% 0px" });
+
+  var keeps = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) release(e.target._slot);
+    });
+  }, { rootMargin: "500% 0px" });
+
+  slots.forEach(function (slot) {
+    draws.observe(slot.canvas);
+    keeps.observe(slot.canvas);
+  });
+}
+
 /* Skipped entirely below the pdf.js floor. The card is already on screen from the
    classic guard above, so reading the document would only end in vwStatusDone
    hiding the very element that card lives in. A function rather than a bare
@@ -609,15 +684,34 @@ if (!vwPdfBlocked) {
 
       /* One placeholder per page up front so the scrollbar is honest, then fill
          them in as they come into view. Rendering all of them eagerly would
-         block the first page behind every other one. */
+         block the first page behind every other one.
+
+         Built into a fragment and attached once, so opening a 357-page document
+         is one mutation of a live tree rather than 357. */
+      var frag = document.createDocumentFragment();
       for (var i = 1; i <= doc.numPages; i++) {
         var c = document.createElement("canvas");
         c.className = "pg";
-        c.dataset.page = i;
-        pages.appendChild(c);
-        slots.push({ n: i, canvas: c, state: "blank", task: null, page: null });
-      }
+        var slot = { n: i, canvas: c, state: "blank", task: null, page: null };
+        /* The observers are handed elements and need the slot back. Hanging it on
+           the element beats writing a data attribute and parsing it out again on
+           every callback, which was the only thing that attribute was ever for.
 
+           The underscore is not decoration. Element.slot is a real DOM property, a
+           DOMString reflecting the shadow-DOM slot attribute, so assigning an object
+           to c.slot stores "[object Object]" and reads it back as that string. Every
+           page then failed the state check in want() and stayed blank, with only
+           page 1 ever drawn, which looks like a memory improvement right up until
+           you look at the screen. */
+        c._slot = slot;
+        slots.push(slot);
+        frag.appendChild(c);
+      }
+      pages.appendChild(frag);
+
+      return doc.getPage(1);
+    })
+    .then(function (page) {
       /*
        * Page 1's shape stands in for every page until each is drawn.
        *
@@ -629,50 +723,14 @@ if (!vwPdfBlocked) {
        * shape until each page is drawn and its own from then on, which is a
        * placeholder being briefly wrong rather than the layout being wrong.
        */
-      return doc.getPage(1).then(function (page) {
-        var unscaled = page.getViewport({ scale: 1 });
-        slots.forEach(function (slot) { shape(slot, unscaled); });
-
-        return draw(slots[0]).then(function () {
-          vwStatusDone();
-
-          if (doc.numPages < 2) return;
-
-          /*
-           * Two bands rather than one.
-           *
-           * A page is drawn when it reaches the inner band and released only when it
-           * falls outside the wider one. The gap between them is what stops a reader
-           * who scrolls down a screen and back up again watching the page they just
-           * left get thrown away and rebuilt. With a single band every small change
-           * of direction costs a redraw.
-           *
-           * Neither observer unobserves anything. The old code dropped each target
-           * as it fired, which was how it guaranteed a page was drawn once, and it
-           * also meant a page leaving the band was never heard about again. Being
-           * told when a page goes away is the whole basis of cancelling and
-           * releasing, so the guarantee has moved into the slot state instead:
-           * want() ignores anything not blank.
-           */
-          var draws = new IntersectionObserver(function (entries) {
-            entries.forEach(function (e) {
-              var slot = slots[Number(e.target.dataset.page) - 1];
-              if (e.isIntersecting) want(slot); else unwant(slot);
-            });
-          }, { rootMargin: "200% 0px" });
-
-          var keeps = new IntersectionObserver(function (entries) {
-            entries.forEach(function (e) {
-              if (!e.isIntersecting) release(slots[Number(e.target.dataset.page) - 1]);
-            });
-          }, { rootMargin: "500% 0px" });
-
-          slots.forEach(function (slot) {
-            draws.observe(slot.canvas);
-            keeps.observe(slot.canvas);
-          });
-        });
-      });
+      var unscaled = page.getViewport({ scale: 1 });
+      pages.style.setProperty(
+        "--pg-ratio", String(unscaled.width / unscaled.height));
+      return draw(slots[0]);
+    })
+    .then(function () {
+      vwStatusDone();
+      if (doc.numPages > 1) observePages();
     })
     .catch(function (e) {
       var said = vwFailure(e);
