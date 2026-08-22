@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- Large PDFs no longer bring the phone to its knees. Gander lays out an empty box for
+  every page in a document before it draws any of them, so the scrollbar is the right
+  length from the moment it opens, and until now those boxes had no size: each was
+  300 by 150 pixels, a business card standing in for a page. That was visible as a
+  column of small white rectangles whenever you scrolled faster than pages could be
+  drawn, and it was the cause of a good deal more besides. Gander decides which pages
+  are close enough to be worth drawing by looking a fixed distance ahead of you, and
+  at that size about fifty of them fitted in the distance meant to hold three or four,
+  so it started fifty at once, kept every one it had ever finished, and kept the
+  artwork it decoded for them on top. On a 357-page illustrated rulebook, one flick
+  through it took the renderer past 900 MB and Android killed it, sometimes taking
+  other apps' browser windows down with it. The boxes are now the shape of the page
+  they stand for, no more than three pages are ever drawn at once, a page you have
+  flung past stops being drawn rather than finishing into a bitmap nobody will see,
+  and a page far enough behind you gives back both its bitmap and its artwork. The
+  same document now sits flat at about 210 MB however it is read
+  (thanks @logannc, who found this and worked out that scrolling made it worse)
+
 ## 1.11 (2026-08-21)
 
 - A PDF that wants a password now asks you for it, rather than showing you the error

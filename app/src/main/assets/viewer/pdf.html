@@ -196,18 +196,191 @@ var pages = document.getElementById("pages");
    200-page document at 3x on a dense screen is a lot of bitmap for no gain. */
 var DPR = Math.min(window.devicePixelRatio || 1, 2);
 
-function renderPage(doc, n, canvas) {
-  return doc.getPage(n).then(function (page) {
+/*
+ * How many pages may be rasterising at once.
+ *
+ * There is little to win by raising it. pdf.js rasterises on the main thread, so a
+ * fourth page in flight does not arrive any sooner; it holds a fourth page of bitmap
+ * while it waits its turn. What the cap buys is a ceiling that does not move with how
+ * fast somebody scrolls.
+ *
+ * Measured on a Nothing Phone 2 against a 41 MB, 357-page document carrying an image
+ * on every page. Uncapped, a fling took the WebView renderer from 207 MB to 836 MB in
+ * about five seconds, and Android's low memory killer ended it at oom_score_adj 1,
+ * which is to say while it was the foreground process. Twice in one sitting, taking
+ * unrelated applications' renderers with it on the way past.
+ */
+var MAX_IN_FLIGHT = 3;
+
+/* Assigned once the document opens. Everything below needs it, and the observer
+   callbacks outlive the promise chain that produced it. */
+var doc = null;
+
+/*
+ * One slot per page: the canvas standing for it, what state that canvas is in, and
+ * the render in progress if there is one. Index 0 is page 1.
+ *
+ * Four states. "blank" holds no bitmap. "queued" is wanted but waiting for a turn
+ * under MAX_IN_FLIGHT. "drawing" holds a live pdf.js RenderTask. "drawn" holds a
+ * painted bitmap. The rest of this file is about moving pages between those four as
+ * they come into and go out of view.
+ */
+var slots = [];
+var queue = [];
+var inFlight = 0;
+
+/*
+ * Give a placeholder the shape of the page it stands for.
+ *
+ * This is the whole of the bug this file used to have. A canvas with no width or
+ * height attribute is 300x150, the HTML default, so every undrawn page was a small
+ * white box. That was visible directly, as a column of little boxes whenever a reader
+ * outran the renderer, and it caused everything else besides: at 158 px per page
+ * including its margin, the look-ahead band below held about fifty placeholders where
+ * it should hold three or four, and every one of them began rendering at once.
+ *
+ * The size goes on the style rather than on the canvas attributes deliberately.
+ * Writing width and height allocates the backing store, which is the one thing worth
+ * not doing until the page is actually wanted. An aspect-ratio against a width of
+ * 100% lays the box out at full size while the bitmap stays at the default, or at
+ * nothing at all once it has been released. Chromium has had aspect-ratio since 88
+ * and pdf.js already requires 125, so there is no floor to check here.
+ */
+function shape(slot, unscaled) {
+  slot.canvas.style.width = "100%";
+  slot.canvas.style.aspectRatio = String(unscaled.width / unscaled.height);
+}
+
+/* Distance from the middle of the viewport. During a fling the queue fills mostly
+   with pages the reader has already gone past, and without this the renderer works
+   through them in page order while the page being looked at waits its turn behind
+   them. */
+function distance(slot) {
+  var r = slot.canvas.getBoundingClientRect();
+  return Math.abs(r.top + r.height / 2 - window.innerHeight / 2);
+}
+
+/* Ask for a page. Idempotent: a page already queued, drawing or drawn is left
+   alone, which is what makes it safe to call from an observer that reports the same
+   target more than once. */
+function want(slot) {
+  if (slot.state !== "blank") return;
+  slot.state = "queued";
+  queue.push(slot);
+  pump();
+}
+
+/*
+ * Give up on a page that has left the band before it was finished.
+ *
+ * This matters as much as the cap does. A fling drags the band across the whole
+ * document, so without cancelling, every page it passed over is still queued and
+ * still going to be drawn, and fifty-at-once comes back as three-at-once repeated
+ * three hundred times. pdf.js rejects a cancelled render with
+ * RenderingCancelledException, which the failure path below puts back to blank.
+ */
+function unwant(slot) {
+  if (slot.state === "queued") {
+    var i = queue.indexOf(slot);
+    if (i >= 0) queue.splice(i, 1);
+    slot.state = "blank";
+  } else if (slot.state === "drawing" && slot.task) {
+    slot.task.cancel();
+  }
+}
+
+/*
+ * Drop a drawn page's bitmap while keeping its box.
+ *
+ * Chromium hibernates idle offscreen 2D canvases on Android and reclaims a good deal
+ * unprompted, which is why reading slowly holds flat at about 195 MB with none of
+ * this. What it cannot do is keep pace with a fling, because a canvas being painted
+ * right now is neither idle nor offscreen. This is the half hibernation cannot cover.
+ *
+ * The box survives because its size lives in CSS, so releasing a page moves nothing
+ * on screen and costs the reader a redraw rather than a reflow.
+ */
+function release(slot) {
+  if (slot.state !== "drawn") return;
+  slot.canvas.width = 0;
+  slot.canvas.height = 0;
+  slot.state = "blank";
+
+  /*
+   * The canvas is only half of what a drawn page costs, and on an illustrated
+   * document it is the smaller half. pdf.js keeps every image it decoded for a page
+   * on the page object itself, and holds that object in its own cache for as long as
+   * the document is open, so dropping the bitmap alone leaves the decoded artwork
+   * behind. A 960x1200 JPEG costs about 4.6 MB decoded whatever it weighed on disk.
+   *
+   * Measured on a Nothing Phone 2 with the canvas released but this line missing: a
+   * fling settled at 550 MB and stayed there with nothing left on screen to account
+   * for it. With it, the same fling settles back to roughly where it opened.
+   *
+   * cleanup() declines while a render is outstanding, which is why this runs only
+   * for a page in the drawn state, and it is safe to call again later: the page is
+   * rebuilt from the file if the reader comes back to it.
+   */
+  if (slot.page) {
+    slot.page.cleanup();
+    slot.page = null;
+  }
+}
+
+function pump() {
+  while (inFlight < MAX_IN_FLIGHT && queue.length) {
+    var next = 0;
+    for (var i = 1; i < queue.length; i++) {
+      if (distance(queue[i]) < distance(queue[next])) next = i;
+    }
+    draw(queue.splice(next, 1)[0]);
+  }
+}
+
+function draw(slot) {
+  slot.state = "drawing";
+  inFlight++;
+  return doc.getPage(slot.n).then(function (page) {
+    /* The reader may have flung past this page while its dictionary was being
+       fetched, in which case unwant has already put it back to blank and there is
+       nothing left to draw into. */
+    if (slot.state !== "drawing") throw new Error("no longer wanted");
+
+    slot.page = page;
+
     var unscaled = page.getViewport({ scale: 1 });
+    /* Correct the placeholder to this page's own shape. Page 1's shape was a
+       stand-in for it until now, and in a document of uniform pages it was exact. */
+    shape(slot, unscaled);
+
     var scale = (pages.clientWidth || window.innerWidth) / unscaled.width;
     var viewport = page.getViewport({ scale: scale * DPR });
+    var canvas = slot.canvas;
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    canvas.style.width = "100%";
-    return page.render({
+    slot.task = page.render({
       canvasContext: canvas.getContext("2d"),
       viewport: viewport
-    }).promise;
+    });
+    return slot.task.promise;
+  }).then(function () {
+    slot.state = "drawn";
+    slot.task = null;
+    inFlight--;
+    pump();
+  }, function () {
+    /* Cancelled, overtaken, or genuinely broken. All three end the same way: no
+       bitmap held, and free to be asked for again if the reader comes back to it. */
+    slot.task = null;
+    slot.canvas.width = 0;
+    slot.canvas.height = 0;
+    slot.state = "blank";
+    if (slot.page) {
+      slot.page.cleanup();
+      slot.page = null;
+    }
+    inFlight--;
+    pump();
   });
 }
 
@@ -431,36 +604,74 @@ function vwFailure(e) {
    promise so nothing is fetched just by evaluating this. */
 if (!vwPdfBlocked) {
   vwOpenDoc()
-    .then(function (doc) {
+    .then(function (opened) {
+      doc = opened;
+
       /* One placeholder per page up front so the scrollbar is honest, then fill
          them in as they come into view. Rendering all of them eagerly would
          block the first page behind every other one. */
-      var canvases = [];
       for (var i = 1; i <= doc.numPages; i++) {
         var c = document.createElement("canvas");
         c.className = "pg";
         c.dataset.page = i;
         pages.appendChild(c);
-        canvases.push(c);
+        slots.push({ n: i, canvas: c, state: "blank", task: null, page: null });
       }
 
-      return renderPage(doc, 1, canvases[0]).then(function () {
-        vwStatusDone();
+      /*
+       * Page 1's shape stands in for every page until each is drawn.
+       *
+       * Asking every page for its own size would mean pulling several hundred page
+       * dictionaries before anything could be shown, which on a ranged load is
+       * several hundred round trips to learn something that is usually the same
+       * every time. pdf.js's own viewer takes this shortcut too, under the name
+       * defaultViewport. A document that mixes page sizes gets the first page's
+       * shape until each page is drawn and its own from then on, which is a
+       * placeholder being briefly wrong rather than the layout being wrong.
+       */
+      return doc.getPage(1).then(function (page) {
+        var unscaled = page.getViewport({ scale: 1 });
+        slots.forEach(function (slot) { shape(slot, unscaled); });
 
-        if (doc.numPages < 2) return;
-        var io = new IntersectionObserver(function (entries) {
-          entries.forEach(function (e) {
-            if (!e.isIntersecting) return;
-            var c = e.target;
-            // Unobserving before rendering is what keeps each page drawn once; the
-            // observer reports a given target at most once per batch, so dropping it
-            // here means no later batch can ask for it again.
-            io.unobserve(c);
-            renderPage(doc, Number(c.dataset.page), c)
-              .catch(function () { /* leave the page blank */ });
+        return draw(slots[0]).then(function () {
+          vwStatusDone();
+
+          if (doc.numPages < 2) return;
+
+          /*
+           * Two bands rather than one.
+           *
+           * A page is drawn when it reaches the inner band and released only when it
+           * falls outside the wider one. The gap between them is what stops a reader
+           * who scrolls down a screen and back up again watching the page they just
+           * left get thrown away and rebuilt. With a single band every small change
+           * of direction costs a redraw.
+           *
+           * Neither observer unobserves anything. The old code dropped each target
+           * as it fired, which was how it guaranteed a page was drawn once, and it
+           * also meant a page leaving the band was never heard about again. Being
+           * told when a page goes away is the whole basis of cancelling and
+           * releasing, so the guarantee has moved into the slot state instead:
+           * want() ignores anything not blank.
+           */
+          var draws = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) {
+              var slot = slots[Number(e.target.dataset.page) - 1];
+              if (e.isIntersecting) want(slot); else unwant(slot);
+            });
+          }, { rootMargin: "200% 0px" });
+
+          var keeps = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) {
+              if (!e.isIntersecting) release(slots[Number(e.target.dataset.page) - 1]);
+            });
+          }, { rootMargin: "500% 0px" });
+
+          slots.forEach(function (slot) {
+            draws.observe(slot.canvas);
+            keeps.observe(slot.canvas);
           });
-        }, { rootMargin: "200% 0px" });
-        canvases.slice(1).forEach(function (c) { io.observe(c); });
+        });
       });
     })
     .catch(function (e) {
