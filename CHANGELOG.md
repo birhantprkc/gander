@@ -16,9 +16,13 @@
   other apps' browser windows down with it. The boxes are now the shape of the page
   they stand for, no more than three pages are ever drawn at once, a page you have
   flung past stops being drawn rather than finishing into a bitmap nobody will see,
-  and a page far enough behind you gives back both its bitmap and its artwork. The
-  same document now sits flat at about 210 MB however it is read
-  (thanks @logannc, who found this and worked out that scrolling made it worse)
+  and a page far enough behind you gives back both its bitmap and its artwork. How far
+  ahead Gander draws is now counted in pages rather than in screenfuls, which is the
+  only version of that number that means the same thing when you turn the phone
+  sideways. The rulebook now sits flat at about 180 MB however it is read, and a
+  520-page, 114 MB ebook at about 300 MB, neither of them climbing
+  (thanks @logannc, who found this and worked out that scrolling made it worse, and
+  @mjschwart, who reproduced it on quite different hardware with a much heavier file)
 
 ## 1.11 (2026-08-21)
 

@@ -249,6 +249,32 @@ var PAGE_WIDTH = pages.clientWidth || window.innerWidth;
  */
 var MAX_IN_FLIGHT = 3;
 
+/*
+ * How far either side of the screen pages are drawn, and how much further they are
+ * kept, both counted in pages.
+ *
+ * These were percentages of the viewport, and a percentage is the wrong unit here.
+ * rootMargin resolves against the viewport, but a page's height is fixed by the
+ * 980 CSS px layout and does not move, so the two units drift apart the moment the
+ * phone is turned. Measured on a Nothing Phone 2: 200% was about seven pages in
+ * portrait and about one and a third in landscape, where the viewport is a fifth as
+ * tall and the page is exactly as tall as it ever was. At one and a third pages the
+ * renderer cannot stay ahead of a scroll, and landscape brought back the blank pages
+ * this whole change exists to remove. Verified before the fix: nine swipes in
+ * landscape and the screen was a blank page.
+ *
+ * Counted in pages the two numbers mean the same thing on any screen and in either
+ * orientation, which also means a reader who rotates mid-document keeps whatever
+ * they had. DRAW is the depth the renderer has to stay ahead of; the gap up to KEEP
+ * is the hysteresis that stops a small change of direction costing a redraw.
+ */
+var DRAW_PAGES = 3;
+var KEEP_PAGES = 5;
+
+/* One page box including its margin, in CSS px. Set from page 1, which is the same
+   place the placeholders take their shape from. */
+var PAGE_PITCH = 0;
+
 /* Assigned once the document opens. Everything below needs it, and the observer
    callbacks outlive the promise chain that produced it. */
 var doc = null;
@@ -647,6 +673,9 @@ function vwFailure(e) {
  * down a screen and back up again watching the page they just left get thrown away
  * and rebuilt. With a single band every small change of direction costs a redraw.
  *
+ * Both bands are in pixels off PAGE_PITCH rather than percentages of the viewport,
+ * for the reason set out beside DRAW_PAGES.
+ *
  * Neither observer unobserves anything. The first version of this dropped each
  * target as it fired, which was how it guaranteed a page was drawn once, and it also
  * meant a page leaving the band was never heard about again. Being told when a page
@@ -659,13 +688,13 @@ function observePages() {
       if (e.isIntersecting) want(e.target._slot); else unwant(e.target._slot);
     });
     pump();
-  }, { rootMargin: "200% 0px" });
+  }, { rootMargin: Math.round(DRAW_PAGES * PAGE_PITCH) + "px 0px" });
 
   var keeps = new IntersectionObserver(function (entries) {
     entries.forEach(function (e) {
       if (!e.isIntersecting) release(e.target._slot);
     });
-  }, { rootMargin: "500% 0px" });
+  }, { rootMargin: Math.round(KEEP_PAGES * PAGE_PITCH) + "px 0px" });
 
   slots.forEach(function (slot) {
     draws.observe(slot.canvas);
@@ -726,6 +755,9 @@ if (!vwPdfBlocked) {
       var unscaled = page.getViewport({ scale: 1 });
       pages.style.setProperty(
         "--pg-ratio", String(unscaled.width / unscaled.height));
+      /* Derived rather than measured: the same number the CSS above will lay out to,
+         without a layout read to ask what it did. The 8 is .pg's bottom margin. */
+      PAGE_PITCH = PAGE_WIDTH * (unscaled.height / unscaled.width) + 8;
       return draw(slots[0]);
     })
     .then(function () {
