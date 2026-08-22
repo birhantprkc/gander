@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: the grid the wireframe is drawn on. Covers the whole 108dp
+     canvas, not just the 72dp safe zone, so the grid still fills the corners on a
+     launcher that masks to a square or applies parallax. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FF0E2A47" android:pathData="M0,0 H108 V108 H0 Z" />
+    <path android:strokeColor="#FF2C5C8F"
+          android:strokeWidth="0.5"
+          android:pathData="M0,6 H108 M6,0 V108 M0,12 H108 M12,0 V108 M0,18 H108 M18,0 V108 M0,24 H108 M24,0 V108 M0,30 H108 M30,0 V108 M0,36 H108 M36,0 V108 M0,42 H108 M42,0 V108 M0,48 H108 M48,0 V108 M0,54 H108 M54,0 V108 M0,60 H108 M60,0 V108 M0,66 H108 M66,0 V108 M0,72 H108 M72,0 V108 M0,78 H108 M78,0 V108 M0,84 H108 M84,0 V108 M0,90 H108 M90,0 V108 M0,96 H108 M96,0 V108 M0,102 H108 M102,0 V108" />
+</vector>

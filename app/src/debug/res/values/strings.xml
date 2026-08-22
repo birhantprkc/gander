@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only. Merged over src/main/res, so none of this can reach a release
+  APK even by accident: the release build never compiles this folder.
+-->
+<resources>
+    <string name="app_name">Gander debug</string>
+</resources>
