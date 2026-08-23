@@ -1,0 +1,1 @@
+Large, image-heavy PDFs no longer stall, heat the phone, or close themselves partway through. Gander now draws only the pages you are looking at and gives back the ones you have scrolled past, and pages waiting to be drawn keep the shape of the page they stand for rather than appearing as a column of small white boxes.

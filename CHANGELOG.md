@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.12 (2026-08-23)
 
 - Large PDFs no longer bring the phone to its knees. Gander lays out an empty box for
   every page in a document before it draws any of them, so the scrollbar is the right
