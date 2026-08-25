@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.13 (2026-08-25)
 
 - Gander is a good deal smaller to download. Its own code is under 1,700 lines, but the
   Android UI libraries underneath it were being packaged whole whether or not anything

@@ -1,0 +1,1 @@
+Gander is now under half the size it was. It ships only the parts of the Android libraries it actually uses, so the download falls from about 8 MB to about 3.7 MB. Nothing has been taken out: every format, every screen and every menu item is the one that shipped in 1.12.
