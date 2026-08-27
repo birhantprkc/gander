@@ -49,6 +49,17 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
   floor first: if it is above 138, this is a decision about dropping PDFs on
   Android 8 and 9, not a version bump.
 
+- **The text layer CSS in `pdf.html` is a contract, and it fails silently.** pdf.js
+  writes only `left`, `top`, `font-family` and three custom properties on each span:
+  `--font-height`, `--scale-x` and `--rotate`. It never writes `font-size` or
+  `transform`; the stylesheet has to turn those properties into both, and the scale
+  hook in 5.7.284 is `--total-scale-factor` (the older `--scale-factor` is not read).
+  Get any of it wrong and nothing throws and nothing looks broken, because the text is
+  transparent and the picture underneath is still correct. It shows up only as a
+  selection covering the wrong words or a search highlight stopping short of the word
+  it found. The upstream rules are in `web/pdf_viewer.css` of the same version; diff
+  the `.textLayer` block against the one in `pdf.html` on any upgrade.
+
 Bumping pdf.js means editing together the two `pdf.*.mjs` rows above, `PDFJS` in
 `scripts/fetch-viewer-libs.sh`, and `PDFJS_MIN_CHROMIUM_MAJOR`. The card's wording
 lives in `pdf.html` and reads both version numbers out of the query string, so it

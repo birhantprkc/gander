@@ -82,31 +82,78 @@
     forced-color-adjust: none;
     transform-origin: 0 0;
     caret-color: CanvasText;
+    z-index: 0;
+
+    /* Read by the span rule below. --total-scale-factor is set per page in
+       textLayerFor(); the other two exist because pdf.js's own stylesheet defines
+       the size and transform in terms of them. */
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+  }
+
+  .textLayer span,
+  .textLayer br {
     /*
      * The words are invisible and still selectable, because the picture underneath
      * already shows them. Colour them and every glyph would be drawn twice, once by
      * the renderer and once by the browser, in fonts that do not match.
      */
     color: transparent;
-  }
-
-  .textLayer span,
-  .textLayer br {
     position: absolute;
     white-space: pre;
     cursor: text;
     transform-origin: 0% 0%;
   }
 
+  /*
+   * Where a span gets its size and width, and the half of the contract that is easy
+   * to miss.
+   *
+   * pdf.js writes only left, top, font-family and three custom properties on each
+   * span: --font-height, --scale-x and --rotate. It never writes font-size or
+   * transform. Those are the stylesheet's job, and without them every span renders at
+   * the inherited 16px with no horizontal scaling, which does not throw and does not
+   * look broken, because the text is transparent and the picture underneath is still
+   * correct. It shows up only when something draws on the text: a selection that
+   * covers the wrong words, or a search hit whose highlight stops short of the end of
+   * the word it found.
+   *
+   * --scale-x is measured, not declared: pdf.js renders the run in whatever font the
+   * device actually has, measures it, and divides the width the PDF asked for by the
+   * width it got. That is why this has to be applied rather than approximated, and
+   * why the same page is right on two phones with different fonts installed.
+   *
+   * The selector is pdf.js's own. Marked content arrives as a wrapping element that
+   * is display:contents, so its spans are addressed separately rather than by depth.
+   */
+  .textLayer > :not(.markedContent),
+  .textLayer .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform:
+      rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+
+  .textLayer .markedContent { display: contents; }
+
+  /* An image standing in for text is not text to select. */
+  .textLayer span[role="img"] { user-select: none; cursor: default; }
+
   /* pdf.js appends this to bound a selection dragged past the last line. It has to
      exist and take part in layout, which is why it is not display:none. */
   .textLayer .endOfContent {
+    display: block;
     position: absolute;
     inset: 100% 0 0;
-    z-index: -1;
+    z-index: 0;
     cursor: default;
     user-select: none;
   }
+  .textLayer.selecting .endOfContent { top: 0; }
 
   /*
    * Search hits. Registered as Ranges through CSS.highlights rather than by wrapping
