@@ -13,7 +13,18 @@
 <style>
   body { background: #37474f; }
   #pages { padding: 8px 0; }
+  /*
+   * A page is a box holding two layers: the canvas that is the picture of it, and
+   * the text layer that is the words in it, the second sitting exactly on top of
+   * the first. The box carries the size for both, which is what makes it the thing
+   * the observers watch and the thing that holds its shape while empty.
+   *
+   * The canvas used to be this box itself. It stopped being so the text layer had
+   * something to be positioned against: absolute positioning needs a positioned
+   * ancestor, and a canvas cannot be one for something outside it.
+   */
   .pg {
+    position: relative;
     display: block;
     margin: 0 auto 8px;
     background: #fff;
@@ -32,10 +43,81 @@
      * Page 1's shape is published here as a custom property once the document opens,
      * so a 357-page document costs one write rather than one per page, and a page
      * that has been drawn overrides it inline with its own. The fallback is A4
-     * portrait and applies only between the canvases existing and page 1 being
+     * portrait and applies only between the boxes existing and page 1 being
      * measured, which is spent behind the "Rendering document" card.
+     *
+     * On the box rather than the canvas now. The canvas fills the box, so a released
+     * page whose canvas is 0x0 still stands at its full height and nothing moves.
      */
     aspect-ratio: var(--pg-ratio, 0.7071);
+  }
+
+  .pg > canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /*
+   * The text layer: pdf.js's own, positioned over the picture.
+   *
+   * These rules are not decoration, they are the contract the TextLayer class in
+   * lib/pdf.min.mjs is written against. It sets left, top, font-size and a transform
+   * inline on each span and expects the stylesheet to supply the rest, so a viewer
+   * that omits them gets its text stacked in the corner rather than laid over the
+   * page. Re-check them when pdf.js moves; see "Before upgrading pdf.js" in
+   * docs/VENDORED.md.
+   *
+   * The scale hook this build reads is --total-scale-factor. The older
+   * --scale-factor does not appear anywhere in 5.7.284 and setting it does nothing,
+   * which fails quietly as text half a page out of place.
+   */
+  .textLayer {
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    line-height: 1;
+    text-align: initial;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+    /*
+     * The words are invisible and still selectable, because the picture underneath
+     * already shows them. Colour them and every glyph would be drawn twice, once by
+     * the renderer and once by the browser, in fonts that do not match.
+     */
+    color: transparent;
+  }
+
+  .textLayer span,
+  .textLayer br {
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+
+  /* pdf.js appends this to bound a selection dragged past the last line. It has to
+     exist and take part in layout, which is why it is not display:none. */
+  .textLayer .endOfContent {
+    position: absolute;
+    inset: 100% 0 0;
+    z-index: -1;
+    cursor: default;
+    user-select: none;
+  }
+
+  /*
+   * Search hits. Registered as Ranges through CSS.highlights rather than by wrapping
+   * the text in elements: wrapping would split the spans pdf.js positioned and move
+   * the words off the picture, which is the one thing the text layer must never do.
+   */
+  ::highlight(vw-find) {
+    background-color: rgba(255, 213, 79, 0.45);
+  }
+  ::highlight(vw-find-active) {
+    background-color: rgba(255, 145, 0, 0.62);
   }
 
   /*
@@ -293,6 +375,27 @@ var queue = [];
 var inFlight = 0;
 
 /*
+ * Everything the search knows.
+ *
+ * "pages" is the text of the whole document, one normalised string per page, built
+ * once on the first search and kept. It is the only part of a page that outlives
+ * being released, and it is why a match on page 300 can be found while pages 1 to 11
+ * are the only ones drawn. Text is small: the 41 MB, 357-page document this file was
+ * tuned against holds about 1.4 MB of it, against 21 MB for a single canvas.
+ *
+ * "matches" is flat and in document order, so the number the reader is shown is a
+ * position in one list rather than a page and an offset within it.
+ */
+var finding = {
+  query: "",
+  pages: null,
+  matches: [],
+  active: -1,
+  building: false,
+  built: 0
+};
+
+/*
  * Give a placeholder the shape of the page it stands for.
  *
  * This is the whole of the bug this file used to have. A canvas with no width or
@@ -309,8 +412,8 @@ var inFlight = 0;
  * nothing at all once it has been released. Chromium has had aspect-ratio since 88
  * and pdf.js already requires 125, so there is no floor to check here.
  */
-function shape(canvas, unscaled) {
-  canvas.style.aspectRatio = String(unscaled.width / unscaled.height);
+function shape(box, unscaled) {
+  box.style.aspectRatio = String(unscaled.width / unscaled.height);
 }
 
 /* Distance from the middle of the viewport. During a fling the queue fills mostly
@@ -385,6 +488,25 @@ function blank(slot) {
   slot.state = "blank";
 
   /*
+   * The words go with the picture.
+   *
+   * A text layer is one absolutely positioned span per run of text, so a dense page
+   * is several hundred elements and a document is however many of those the band is
+   * holding. Leaving them behind would rebuild the memory problem this whole file is
+   * arranged against, in DOM instead of bitmaps, and it would do it quietly: nothing
+   * on screen changes, because the words are transparent and the picture under them
+   * has already gone.
+   *
+   * cancel() first. TextLayer streams its content in, so a layer still arriving when
+   * the page is released would otherwise finish and repopulate the div just emptied.
+   */
+  if (slot.layer) {
+    slot.layer.cancel();
+    slot.layer = null;
+  }
+  slot.text.replaceChildren();
+
+  /*
    * The canvas is only half of what a drawn page costs, and on an illustrated
    * document it is the smaller half. pdf.js keeps every image it decoded for a page
    * on the page object itself, and holds that object in its own cache for as long as
@@ -426,10 +548,24 @@ function draw(slot) {
     var unscaled = page.getViewport({ scale: 1 });
     /* Correct the placeholder to this page's own shape. Page 1's shape was a
        stand-in for it until now, and in a document of uniform pages it was exact. */
-    shape(slot.canvas, unscaled);
+    shape(slot.box, unscaled);
 
+    /*
+     * Two scales, and they are not the same number.
+     *
+     * The canvas is a bitmap and wants device pixels, so it is drawn at DPR times
+     * the layout width and shown scaled down, which is the headroom that keeps it
+     * sharp under a pinch. The text layer is DOM and wants CSS pixels: it has to
+     * land on the box, which is PAGE_WIDTH wide whatever the bitmap behind it is.
+     * Handing the text layer the canvas viewport puts every word at twice its
+     * offset, off the bottom of the page.
+     *
+     * Keep these apart. The blur fix in #20 changes the canvas scale and must not
+     * be allowed to collapse the two back into one.
+     */
+    var cssScale = PAGE_WIDTH / unscaled.width;
     /* clone rather than a second getViewport: the same matrix, already built. */
-    var viewport = unscaled.clone({ scale: (PAGE_WIDTH / unscaled.width) * DPR });
+    var viewport = unscaled.clone({ scale: cssScale * DPR });
     var canvas = slot.canvas;
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -437,9 +573,16 @@ function draw(slot) {
       canvasContext: canvas.getContext("2d"),
       viewport: viewport
     });
-    return slot.task.promise;
+    return slot.task.promise.then(function () {
+      return textLayerFor(slot, page, unscaled.clone({ scale: cssScale }));
+    });
   }).then(function () {
     slot.state = "drawn";
+    /* A page can come back after being released with a search still running, so
+       the hits on it have to be put back: a Range does not survive its nodes. Whole
+       registry rather than this page's part of it, because that is one code path
+       over about eleven drawn pages rather than two that have to agree. */
+    if (finding.query) { paint(); reveal(); }
   }, function () {
     /* Cancelled or genuinely broken. Both end the same way: nothing held, and free
        to be asked for again if the reader comes back to it. */
@@ -449,6 +592,379 @@ function draw(slot) {
     inFlight--;
     pump();
   });
+}
+
+/*
+ * Lay the words of a page over the picture of it.
+ *
+ * The viewport handed in here is at CSS scale, not the canvas's device scale; see
+ * the note in draw() about why those are two numbers.
+ *
+ * A failure here is deliberately not a failure of the page. The picture is already
+ * drawn and readable, and a document whose text cannot be extracted, which is most
+ * scanned ones, should look exactly as it did before this feature existed rather
+ * than showing an error over a page the reader can see perfectly well.
+ */
+function textLayerFor(slot, page, viewport) {
+  /* pdf.js reads this off the container to size the glyphs. It is --total-scale-factor
+     in 5.7.284; the older --scale-factor is not read by this build at all. */
+  slot.text.style.setProperty("--total-scale-factor", String(viewport.scale));
+  var layer = new pdfjsLib.TextLayer({
+    textContentSource: page.streamTextContent(),
+    container: slot.text,
+    viewport: viewport
+  });
+  slot.layer = layer;
+  return layer.render().catch(function () {
+    if (slot.layer === layer) slot.layer = null;
+    slot.text.replaceChildren();
+  });
+}
+
+/*
+ * The text of a page, flattened into one string, with a way back to where each
+ * piece of it came from.
+ *
+ * pdf.js hands out text in runs, and the runs carry the spacing of the typeset page
+ * rather than of a sentence: a word can arrive split across two runs, and the gap
+ * between two runs may be a space, a newline or nothing at all. Searching the raw
+ * concatenation therefore misses anything that straddles a run.
+ *
+ * So the runs are joined with a single space between them and every stretch of
+ * whitespace inside them is collapsed to one, which is what makes "Baker Street"
+ * findable whichever way the typesetter broke it. "map" records, for each run, where
+ * it landed in the joined string, which is what turns a match back into a Range.
+ */
+function flatten(runs) {
+  var text = "";
+  var map = [];
+  for (var i = 0; i < runs.length; i++) {
+    var run = String(runs[i] == null ? "" : runs[i]);
+    if (!run) { map.push(null); continue; }
+    if (text) text += " ";
+    var cleaned = run.replace(/\s+/g, " ");
+    map.push({ at: text.length, len: cleaned.length, run: i });
+    text += cleaned;
+  }
+  return { text: text, map: map };
+}
+
+/*
+ * Read the whole document's text, a page at a time, without holding onto it.
+ *
+ * This is the one place that touches every page, and it is why it does not run until
+ * somebody actually searches: asking for all of them at open costs a round trip per
+ * page on a ranged load, which is the whole reason page 1's shape stands in for the
+ * rest.
+ *
+ * The cleanup() call is not tidiness. getPage() puts the page in pdf.js's own cache
+ * and leaves it there for as long as the document is open, so walking 357 pages to
+ * read their text would leave 357 page objects alive holding whatever they decoded.
+ * That is the same leak blank() exists to close, arrived at from the other end, and
+ * it would not show up on anything short enough to test by hand. Pages the band is
+ * currently holding are left alone: blank() owns those, and cleaning one mid-render
+ * would pull the artwork out from under a page being drawn.
+ */
+function buildIndex() {
+  /* A reader can have the search box open before the document has finished
+     opening, and on a slow file that is a real gap rather than a theoretical one.
+     The query is kept either way; the open chain starts the index once doc exists. */
+  if (!doc) return;
+  if (finding.pages || finding.building) return;
+  finding.building = true;
+  finding.pages = new Array(doc.numPages);
+  finding.built = 0;
+
+  var next = 1;
+  function step() {
+    if (next > doc.numPages) {
+      finding.building = false;
+      report();
+      return;
+    }
+    var n = next++;
+    doc.getPage(n).then(function (page) {
+      return page.getTextContent().then(function (content) {
+        var runs = content.items.map(function (it) {
+          return typeof it.str === "string" ? it.str : "";
+        });
+        finding.pages[n - 1] = flatten(runs).text;
+        if (slots[n - 1].state === "blank") page.cleanup();
+      });
+    }).catch(function () {
+      /* An unreadable page is an empty one for searching. Losing the rest of the
+         document because one page will not parse would be the worse answer. */
+      finding.pages[n - 1] = "";
+    }).then(function () {
+      finding.built = n;
+      /* Results grow as the index does rather than the box waiting for the end of a
+         long document, so the count climbs while it works. Only the page just read
+         is scanned; see the note on rerun() about why not all of them. */
+      if (finding.query) {
+        var added = scanPage(n);
+        if (finding.active < 0 && finding.matches.length) {
+          /* First hit in the document: go to it, the way a search that had the whole
+             index would have done immediately. */
+          stepTo(0);
+        } else {
+          if (added && slots[n - 1].state === "drawn") paint();
+          report();
+        }
+      }
+      step();
+    });
+  }
+  step();
+}
+
+/* Case-insensitive, like the native find the other viewers get. Chromium's find does
+   its own Unicode folding beyond this, so counts on the same query can differ a
+   little between a PDF and a DOCX. That is worth knowing and not worth matching. */
+function foldCase(s) { return s.toLowerCase(); }
+
+/* Every occurrence of the query on one page, appended. Pages are indexed in order,
+   so appending keeps finding.matches in document order without a sort. */
+function scanPage(n) {
+  var text = finding.pages[n - 1];
+  if (!text) return 0;
+  var q = foldCase(finding.query);
+  if (!q) return 0;
+  var hay = foldCase(text);
+  var found = 0;
+  var at = hay.indexOf(q);
+  while (at !== -1) {
+    finding.matches.push({ page: n, at: at, len: q.length });
+    found++;
+    at = hay.indexOf(q, at + q.length);
+  }
+  return found;
+}
+
+/*
+ * Start the current query again from nothing, over every page read so far.
+ *
+ * Only for a query that has changed. While the index is being read it is scanPage()
+ * that runs, once per page as it arrives, because rescanning the whole document
+ * after every page of it is quadratic: on the 357-page document that is 357 passes
+ * over a corpus growing to 1.4 MB, which is half a gigabyte of scanning to learn
+ * what one page added.
+ */
+function rerun() {
+  finding.matches = [];
+  if (finding.query && finding.pages) {
+    for (var n = 1; n <= finding.pages.length; n++) scanPage(n);
+  }
+  if (finding.active >= finding.matches.length) {
+    finding.active = finding.matches.length ? 0 : -1;
+  }
+  if (finding.active < 0 && finding.matches.length) finding.active = 0;
+  paint();
+  report();
+}
+
+/*
+ * Put the highlights on the pages that are currently showing.
+ *
+ * Only drawn pages have anything to highlight, so this covers the band and draw()
+ * calls markSlot again for a page that comes back later. The registry is rebuilt
+ * whole each time rather than edited, because a Range whose nodes have been thrown
+ * away is not something to keep.
+ */
+var hitRanges = [];
+var activeRanges = [];
+
+function paint() {
+  if (!window.CSS || !CSS.highlights) return;
+  hitRanges = [];
+  activeRanges = [];
+  for (var i = 0; i < slots.length; i++) {
+    if (slots[i].state === "drawn") markSlot(slots[i]);
+  }
+  flush();
+}
+
+/* Registered in one go. CSS.highlights is a live registry, so setting a name
+   replaces what was under it and deleting is only needed when nothing is left. */
+function flush() {
+  if (!window.CSS || !CSS.highlights) return;
+  if (hitRanges.length) CSS.highlights.set("vw-find", new Highlight(...hitRanges));
+  else CSS.highlights.delete("vw-find");
+  if (activeRanges.length) {
+    CSS.highlights.set("vw-find-active", new Highlight(activeRanges[0]));
+  } else {
+    CSS.highlights.delete("vw-find-active");
+  }
+}
+
+/*
+ * Turn this page's matches into Ranges over the spans pdf.js laid down.
+ *
+ * The offsets in finding.matches are into the text read from the file, and the spans
+ * here are what the text layer actually built, so the two are re-derived from the
+ * layer's own arrays rather than assumed to line up. Where they do not, the page
+ * simply carries no highlight: the reader still gets scrolled to the right page,
+ * which is most of the value, instead of an exception in the middle of a render.
+ */
+function markSlot(slot) {
+  if (!finding.query || !slot.layer) return;
+  var divs = slot.layer.textDivs;
+  var strs = slot.layer.textContentItemsStr;
+  if (!divs || !strs || !divs.length) return;
+
+  var flat = flatten(strs);
+  var hay = foldCase(flat.text);
+  var q = foldCase(finding.query);
+  if (!q) return;
+
+  var activeMatch = finding.matches[finding.active];
+  var nth = 0;
+  var at = hay.indexOf(q);
+  while (at !== -1) {
+    var r = rangeFor(divs, flat.map, at, q.length);
+    if (r) {
+      /* The active one is identified by its position among this page's hits, which
+         is the same order rerun() pushed them in. */
+      if (activeMatch && activeMatch.page === slot.n &&
+          nthOnPage(activeMatch) === nth) {
+        activeRanges.push(r);
+      } else {
+        hitRanges.push(r);
+      }
+    }
+    nth++;
+    at = hay.indexOf(q, at + q.length);
+  }
+}
+
+/* Which hit this is within its own page, counted the way rerun() ordered them. */
+function nthOnPage(match) {
+  var n = 0;
+  for (var i = 0; i < finding.matches.length; i++) {
+    var m = finding.matches[i];
+    if (m.page !== match.page) continue;
+    if (m === match) return n;
+    n++;
+  }
+  return -1;
+}
+
+/* A Range covering [at, at+len) of the flattened text, across however many spans
+   that stretch happens to span. */
+function rangeFor(divs, map, at, len) {
+  var end = at + len;
+  var range = document.createRange();
+  var started = false;
+  for (var i = 0; i < map.length; i++) {
+    var piece = map[i];
+    if (!piece) continue;
+    var pieceEnd = piece.at + piece.len;
+    if (pieceEnd <= at || piece.at >= end) continue;
+    var node = divs[piece.run] && divs[piece.run].firstChild;
+    if (!node) continue;
+    /* The span holds the run as pdf.js received it; the map is into the collapsed
+       copy. They agree unless the run carried runs of whitespace, and clamping keeps
+       a disagreement to a highlight of the wrong width rather than a thrown error. */
+    var max = node.length;
+    if (!started) {
+      range.setStart(node, Math.min(Math.max(at - piece.at, 0), max));
+      started = true;
+    }
+    range.setEnd(node, Math.min(Math.max(end - piece.at, 0), max));
+  }
+  return started ? range : null;
+}
+
+/*
+ * Move to a match and bring it on screen.
+ *
+ * The page it is on may not be drawn: a search reaches the whole document while the
+ * band holds about eleven pages of it. Asking for it goes through the same want()
+ * and pump() every other page does, so a match on page 300 is fetched by the queue
+ * that is already there rather than by a second path that can also draw pages.
+ *
+ * That makes arriving a two-step business. The page is scrolled to immediately,
+ * because its box is already the right size and standing in the right place even
+ * when empty, and the highlight lands when the render finishes and draw() paints
+ * again.
+ */
+function stepTo(i) {
+  var n = finding.matches.length;
+  if (!n) { finding.active = -1; paint(); report(); return; }
+  finding.active = ((i % n) + n) % n;
+  var slot = slots[finding.matches[finding.active].page - 1];
+  slot.box.scrollIntoView({ block: "center" });
+  want(slot);
+  pump();
+  paint();
+  reveal();
+  report();
+}
+
+/* Centre the active hit, once there is one to centre. Scrolling to the page is done
+   by the caller and is what happens when this cannot: a page whose text would not
+   extract still gets looked at, rather than the reader being left where they were
+   with the counter claiming to have moved. */
+function reveal() {
+  if (!activeRanges.length) return;
+  var r = activeRanges[0].getBoundingClientRect();
+  if (!r.height && !r.width) return;
+  window.scrollBy(0, r.top - window.innerHeight / 2);
+}
+
+/*
+ * The search bar lives in Kotlin, so the counter it shows has to be told.
+ *
+ * Three integers, space separated: which hit is current counting from one, how many
+ * there are, and whether the index has finished being read. Nothing else crosses,
+ * in either direction, and nothing on this side is ever evaluated. See the note
+ * beside vwAskPassword about why this page has no JavascriptInterface; a port that
+ * carries three numbers is a different thing from an object with methods on it.
+ */
+var searchPort = null;
+
+function report() {
+  if (!searchPort) return;
+  var total = finding.matches.length;
+  /* Position counts from one, and is zero when there is nothing to be at. Sending
+     1 of 0 would have the counter read "1/0" and TalkBack say "Match 1 of 0". */
+  var at = total && finding.active >= 0 ? finding.active + 1 : 0;
+  var done = finding.pages && !finding.building ? 1 : 0;
+  searchPort.postMessage(at + " " + total + " " + done);
+}
+
+window.addEventListener("message", function (e) {
+  /* The only message this page ever receives is the one handing it the port, sent
+     by ViewerActivity once the document is up. Anything else is not ours. */
+  if (!e.ports || !e.ports.length || searchPort) return;
+  searchPort = e.ports[0];
+  searchPort.onmessage = function (m) { onSearch(String(m.data || "")); };
+  searchPort.start();
+});
+
+/* One letter of command, then the rest is payload. A query is arbitrary text and
+   deliberately never parsed as anything but text. */
+function onSearch(msg) {
+  var verb = msg.charAt(0);
+  if (verb === "q") {
+    var q = msg.slice(1);
+    if (q === finding.query) return;
+    finding.query = q;
+    finding.active = q ? 0 : -1;
+    if (!q) { finding.matches = []; paint(); report(); return; }
+    if (!finding.pages) { buildIndex(); report(); return; }
+    rerun();
+    stepTo(0);
+  } else if (verb === "n") {
+    stepTo(finding.active + 1);
+  } else if (verb === "p") {
+    stepTo(finding.active - 1);
+  } else if (verb === "c") {
+    finding.query = "";
+    finding.matches = [];
+    finding.active = -1;
+    paint();
+    report();
+  }
 }
 
 /*
@@ -697,8 +1213,8 @@ function observePages() {
   }, { rootMargin: Math.round(KEEP_PAGES * PAGE_PITCH) + "px 0px" });
 
   slots.forEach(function (slot) {
-    draws.observe(slot.canvas);
-    keeps.observe(slot.canvas);
+    draws.observe(slot.box);
+    keeps.observe(slot.box);
   });
 }
 
@@ -719,22 +1235,33 @@ if (!vwPdfBlocked) {
          is one mutation of a live tree rather than 357. */
       var frag = document.createDocumentFragment();
       for (var i = 1; i <= doc.numPages; i++) {
+        var box = document.createElement("div");
+        box.className = "pg";
         var c = document.createElement("canvas");
-        c.className = "pg";
-        var slot = { n: i, canvas: c, state: "blank", task: null, page: null };
+        box.appendChild(c);
+        /* The text layer is not built here. An empty div per page is cheap and a
+           built one is not, so it is filled in draw() and emptied in blank(),
+           alongside the bitmap it belongs to. */
+        var tl = document.createElement("div");
+        tl.className = "textLayer";
+        box.appendChild(tl);
+        var slot = {
+          n: i, box: box, canvas: c, text: tl,
+          state: "blank", task: null, page: null, layer: null
+        };
         /* The observers are handed elements and need the slot back. Hanging it on
            the element beats writing a data attribute and parsing it out again on
            every callback, which was the only thing that attribute was ever for.
 
            The underscore is not decoration. Element.slot is a real DOM property, a
            DOMString reflecting the shadow-DOM slot attribute, so assigning an object
-           to c.slot stores "[object Object]" and reads it back as that string. Every
-           page then failed the state check in want() and stayed blank, with only
-           page 1 ever drawn, which looks like a memory improvement right up until
-           you look at the screen. */
-        c._slot = slot;
+           to box.slot stores "[object Object]" and reads it back as that string.
+           Every page then failed the state check in want() and stayed blank, with
+           only page 1 ever drawn, which looks like a memory improvement right up
+           until you look at the screen. */
+        box._slot = slot;
         slots.push(slot);
-        frag.appendChild(c);
+        frag.appendChild(box);
       }
       pages.appendChild(frag);
 
@@ -763,6 +1290,8 @@ if (!vwPdfBlocked) {
     .then(function () {
       vwStatusDone();
       if (doc.numPages > 1) observePages();
+      /* Asked for before there was anything to ask. */
+      if (finding.query) { buildIndex(); report(); }
     })
     .catch(function (e) {
       var said = vwFailure(e);

@@ -35,9 +35,12 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.webkit.WebMessageCompat
+import androidx.webkit.WebMessagePortCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.arjun.gander.FileKind.Companion.detect
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
@@ -403,7 +406,37 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    /** In-document search for WebView-rendered formats via findAllAsync. */
+    /**
+     * Where a search goes. Two of these, because PDF cannot use the other one.
+     *
+     * Every other WebView format is found with findAllAsync, Chromium's own
+     * find-in-page, which searches the DOM. pdf.html holds only about eleven pages of
+     * a document in the DOM at once, so native find would report matches from the
+     * part of it currently on screen and silently miss the rest, which is worse than
+     * offering no search at all. PDF therefore searches in the page, over text it
+     * extracts itself, and reports back over a message port.
+     */
+    private interface Finder {
+        fun query(q: String)
+        fun next()
+        fun prev()
+        fun clear()
+    }
+
+    private class NativeFinder(private val web: WebView) : Finder {
+        override fun query(q: String) = web.findAllAsync(q)
+        override fun next() { web.findNext(true) }
+        override fun prev() { web.findNext(false) }
+        override fun clear() = web.clearMatches()
+    }
+
+    /** The page end of the PDF search channel, held so it can be closed. */
+    private var searchPort: WebMessagePortCompat? = null
+
+    /** Set once the counter exists, called with (position, total, indexFinished). */
+    private var onSearchCount: ((Int, Int, Boolean) -> Unit)? = null
+
+    /** In-document search: findAllAsync for most formats, a message port for PDF. */
     private fun setUpSearch(toolbar: MaterialToolbar, kind: FileKind) {
         val bar = findViewById<LinearLayout>(R.id.searchBar)
         val input = findViewById<EditText>(R.id.searchInput)
@@ -411,31 +444,49 @@ class ViewerActivity : AppCompatActivity() {
         val searchItem = toolbar.menu.findItem(R.id.action_search)
 
         val web = webView
-        // PDF renders in a WebView but has nothing findable in it: pdf.html draws each
-        // page to a canvas with no text layer, so findAllAsync reports no matches
-        // however many times the word appears. Offering the box would be offering a
-        // search that cannot work. Excluded from the README's list of searchable
-        // formats and called out in the 1.5 notes, so this is the code catching up
-        // with what was already documented rather than a new limitation.
-        if (web == null || kind == FileKind.PDF) {
+        if (web == null || (kind == FileKind.PDF && !canPortSearch())) {
+            // No WebView at all, or a WebView too old to carry a message channel. The
+            // second is close to unreachable: message channels landed long before the
+            // Chromium 125 pdf.html already refuses to run below. Hiding the button is
+            // what PDF did in every release up to this one, so it is a known-good
+            // place to land rather than a new failure.
             searchItem.isVisible = false
             return
         }
         searchItem.isVisible = true
 
-        web.setFindListener { active, total, done ->
-            if (done) {
-                // Set the spoken form before the text: the live region fires on the text
-                // change, and by then the description has to be the one to read out
-                count.contentDescription =
-                    if (total == 0 && input.text.isNotEmpty()) getString(R.string.no_matches)
-                    else if (total > 0) getString(R.string.match_count_spoken, active + 1, total)
-                    else null
-                count.text =
-                    if (total == 0 && input.text.isNotEmpty()) getString(R.string.match_count, 0, 0)
-                    else if (total > 0) getString(R.string.match_count, active + 1, total)
-                    else ""
+        // One place that renders a count, whichever transport produced it. The
+        // ordering inside it is load-bearing and is explained where it happens.
+        val show = { active: Int, total: Int, settled: Boolean ->
+            val asked = input.text.isNotEmpty()
+            // Set the spoken form before the text: the live region fires on the text
+            // change, and by then the description has to be the one to read out
+            count.contentDescription = when {
+                total > 0 -> getString(R.string.match_count_spoken, active, total)
+                // "No matches" only once there is nothing left to look through. While
+                // the PDF index is still being read a zero is a not-yet, and saying so
+                // out loud would be wrong twice over: wrong now, and again when the
+                // count changes under the reader.
+                asked && settled -> getString(R.string.no_matches)
+                else -> null
             }
+            count.text = when {
+                total > 0 -> getString(R.string.match_count, active, total)
+                asked && settled -> getString(R.string.match_count, 0, 0)
+                else -> ""
+            }
+        }
+
+        val finder: Finder
+        if (kind == FileKind.PDF) {
+            onSearchCount = { active, total, settled -> show(active, total, settled) }
+            finder = PortFinder()
+        } else {
+            web.setFindListener { active, total, done ->
+                // Native find counts from zero and only means it once done.
+                if (done) show(active + 1, total, true)
+            }
+            finder = NativeFinder(web)
         }
 
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
@@ -451,25 +502,102 @@ class ViewerActivity : AppCompatActivity() {
             override fun afterTextChanged(s: android.text.Editable?) {
                 val q = s?.toString().orEmpty()
                 if (q.isEmpty()) {
-                    web.clearMatches()
+                    finder.clear()
                     count.text = ""
+                    count.contentDescription = null
                 } else {
-                    web.findAllAsync(q)
+                    finder.query(q)
                 }
             }
         })
         input.setOnEditorActionListener { _, _, _ ->
-            web.findNext(true)
+            finder.next()
             true
         }
-        findViewById<ImageButton>(R.id.searchPrev).setOnClickListener { web.findNext(false) }
-        findViewById<ImageButton>(R.id.searchNext).setOnClickListener { web.findNext(true) }
+        findViewById<ImageButton>(R.id.searchPrev).setOnClickListener { finder.prev() }
+        findViewById<ImageButton>(R.id.searchNext).setOnClickListener { finder.next() }
         findViewById<ImageButton>(R.id.searchClose).setOnClickListener {
             imm.hideSoftInputFromWindow(input.windowToken, 0)
             input.text.clear()
-            web.clearMatches()
+            finder.clear()
             bar.visibility = LinearLayout.GONE
         }
+    }
+
+    /**
+     * What the reader last asked for, kept so it can be asked again.
+     *
+     * The search button is on the toolbar from the moment the activity is built, but
+     * the channel does not exist until the page has run. Somebody quick enough to open
+     * the box and type in that window would otherwise have their query go nowhere,
+     * with the counter sitting empty and no way back except retyping it.
+     */
+    private var pendingQuery: String = ""
+
+    /** One letter of command, then the query. Read by onSearch() in pdf.html. */
+    private inner class PortFinder : Finder {
+        private fun send(s: String) {
+            searchPort?.postMessage(WebMessageCompat(s))
+        }
+        override fun query(q: String) {
+            pendingQuery = q
+            send("q$q")
+        }
+        override fun next() = send("n")
+        override fun prev() = send("p")
+        override fun clear() {
+            pendingQuery = ""
+            send("c")
+        }
+    }
+
+    private fun canPortSearch(): Boolean =
+        WebViewFeature.isFeatureSupported(WebViewFeature.CREATE_WEB_MESSAGE_CHANNEL) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.POST_WEB_MESSAGE) &&
+            WebViewFeature.isFeatureSupported(
+                WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK)
+
+    /**
+     * Hand pdf.html one end of a message channel.
+     *
+     * This is the only channel from this app into a page, and it is deliberately not
+     * addJavascriptInterface. That call reflects a Java object into script running on
+     * an untrusted document and lets it call methods on it; this passes strings, in
+     * the same direction the query parameters on the URL already go. Nothing on
+     * either side is evaluated, and what comes back is read as three integers and
+     * dropped if it is anything else. See the note beside vwAskPassword in pdf.html
+     * about why that boundary is most of what keeps a document away from the app.
+     *
+     * Posted on page finished rather than at load, because the listener that takes it
+     * lives in the page and is not there until the page has run.
+     */
+    private fun openSearchChannel(web: WebView) {
+        if (!canPortSearch() || searchPort != null) return
+        val ends = WebViewCompat.createWebMessageChannel(web)
+        val mine = ends[0]
+        mine.setWebMessageCallback(
+            Handler(Looper.getMainLooper()),
+            object : WebMessagePortCompat.WebMessageCallbackCompat() {
+                override fun onMessage(port: WebMessagePortCompat, message: WebMessageCompat?) {
+                    val said = message?.data?.split(" ") ?: return
+                    if (said.size != 3) return
+                    val at = said[0].toIntOrNull() ?: return
+                    val total = said[1].toIntOrNull() ?: return
+                    if (at < 0 || total < 0) return
+                    onSearchCount?.invoke(at, total, said[2] == "1")
+                }
+            })
+        searchPort = mine
+        WebViewCompat.postWebMessage(
+            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), Uri.parse("*"))
+        // Anything typed while there was nowhere to send it.
+        if (pendingQuery.isNotEmpty()) mine.postMessage(WebMessageCompat("q$pendingQuery"))
+    }
+
+    private fun closeSearchChannel() {
+        runCatching { searchPort?.close() }
+        searchPort = null
+        onSearchCount = null
     }
 
     /**
@@ -579,6 +707,12 @@ class ViewerActivity : AppCompatActivity() {
         val mime = documentMime(ext)
 
         web.webViewClient = object : WebViewClientCompat() {
+            override fun onPageFinished(view: WebView, url: String) {
+                // PDF is the only viewer that searches from inside the page, so it is
+                // the only one that needs a way to answer.
+                if (kind == FileKind.PDF) openSearchChannel(view)
+            }
+
             /**
              * The renderer is a process of its own, and Android is free to kill it
              * when memory runs short. That happens most easily while Gander is in
@@ -647,10 +781,14 @@ class ViewerActivity : AppCompatActivity() {
      * cannot answer findAllAsync; going through onCreate again rebuilds both together.
      */
     private fun showRendererGone(container: FrameLayout, didCrash: Boolean) {
-        // Both search surfaces go until there is something to search again
+        // Both search surfaces go until there is something to search again, and for
+        // PDF so does the channel: its far end was in the renderer that just died, so
+        // it can neither be asked anything nor answer. The activity restarts to get a
+        // working one, which is where a new channel comes from.
         findViewById<LinearLayout>(R.id.searchBar).visibility = View.GONE
         findViewById<MaterialToolbar>(R.id.toolbar).menu
             .findItem(R.id.action_search)?.isVisible = false
+        closeSearchChannel()
 
         container.removeAllViews()
         val card = layoutInflater.inflate(R.layout.view_render_gone, container, false)

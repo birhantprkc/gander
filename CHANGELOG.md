@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- PDFs have text in them now, as far as the rest of the app is concerned. Pages were drawn
+  as pictures and nothing else, so there was nothing to select, nothing to copy, nothing for
+  a screen reader to read out and nothing for the search box to look through, which is why
+  the search button was hidden for PDFs from 1.9 onwards. Each page now carries an invisible
+  layer of the words it contains, laid exactly over the picture of them, so a PDF selects and
+  copies like any other document and a screen reader can read one aloud.
+- Find in document works in PDFs. It searches the whole file rather than the handful of pages
+  currently drawn, which is the reason it could not simply use the same machinery the other
+  formats do: Gander only keeps about eleven pages of a document in memory at a time, and a
+  search that only looked at those would quietly miss the rest. Counting, next and previous
+  behave as they do everywhere else. On a long document the count climbs while the file is
+  read, rather than the box waiting for the end of it.
+
 ## 1.13 (2026-08-25)
 
 - Gander is a good deal smaller to download. Its own code is under 1,700 lines, but the

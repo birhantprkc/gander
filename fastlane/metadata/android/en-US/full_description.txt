@@ -25,7 +25,7 @@ Gander opens the file you hand it, through the system file picker, through "Open
 
 Built for reading on a phone
 
-* Find in document: search inside Word, Excel, PowerPoint, Markdown, text and code, with match navigation
+* Find in document: search inside PDF, Word, Excel, PowerPoint, Markdown, text and code, with match navigation
 * Open password protected PDFs by entering the password
 * Deep zoom into large photos with tiled decoding, and correct rotation read from EXIF
 * Share the open file onward, save a copy of it, or jump to the folder it sits in
@@ -38,7 +38,6 @@ About 4 MB, a single build that runs on every processor with no native code at a
 Honest about what it is not
 
 * Gander is a viewer, not an editor
-* PDF text cannot be searched yet. PDF pages are drawn as images with no text layer behind them, so search works in every other format above but not in PDF
 * Legacy binary .doc and .ppt are not supported. Binary .xls is
 * Complex PowerPoint decks render approximately, and spreadsheet charts are not drawn
 * Viewing PDFs needs Android System WebView 125 or newer, and Gander says so plainly if yours is older

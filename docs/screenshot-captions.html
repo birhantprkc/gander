@@ -27,11 +27,11 @@
   in README.md, docs/index.html, the Play full description and
   docs/social-preview.html. It does not need to live in a picture too.
 
-  Every caption has to be true of the shipped build. In particular the PDF shot
-  must not suggest find-in-document: 1.9 removes the search button for PDFs
-  because pdf.js draws pages as canvas with no text layer behind them. Search
-  is real for Word, Excel, slides, Markdown, text and code, and only those
-  captions mention it.
+  Every caption has to be true of the shipped build. The PDF shot used to be
+  barred from suggesting find-in-document, because 1.9 removed the search button
+  for PDFs: pages were drawn as canvas with nothing behind them to find. That
+  changed when the text layer landed, and search is now real for every format
+  here, PDF included.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
