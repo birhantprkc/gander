@@ -60,6 +60,38 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
   it found. The upstream rules are in `web/pdf_viewer.css` of the same version; diff
   the `.textLayer` block against the one in `pdf.html` on any upgrade.
 
+- **The text layer's font is a second contract, and it fails the same silent way.**
+  `pdf.html` rewrites `textContent.styles[key].fontFamily` to the PDF's own embedded
+  face as the chunks stream past, so pdf.js measures each run in the typeface the page
+  was set in rather than in a generic. Without it, `--scale-x` corrects a run's total
+  width and leaves every character position inside it wrong, which is a search
+  highlight landing short. Five things about 5.7.284 make it work, and none is
+  documented API:
+  - `textContent.styles` is keyed by `font.loadedName`, and `item.fontName` is that
+    same key, so the mapping is direct rather than a lookup.
+  - Embedded faces are registered as `new FontFace(font.loadedName, font.data, {})`,
+    awaited inside `page.render()`. `pdf.html` builds the text layer only after the
+    canvas render resolves, which is what makes the face present.
+  - The name spaces are disjoint: embedded fonts are `g_d<n>_f<n>`, substituted system
+    fonts `g_d<n>_s<n>`, failures `g_font_error`. That is what makes the
+    `document.fonts` test exact rather than a guess, and what keeps a non-embedded
+    document behaving as it did before.
+  - `adjustMapping()` remaps every glyph into a Private Use Area for the canvas, but
+    also carries a `toUnicodeExtraMap` that `createCmapTable()` writes into the same
+    cmap. That second set of entries is the only reason the face can render the text
+    layer's Unicode at all. If it goes, this stops working and nothing says so.
+  - The rebuilt font keeps no `GSUB`, `GPOS` or `kern`, so the browser applies no
+    ligatures and no kerning and lays a run out on bare `hmtx` advances, the model
+    the PDF itself used. Do not add `font-kerning` or `font-variant-ligatures`: pdf.js
+    measures on a canvas whose settings the stylesheet cannot reach, so disabling
+    shaping on one side only would desynchronise the measurement from the paint.
+
+  Upstream proposed the same idea as PR #19230 and rejected it, on the grounds that it
+  breaks for non-embedded fonts and that a face need not carry every glyph. Both are
+  answered here by checking `document.fonts` on the display side instead of asserting
+  the name in the worker, and by keeping the generic behind the face as a real
+  fallback. Read that PR before undoing this, not instead of this note.
+
 Bumping pdf.js means editing together the two `pdf.*.mjs` rows above, `PDFJS` in
 `scripts/fetch-viewer-libs.sh`, and `PDFJS_MIN_CHROMIUM_MAJOR`. The card's wording
 lives in `pdf.html` and reads both version numbers out of the query string, so it

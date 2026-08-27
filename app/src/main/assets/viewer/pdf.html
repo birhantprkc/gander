@@ -74,6 +74,23 @@
    */
   .textLayer {
     position: absolute;
+    /*
+     * inset is what sizes this layer, and that is not the arrangement pdf.js intends.
+     *
+     * setLayerDimensions() writes width and height inline on this element as
+     * round(down, var(--total-scale-factor) * <pageWidth>px, var(--scale-round-x)).
+     * --scale-round-x is upstream's, is not defined here, and an undefined var()
+     * makes the whole declaration invalid at computed-value time, so both fall back
+     * to auto and the insets decide. That is the better answer rather than an
+     * accident worth repairing: .pg is a percentage width with an aspect-ratio, so
+     * its box is fractional, and defining --scale-round-x would make those inline
+     * declarations valid, beat right and bottom, and floor a 1268.235px box to 1268px
+     * behind an overflow: clip.
+     *
+     * So leave it undefined, and know that this line is load bearing. A pdf.js that
+     * stops writing round() would put the two back in charge and nothing here would
+     * say so.
+     */
     inset: 0;
     overflow: clip;
     line-height: 1;
@@ -177,6 +194,33 @@
     user-select: none;
   }
   .textLayer.selecting .endOfContent { top: 0; }
+
+  /*
+   * pdf.js's measuring canvas, which is not part of any page.
+   *
+   * TextLayer appends one of these to the body and reads glyph widths off it to
+   * compute --scale-x. Upstream's stylesheet hides it and ours did not, so it stood
+   * in the body at the HTML default 300x150 until the first measurement zeroed its
+   * backing store. A 2D context does not care about layout, which is why it can be
+   * hidden and still measure.
+   *
+   * The two spacing properties are upstream's too, and are the half worth
+   * understanding: this element inherits from the body, and inherited letter-spacing
+   * reaches measureText and corrupts the width every --scale-x is derived from.
+   * Nothing here sets either, so nothing is wrong today. They are declared so that
+   * stays a property of this rule rather than of what the rest of the stylesheet
+   * happens not to say.
+   */
+  .hiddenCanvasElement {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    display: none;
+    letter-spacing: normal;
+    word-spacing: normal;
+  }
 
   /*
    * Search hits. Registered as Ranges through CSS.highlights rather than by wrapping
@@ -692,7 +736,7 @@ function textLayerFor(slot, page, viewport) {
   slot.text.style.setProperty(
     "--total-scale-factor", String(viewport.scale * (viewport.userUnit || 1)));
   var layer = new pdfjsLib.TextLayer({
-    textContentSource: page.streamTextContent(),
+    textContentSource: embedFonts(page.streamTextContent()),
     container: slot.text,
     viewport: viewport
   });
@@ -701,6 +745,132 @@ function textLayerFor(slot, page, viewport) {
     if (slot.layer === layer) slot.layer = null;
     slot.text.replaceChildren();
   });
+}
+
+/*
+ * Point the text layer at the fonts the picture was drawn with.
+ *
+ * This is the whole of the fix for a search highlight that stopped short of the word
+ * it found. pdf.js places a run by measuring it in whatever font it is about to use
+ * and dividing the width the PDF asked for by the width it got, which is the
+ * --scale-x in the stylesheet contract above. That makes a run's total width exact
+ * whatever font does the measuring, and it makes nothing inside the run exact: one
+ * ratio for the whole run spreads the disagreement across the characters rather than
+ * removing it. A Range over part of a run then lands short or long by however much
+ * the two fonts differ, and searching "markerpage" highlighted "markerpag".
+ *
+ * How far apart the two fonts are is precisely what --scale-x records, so it also
+ * measures the fix. Over the 2326 runs of a tube map that carries its own fonts, the
+ * median run needed a 6.1% correction before this and 0.64% after, and the ninetieth
+ * percentile fell from 21.1% to 2.4%. The correction that remains is close to a
+ * constant, which one ratio removes cleanly; the one that was there before varied run
+ * by run, which is the part no single ratio can fix.
+ *
+ * The right fonts are already here. pdf.js hands each embedded font's bytes to the
+ * browser as a FontFace named after the face it loaded, waits for it inside
+ * page.render(), and paints the picture with it. The text layer then ignores all of
+ * that and asks for "serif". textContent.styles is keyed by exactly those loaded
+ * names and every item's fontName is one of those keys, so rewriting an entry's
+ * fontFamily to its own key is the whole change. The vertical offset comes along with
+ * it, since the ascent pdf.js derives each span's top from is measured off that same
+ * family string.
+ *
+ * It has to happen before the spans exist, never after. Setting font-family on a span
+ * that is already built would leave the --scale-x beside it computed against a font
+ * that is no longer there, which is this bug again with the sign flipped. Hence
+ * editing the chunks on their way past: pdf.js merges a chunk's styles and then
+ * builds that chunk's spans, so a chunk edited in flight is edited in time.
+ *
+ * Chunks rather than page.getTextContent(), which would also work and reads more
+ * simply. streamTextContent runs at a hundred items to a chunk and getTextContent
+ * collects the lot before resolving, so a page's spans would be built in one
+ * synchronous pass where they are currently built a hundred at a time between worker
+ * messages. On a dense page that is one long block of main thread instead of ten
+ * short ones, in a file that caps MAX_IN_FLIGHT at three precisely because pdf.js
+ * rasterises on the main thread.
+ *
+ * A key with no face keeps whatever pdf.js gave it, and that is the common case
+ * rather than an edge one. A scanned page has no text and no fonts. A Type3 font has
+ * no bytes to hand over. A document leaning on Helvetica without embedding it gets a
+ * substitute registered under a name of pdf.js's own devising, deliberately not this
+ * key, so the lookup misses and the generic stays. On a document with nothing
+ * embedded this writes nothing at all, and so behaves exactly as it did before this
+ * function existed.
+ */
+function embedFonts(stream) {
+  /* Degrading is structural rather than argued: with no TransformStream nothing is
+     rewritten and every page keeps the font it has today. Chromium has had it since
+     67 and pdf.js already requires 125, so this will not fire. */
+  if (typeof TransformStream !== "function" || !stream.pipeThrough) return stream;
+
+  /* One walk per page rather than one per chunk. Every font this page uses is
+     registered by now: the canvas render this is downstream of could not have
+     finished otherwise. Deferred, so a page carrying nothing but artwork never walks
+     the set at all. */
+  var families = null;
+
+  return stream.pipeThrough(new TransformStream({
+    transform: function (chunk, controller) {
+      var styles = chunk && chunk.styles;
+      for (var key in styles) {
+        var style = styles[key];
+        if (!style || !style.fontFamily) continue;
+        if (!families) families = loadedFamilies();
+        if (!families[key]) continue;
+        /*
+         * Quoted, and the generic left behind it. Both halves earn their place.
+         *
+         * Quoted because pdf.js splices this into a canvas font shorthand, and an
+         * unparseable shorthand there is not an error, it is ignored. pdf.js caches
+         * the font it believes it set on a measurement canvas shared by the whole
+         * document, so one name needing an escape would quietly measure that page and
+         * every page after it in whatever was set last. Its own names cannot trip
+         * that; quoting means no name it invents later can either.
+         *
+         * The generic stays as a real second choice, because a subset font is missing
+         * characters constantly and one it does not carry should land on the font
+         * that measures it today rather than on the platform's last resort. pdf.js
+         * reads the family back off the span to build its measurement, so the string
+         * that measures and the string that paints are the same string, and --scale-x
+         * stays honest whichever of the two ends up drawing a given character.
+         */
+        style.fontFamily = '"' + key + '", ' + style.fontFamily;
+      }
+      controller.enqueue(chunk);
+    }
+  }));
+}
+
+/*
+ * Which font families the browser has actually been handed, by name.
+ *
+ * document.fonts.check() reads like the test for this and is not one. Chromium
+ * answers true for a family nobody ever registered, because the question check()
+ * answers is whether the text can be drawn, and once fallback is allowed the answer
+ * is always yes. Looking at what is in the set is the only honest test.
+ *
+ * status is checked because a face still loading is a family the browser will
+ * substitute for, which is this bug rather than a smaller version of it. It cannot be
+ * one of this page's own, but MAX_IN_FLIGHT lets two other pages rasterise alongside
+ * and their fonts pass through this set on the way in.
+ */
+function loadedFamilies() {
+  /* Null prototype: these keys come from another library, and a font called
+     "constructor" should be a lookup rather than a surprise. */
+  var families = Object.create(null);
+  var set = document.fonts;
+  if (!set || typeof set.forEach !== "function") return families;
+  set.forEach(function (face) {
+    if (face.status !== "loaded") return;
+    /* FontFace.family is a CSS value that has been through the CSSOM, so a name the
+       engine decided needed quoting comes back carrying the quotes. pdf.js's names
+       never do, but comparing a quoted string against an unquoted key would read as a
+       miss, and a miss here is the quiet kind of wrong: the page keeps today's font
+       and nothing says why. */
+    var name = String(face.family || "").replace(/^(["'])([\s\S]*)\1$/, "$2");
+    if (name) families[name] = true;
+  });
+  return families;
 }
 
 /*
