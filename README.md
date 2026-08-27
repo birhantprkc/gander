@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/social-preview.png" alt="Gander: take a gander at any file. Open source Android file viewer for PDF, DOCX, XLSX, PPTX, JPG, MP4, MP3 and Markdown. 100% offline, 3.7 MB APK, zero permissions, no ads or trackers.">
+  <img src="docs/social-preview.png" alt="Gander: take a gander at any file. Open source Android file viewer for PDF, DOCX, XLSX, PPTX, JPG, MP4, MP3 and Markdown. 100% offline, 4 MB APK, zero permissions, no ads or trackers.">
 </p>
 
 # Gander 🪿
@@ -36,7 +36,7 @@ in one app, with **zero permissions, no ads, no tracking and no internet access 
 ![Kotlin](https://img.shields.io/badge/Kotlin-100%25-purple)
 
 Every phone ships with a dozen half-viewers that bounce your documents to cloud services.
-Gander is the opposite: one small APK (about 3.7 MB) that renders everything **on the device**.
+Gander is the opposite: one small APK (about 4 MB) that renders everything **on the device**.
 It cannot phone home because it does not even hold the INTERNET permission.
 
 **[arjun.maniyani.com/gander](https://arjun.maniyani.com/gander/)** &middot;

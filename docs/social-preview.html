@@ -111,6 +111,14 @@
 
   .claims {
     position: absolute; left: 86px; top: 510px;
+    /*
+     * 37px is measured off the original PNG, and it holds only for a figure the
+     * width of "8 MB". The band is nowrap against a fixed 1280px canvas, so any
+     * extra width comes out of the right end, where the 0 PERMISSIONS stamp
+     * already sits: "3.7 MB" was 30px wider and ran into it, which cost this gap
+     * a temporary drop to 29px until the figure was rounded to "4 MB". Measure
+     * the rendered row against 709px after changing the figure; do not nudge it.
+     */
     display: flex; align-items: baseline; gap: 37px;
     line-height: 1; white-space: nowrap;
   }
@@ -232,12 +240,18 @@
     <div class="card c-vid"><div class="badge b-vid">VID</div><div class="lines"><i style="width:100%"></i><i style="width:80%"></i><i style="width:90%"></i><i style="width:66%"></i></div></div>
   </div>
 
-  <!-- The APK size lives here and nowhere else. Keep it in step with
-       app/build.gradle.kts and the README alt text. -->
+  <!-- The APK size is not local to this file, whatever an earlier version of
+       this comment claimed. It also lives in README.md twice (the prose and the
+       alt text for the render of this page), docs/index.html, the Play full
+       description, and docs/screenshot-captions.html. Believing it lived here
+       alone is how 1.13 halved the APK and still shipped "8 MB" onto the live
+       listing. Change it in all six, then re-render this file and the captions;
+       the numbers here are baked into committed PNGs, so a text edit alone
+       changes nothing anyone sees. -->
   <div class="claims">
     <span><b>100%</b><small>OFFLINE</small></span>
     <span class="bullet"></span>
-    <span><b>8 MB</b><small>APK</small></span>
+    <span><b>4 MB</b><small>APK</small></span>
     <span class="bullet"></span>
     <span><b>0</b><small>ADS OR TRACKERS</small></span>
   </div>
