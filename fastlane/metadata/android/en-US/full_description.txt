@@ -26,8 +26,9 @@ Gander opens the file you hand it, through the system file picker, through "Open
 Built for reading on a phone
 
 * Find in document: search inside Word, Excel, PowerPoint, Markdown, text and code, with match navigation
+* Open password protected PDFs by entering the password
 * Deep zoom into large photos with tiled decoding, and correct rotation read from EXIF
-* Share the open file onward, or jump to the folder it sits in
+* Share the open file onward, save a copy of it, or jump to the folder it sits in
 * Material 3 design, dark mode, edge to edge
 
 Small, and one download for every phone
