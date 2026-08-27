@@ -98,8 +98,15 @@
      * The words are invisible and still selectable, because the picture underneath
      * already shows them. Colour them and every glyph would be drawn twice, once by
      * the renderer and once by the browser, in fonts that do not match.
+     *
+     * Held in a custom property rather than written here, the way GrapheneOS's
+     * PdfViewer does it, so the layer can be made visible to look at. Setting
+     * --text-layer-foreground to red on the root paints the words this layer thinks
+     * are there over the ones the renderer drew, which is the only direct way to see
+     * whether the two agree. There is no control for it: it is a debugging handle,
+     * reachable from devtools, and it costs one variable to leave in.
      */
-    color: transparent;
+    color: var(--text-layer-foreground, transparent);
     position: absolute;
     white-space: pre;
     cursor: text;
@@ -669,9 +676,21 @@ function draw(slot) {
  * than showing an error over a page the reader can see perfectly well.
  */
 function textLayerFor(slot, page, viewport) {
-  /* pdf.js reads this off the container to size the glyphs. It is --total-scale-factor
-     in 5.7.284; the older --scale-factor is not read by this build at all. */
-  slot.text.style.setProperty("--total-scale-factor", String(viewport.scale));
+  /*
+   * pdf.js reads this off the container to size the glyphs. It is --total-scale-factor
+   * in 5.7.284; the older --scale-factor is not read by this build at all.
+   *
+   * Times userUnit, and that factor is easy to miss. PageViewport keeps .scale as the
+   * number it was handed and multiplies by userUnit only inside its own matrix, so the
+   * viewport's width and height carry the unit while its scale does not. pdf.js's own
+   * stylesheet says the same thing the long way round, as
+   * calc(var(--scale-factor) * var(--user-unit)). Left out, a document declaring a
+   * UserUnit gets a text layer at the wrong size against a correctly sized picture.
+   * It is rare, being for pages beyond 200 inches, but that is large-format drawings
+   * and maps, which is exactly the kind of document this viewer gets handed.
+   */
+  slot.text.style.setProperty(
+    "--total-scale-factor", String(viewport.scale * (viewport.userUnit || 1)));
   var layer = new pdfjsLib.TextLayer({
     textContentSource: page.streamTextContent(),
     container: slot.text,
