@@ -57,6 +57,11 @@
     <color name="gander_inverse_on_surface">#F8F3EA</color>
     <color name="gander_inverse_primary">#FFB39E</color>
 
+    <!-- The ground behind a track. The same warm near-black the app uses at night, and
+         deliberately with no values-night twin: a screen holding nothing but cover art is
+         dark whatever the phone is set to, so this must not invert with the theme. -->
+    <color name="audio_backdrop">#FF17130A</color>
+
     <!-- Unchanged: the icon and the app it opens are one family already, and
          retouching it means regenerating two baked PNGs that are not in this repo. -->
     <color name="ic_launcher_background">#F6F1E6</color>

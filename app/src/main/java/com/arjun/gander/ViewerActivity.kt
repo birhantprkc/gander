@@ -3,6 +3,7 @@ package com.arjun.gander
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
@@ -38,7 +39,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import androidx.core.view.ViewCompat
@@ -142,12 +143,15 @@ class ViewerActivity : AppCompatActivity() {
          * target as well as a readout, and one and a half races the hand of somebody
          * who has just decided to reach for it.
          */
-        private const val PAGE_IDLE_MS = 2000L
-        private const val PAGE_FADE_IN_MS = 120L
-        private const val PAGE_FADE_OUT_MS = 180L
+        private const val OVERLAY_IDLE_MS = 2000L
+        private const val OVERLAY_FADE_IN_MS = 120L
+        private const val OVERLAY_FADE_OUT_MS = 180L
+
+        /** Cover art target while the view has not been measured yet. */
+        private const val ART_FALLBACK_PX = 512
     }
 
-    private var webView: WebView? = null
+    private var webView: ScrollProbeWebView? = null
     private var player: ExoPlayer? = null
 
     /** The file the destination picker is currently open for. */
@@ -500,21 +504,89 @@ class ViewerActivity : AppCompatActivity() {
      */
     private var searchBarOpen = false
 
+    /**
+     * An overlay that shows itself while the reader scrolls and puts itself away once
+     * they stop.
+     *
+     * The page readout and the scroll thumb want the same six transitions in the same
+     * three timings, and the second was written by copying the first. What separates
+     * them is data rather than logic: the thumb brings its track up and down with it
+     * and settles to INVISIBLE, because the track's height is what the thumb is
+     * measured from and a gone view is never measured, while the pill has nothing
+     * beside it and settles to GONE.
+     *
+     * Whether it is up is tracked here rather than read off the view. A scroll delivers
+     * an event per frame, and asking the view would restart the fade on every one of
+     * them: a fresh animator each frame never reaches the end of itself, so the overlay
+     * would sit part-faded for as long as somebody kept scrolling.
+     */
+    private class AutoHide(
+        private val view: View,
+        private val hidden: Int,
+        private val companion: View? = null,
+        private val canFade: () -> Boolean = { true },
+        private val onSettled: () -> Unit = {},
+    ) {
+        private var up = false
+        private val hide = Runnable { if (canFade()) fadeOut() }
+
+        /** Up if it is not already. The idle countdown is the caller's to start. */
+        fun show() {
+            if (up) return
+            up = true
+            view.animate().cancel()
+            view.alpha = 0f
+            view.visibility = View.VISIBLE
+            companion?.visibility = View.VISIBLE
+            view.animate().alpha(1f).setDuration(OVERLAY_FADE_IN_MS).start()
+        }
+
+        /** Up now, at full alpha, and staying: for as long as a finger is on it. */
+        fun pin() {
+            up = true
+            view.animate().cancel()
+            view.removeCallbacks(hide)
+            view.visibility = View.VISIBLE
+            companion?.visibility = View.VISIBLE
+            view.alpha = 1f
+        }
+
+        fun restartIdle() {
+            view.removeCallbacks(hide)
+            view.postDelayed(hide, OVERLAY_IDLE_MS)
+        }
+
+        fun cancelIdle() {
+            view.removeCallbacks(hide)
+        }
+
+        fun fadeOut() {
+            up = false
+            view.animate().cancel()
+            view.animate().alpha(0f).setDuration(OVERLAY_FADE_OUT_MS).withEndAction {
+                view.visibility = hidden
+                companion?.visibility = hidden
+                onSettled()
+            }.start()
+        }
+
+        /** Straight off, with no fade: for a document that has stopped being one. */
+        fun hideNow() {
+            up = false
+            view.removeCallbacks(hide)
+            view.animate().cancel()
+            view.visibility = hidden
+            companion?.visibility = hidden
+            onSettled()
+        }
+    }
+
     private val pageIndicator: TextView by lazy { findViewById(R.id.pageIndicator) }
+
+    private val pageFader by lazy { AutoHide(pageIndicator, View.GONE) }
 
     /** Bound once the toolbar exists, shown once pdf.html has said how long the file is. */
     private var goToPageItem: MenuItem? = null
-
-    private val hidePageIndicator = Runnable { fadePageIndicatorOut() }
-
-    /**
-     * Whether the readout is up, tracked rather than read off the view.
-     *
-     * A scroll delivers an event per frame, and asking the view would restart the fade
-     * every one of them: a fresh animator each frame never reaches the end of itself, so
-     * the pill would sit part-faded for as long as somebody kept scrolling.
-     */
-    private var pageIndicatorUp = false
 
     /**
      * Put the page readout on screen, or keep it there.
@@ -531,19 +603,12 @@ class ViewerActivity : AppCompatActivity() {
      */
     private fun showPageIndicator() {
         if (pageTotal < 2 || searchBarOpen) return
-        val pill = pageIndicator
-        setPageIndicatorText()
         // While the thumb has hold of it, where the pill sits and whether it is up at
-        // all belong to the drag. Only the number is still this method's business.
+        // all belong to the drag. The number is set where it changes, not here: this
+        // runs once a frame for the length of a fling, and the text is the same on all
+        // but the few frames that cross a page boundary.
         if (dragging) return
-
-        if (!pageIndicatorUp) {
-            pageIndicatorUp = true
-            pill.animate().cancel()
-            pill.alpha = 0f
-            pill.visibility = View.VISIBLE
-            pill.animate().alpha(1f).setDuration(PAGE_FADE_IN_MS).start()
-        }
+        pageFader.show()
         restartPageIndicatorIdle()
     }
 
@@ -558,33 +623,13 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun restartPageIndicatorIdle() {
-        val pill = pageIndicator
-        pill.removeCallbacks(hidePageIndicator)
         // A page readout does not fade under a screen reader: a view at zero alpha
         // cannot be reached by swipe navigation, and this is the only thing on screen
         // that knows where in the document the reader is. Same reason media controls
         // stay up. A percentage left over from a drag is not worth keeping, so that
         // still goes.
-        if (!touchExplorationOn() || pageTotal < 2) {
-            pill.postDelayed(hidePageIndicator, PAGE_IDLE_MS)
-        }
-    }
-
-    private fun fadePageIndicatorOut() {
-        val pill = pageIndicator
-        pageIndicatorUp = false
-        pill.animate().cancel()
-        pill.animate().alpha(0f).setDuration(PAGE_FADE_OUT_MS)
-            .withEndAction { pill.visibility = View.GONE }.start()
-    }
-
-    /** Straight off, with no fade: for a document that has stopped being one. */
-    private fun hidePageIndicatorNow() {
-        val pill = pageIndicator
-        pageIndicatorUp = false
-        pill.removeCallbacks(hidePageIndicator)
-        pill.animate().cancel()
-        pill.visibility = View.GONE
+        if (!touchExplorationOn() || pageTotal < 2) pageFader.restartIdle()
+        else pageFader.cancelIdle()
     }
 
     /**
@@ -678,13 +723,25 @@ class ViewerActivity : AppCompatActivity() {
 
     private val fastScrollTrack: View by lazy { findViewById(R.id.fastScrollTrack) }
     private val fastScrollThumb: View by lazy { findViewById(R.id.fastScrollThumb) }
-    private val hideFastScroll = Runnable { fadeFastScrollOut() }
+
+    /**
+     * The track goes up and down with the thumb, so the strip stops standing between a
+     * reader and the document the moment there is nothing to grab. The exclusion rect is
+     * refreshed once it has settled, because where the thumb ends up is what the back
+     * gesture has to be kept off.
+     */
+    private val thumbFader by lazy {
+        AutoHide(
+            view = fastScrollThumb,
+            hidden = View.INVISIBLE,
+            companion = fastScrollTrack,
+            canFade = { !dragging },
+            onSettled = { excludeThumbFromBackGesture() },
+        )
+    }
 
     /** Whether there is enough document to be worth scrubbing. Sticky; see syncFastScroll. */
     private var thumbShown = false
-
-    /** Whether the thumb is up. Same reason pageIndicatorUp exists. */
-    private var fastScrollUp = false
 
     /**
      * Whether this document gets a thumb at all.
@@ -693,6 +750,9 @@ class ViewerActivity : AppCompatActivity() {
      * down has to be turned down here too, or its scrolls would put a thumb up anyway.
      */
     private var fastScrollEnabled = false
+    /** The rect last handed to the window manager; see excludeThumbFromBackGesture. */
+    private var excludedRect: Rect? = null
+
     private var dragging = false
     private var grabOffset = 0f
     private var pendingScrollY = 0
@@ -732,14 +792,14 @@ class ViewerActivity : AppCompatActivity() {
         web.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncFastScroll() }
 
         track.setOnTouchListener { _, event ->
-            val probe = webView as? ScrollProbeWebView
+            val probe = webView
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     val top = thumb.translationY
                     val slop = ViewConfiguration.get(this).scaledTouchSlop
-                    val onThumb = thumbShown && probe != null &&
+                    val onThumb = thumbShown &&
                         event.y >= top - slop && event.y <= top + thumb.height + slop
-                    if (!onThumb) {
+                    if (probe == null || !onThumb) {
                         // Handed back, so the parent carries on down its child list to
                         // the document. Without this the 48dp strip would swallow every
                         // scroll made with a right thumb.
@@ -753,8 +813,8 @@ class ViewerActivity : AppCompatActivity() {
                         // overlay is a sibling of the WebView, so the touch never reaches
                         // it and never aborts its scroller, and the fling would then
                         // fight every scrollTo below.
-                        probe!!.flingScroll(0, 0)
-                        cancelFastScrollHide()
+                        probe.flingScroll(0, 0)
+                        thumbFader.cancelIdle()
                         dragTo(probe, event.y)
                         true
                     }
@@ -769,8 +829,11 @@ class ViewerActivity : AppCompatActivity() {
                     if (!dragging) false else {
                         dragging = false
                         thumb.isPressed = false
+                        // Where the finger left it is where the back gesture has to be
+                        // kept off; dragTo does not pay for this on every move.
+                        excludeThumbFromBackGesture()
                         restartPageIndicatorIdle()
-                        scheduleFastScrollHide()
+                        thumbFader.restartIdle()
                         true
                     }
                 }
@@ -783,7 +846,7 @@ class ViewerActivity : AppCompatActivity() {
     /** Where the thumb belongs, and whether it belongs on screen at all. */
     private fun syncFastScroll() {
         if (!fastScrollEnabled) return
-        val web = webView as? ScrollProbeWebView ?: return
+        val web = webView ?: return
         val track = fastScrollTrack
         val thumb = fastScrollThumb
         val range = web.verticalRange()
@@ -807,7 +870,7 @@ class ViewerActivity : AppCompatActivity() {
         if (trackHeight <= 0) return
         // Proportional, with a floor. Proportional alone is two pixels on a 357-page
         // document; a fixed height says nothing about how much is left in a short one.
-        val floor = (48 * resources.displayMetrics.density).toInt()
+        val floor = resources.getDimensionPixelSize(R.dimen.fast_scroll_thumb_min)
         val height = maxOf(floor, (trackHeight.toLong() * extent / range).toInt())
             .coerceAtMost(trackHeight)
         if (thumb.layoutParams.height != height) {
@@ -834,7 +897,6 @@ class ViewerActivity : AppCompatActivity() {
         val scrollable = web.verticalRange() - web.verticalExtent()
         if (scrollable > 0) queueScroll((fraction * scrollable).toInt())
         showDragReadout(fraction)
-        excludeThumbFromBackGesture()
     }
 
     /**
@@ -874,64 +936,19 @@ class ViewerActivity : AppCompatActivity() {
             pill.contentDescription = getString(R.string.scroll_position_spoken, percent)
             pill.text = getString(R.string.scroll_position, percent)
         }
-        pill.animate().cancel()
-        pill.removeCallbacks(hidePageIndicator)
-        pageIndicatorUp = true
-        pill.visibility = View.VISIBLE
-        pill.alpha = 1f
+        pageFader.pin()
     }
 
     private fun showFastScroll() {
-        if (!fastScrollUp) {
-            fastScrollUp = true
-            val track = fastScrollTrack
-            val thumb = fastScrollThumb
-            thumb.animate().cancel()
-            thumb.alpha = 0f
-            thumb.visibility = View.VISIBLE
-            track.visibility = View.VISIBLE
-            thumb.animate().alpha(1f).setDuration(PAGE_FADE_IN_MS).start()
-        }
-        if (!dragging) scheduleFastScrollHide()
+        thumbFader.show()
+        if (!dragging) thumbFader.restartIdle()
     }
 
-    private fun scheduleFastScrollHide() {
-        fastScrollThumb.removeCallbacks(hideFastScroll)
-        fastScrollThumb.postDelayed(hideFastScroll, PAGE_IDLE_MS)
-    }
-
-    private fun cancelFastScrollHide() {
-        fastScrollThumb.removeCallbacks(hideFastScroll)
-    }
-
-    private fun fadeFastScrollOut() {
-        if (dragging) return
-        val track = fastScrollTrack
-        val thumb = fastScrollThumb
-        fastScrollUp = false
-        thumb.animate().cancel()
-        thumb.animate().alpha(0f).setDuration(PAGE_FADE_OUT_MS).withEndAction {
-            thumb.visibility = View.INVISIBLE
-            // The track goes with it, so the strip stops standing between a reader and
-            // the document the moment there is nothing to grab. Invisible and not gone:
-            // it has to keep being measured, because its height is what the thumb is
-            // sized and placed from.
-            track.visibility = View.INVISIBLE
-            excludeThumbFromBackGesture()
-        }.start()
-    }
-
+    /** Off, and the drag off with it: for a document too short to be worth scrubbing. */
     private fun hideFastScrollNow() {
-        val track = fastScrollTrack
-        val thumb = fastScrollThumb
         dragging = false
-        fastScrollUp = false
-        thumb.isPressed = false
-        thumb.removeCallbacks(hideFastScroll)
-        thumb.animate().cancel()
-        thumb.visibility = View.INVISIBLE
-        track.visibility = View.INVISIBLE
-        excludeThumbFromBackGesture()
+        fastScrollThumb.isPressed = false
+        thumbFader.hideNow()
     }
 
     /**
@@ -944,14 +961,18 @@ class ViewerActivity : AppCompatActivity() {
     private fun excludeThumbFromBackGesture() {
         val track = fastScrollTrack
         val thumb = fastScrollThumb
-        if (thumb.visibility != View.VISIBLE) {
-            ViewCompat.setSystemGestureExclusionRects(track, emptyList())
-            return
-        }
-        val top = thumb.translationY.toInt()
-        ViewCompat.setSystemGestureExclusionRects(
-            track, listOf(Rect(0, top, track.width, top + thumb.height))
-        )
+        val want =
+            if (thumb.visibility != View.VISIBLE) null
+            else thumb.translationY.toInt().let { Rect(0, it, track.width, it + thumb.height) }
+        // Only when it has actually moved. This is reached from the scroll listener, so
+        // it runs once a frame for the length of every fling, and each call that gets
+        // through allocates a Rect and a list and then reports the change to the window
+        // manager across a binder. The thumb's travel truncates to the same integer for
+        // several frames at a time on a long document, and submitting a rect identical
+        // to the standing one buys nothing.
+        if (want == excludedRect) return
+        excludedRect = want
+        ViewCompat.setSystemGestureExclusionRects(track, want?.let { listOf(it) } ?: emptyList())
     }
 
     /** In-document search: findAllAsync for most formats, a message port for PDF. */
@@ -1019,7 +1040,7 @@ class ViewerActivity : AppCompatActivity() {
             bar.visibility = LinearLayout.VISIBLE
             searchBackCallback.isEnabled = true
             searchBarOpen = true
-            hidePageIndicatorNow()
+            pageFader.hideNow()
             input.requestFocus()
             imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
             true
@@ -1122,6 +1143,7 @@ class ViewerActivity : AppCompatActivity() {
                         if (pageTotal == 0) goToPageItem?.isVisible = true
                         pageAt = n
                         pageTotal = of
+                        setPageIndicatorText()
                         showPageIndicator()
                         return
                     }
@@ -1217,6 +1239,24 @@ class ViewerActivity : AppCompatActivity() {
      * the build. Audio stops when Gander does, which is the honest consequence of the
      * promise on the front of the app.
      */
+    /**
+     * Album art at the size it will be drawn, not the size it was stored.
+     *
+     * A bounds pass reads the header only, then inSampleSize halves until one more halving
+     * would go under the view. The target is the view's own width, with a fallback for the
+     * first frame, where it has not been measured yet.
+     */
+    private fun sampledArt(bytes: ByteArray, target: Int): Bitmap? {
+        val want = if (target > 0) target else ART_FALLBACK_PX
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= want) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+    }
+
     private fun showPlayer(container: FrameLayout, uri: Uri, name: String, ext: String) {
         val audio = FileKind.isAudioExt(ext)
         // Audio comes from a layout because its transport does: controller_layout_id is
@@ -1224,18 +1264,19 @@ class ViewerActivity : AppCompatActivity() {
         val playerView =
             if (audio) layoutInflater.inflate(R.layout.view_audio_player, container, false) as PlayerView
             else PlayerView(this)
-        playerView.keepScreenOn = !audio
-        playerView.controllerShowTimeoutMs = if (audio) 0 else 2500
-
         // The cover, and the note that stands in for one. It sits in the transport layout
         // rather than PlayerView's own artwork slot, because that slot centres what it is
         // given and centred is where the play button is: the picture came out underneath
         // the control covering it.
-        var cover: ImageView? = null
+        val cover: ImageView?
         if (audio) {
+            // Nothing is being looked at, so the screen may sleep, and the transport is
+            // the only thing on the display, so it stays put.
+            playerView.keepScreenOn = false
+            playerView.controllerShowTimeoutMs = 0
             // Warm near-black rather than pure black. A track is a screen somebody sits
             // and looks at, so it may as well be the dark the rest of the app uses.
-            container.setBackgroundColor(0xFF17130A.toInt())
+            container.setBackgroundColor(ContextCompat.getColor(this, R.color.audio_backdrop))
             cover = playerView.findViewById<ImageView>(R.id.audioCover)?.apply {
                 contentDescription = name
             }
@@ -1248,6 +1289,9 @@ class ViewerActivity : AppCompatActivity() {
             playerView.setShowPreviousButton(false)
             playerView.setShowNextButton(false)
         } else {
+            cover = null
+            playerView.keepScreenOn = true
+            playerView.controllerShowTimeoutMs = 2500
             playerView.setBackgroundColor(Color.BLACK)
         }
         container.addView(playerView, matchParent())
@@ -1260,15 +1304,23 @@ class ViewerActivity : AppCompatActivity() {
              * Cover art, once the extractor has read the tags. Taken from the player
              * rather than opened a second time with a MediaMetadataRetriever, because
              * ExoPlayer has already parsed the ID3 or Vorbis picture by the time this
-             * fires and holds the bytes. Decoding here is a few milliseconds on a few
-             * hundred kilobytes, which is what PlayerView itself would have done.
+             * fires and holds the bytes.
+             *
+             * Sampled down first, the same way Thumbs decodes a photo. Embedded art is
+             * commonly 1500 square and not rarely 3000, and this callback arrives on the
+             * main thread as playback starts: decoded whole, a 3000 square picture is
+             * some 36 MB of ARGB for a view a couple of hundred dp wide, which is the
+             * one moment on this screen that cannot afford it. The tags are also
+             * re-delivered as they arrive, so the same bytes are decoded once.
              */
+            private var artDecoded: ByteArray? = null
+
             override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
                 val view = cover ?: return
                 val bytes = mediaMetadata.artworkData ?: return
-                val bmp = runCatching {
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                }.getOrNull() ?: return
+                if (bytes === artDecoded) return
+                val bmp = runCatching { sampledArt(bytes, view.width) }.getOrNull() ?: return
+                artDecoded = bytes
                 view.setImageBitmap(bmp)
             }
 
@@ -1402,7 +1454,7 @@ class ViewerActivity : AppCompatActivity() {
         pageAt = 0
         pageTotal = 0
         goToPageItem?.isVisible = false
-        hidePageIndicatorNow()
+        pageFader.hideNow()
         fastScrollEnabled = false
         hideFastScrollNow()
         findViewById<MaterialToolbar>(R.id.toolbar).menu
