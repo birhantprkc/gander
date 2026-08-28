@@ -88,8 +88,8 @@
   split screen. Where you had got to survives all four now. It was hard to meet on a phone,
   which is rarely turned mid-browse, and constant on a tablet, which is.
 - Gander's own name is written in Gander's own typeface. The title at the top of the home
-  screen was Roboto, the system default, because the geometric face the website and the app
-  icon have used from the start is one Android does not ship and quietly substitutes
+  screen was Roboto, the system default, because the geometric face the website has used
+  from the start is one Android does not ship and quietly substitutes
   something else for. The app was showing whatever the phone happened to have, and so, it
   turns out, has the website, on every phone that has ever visited it. The name is drawn now
   rather than typed, so it looks the same on every device, and it sits in the middle of the
@@ -101,9 +101,9 @@
   limitation of somebody else's software. It opens now on a single line, the nine kinds of
   file it handles shown as the same coloured tiles the file list uses further down, the
   promise that nothing is uploaded, and the two ways to begin: open a file, or add a folder.
-  The paragraph naming every extension is gone, and so is a tip that was coloured like a link
-  and was not one; both still read in full under About, which is where somebody who wants the
-  detail goes looking. The whole block leaves for good the moment you open a file or grant a
+  The paragraph naming every extension is gone for good, and so is a tip that was coloured
+  like a link and was not one, though that tip still reads under About, which is where
+  somebody who wants the detail goes looking. The whole block leaves for good the moment you open a file or grant a
   folder. The Downloads note is gone entirely: Android says the same thing itself, in the
   picker, at the moment it matters.
 

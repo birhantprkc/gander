@@ -13,9 +13,10 @@ Roboto, so every phone visitor to the site has been reading the wordmark in Robo
 app inherited the same silent fallback. It has only ever looked like Futura on a Mac.
 
 Fixing that in the app means either shipping a font or shipping the letters. Six glyphs used
-in exactly one place do not need a font: as paths they cost about two kilobytes against a
-4 MB APK, they render identically on every device, and they cannot fall back to something
-else without anyone noticing, which is the failure being fixed.
+in exactly one place do not need a font: the drawable is about 4 kB of path data on disk and
+compresses to under 2 kB in the APK, against 3.7 MB for the whole thing. It renders
+identically on every device, and it cannot fall back to something else without anyone
+noticing, which is the failure being fixed.
 
 The trade is that a drawable is a picture. It carries a contentDescription rather than being
 read as text, and it does not grow when someone raises their system font size. That was a
