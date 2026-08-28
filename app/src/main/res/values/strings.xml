@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Gander</string>
+    <!-- The long form, kept for the About dialog, which is where someone who wants the
+         detail goes looking. The first run gets welcome_headline instead. -->
     <string name="main_subtitle">Open and view documents, spreadsheets, slides and photos. Everything renders on your phone, nothing is uploaded.</string>
+    <!-- The site's own h1, docs/index.html -->
+    <string name="welcome_headline">Take a gander at any file.</string>
+    <!-- The strongest sentence in the product, which used to be a clause in the middle of
+         main_subtitle. The second half is checkable: the About dialog reads the permission
+         list back out of Android rather than asserting it. -->
+    <string name="welcome_promise">Nothing is uploaded. Gander has no internet permission.</string>
+    <!-- Spoken form of the badge grid. The tiles themselves are not important for
+         accessibility, so this is the whole announcement and it is one stop rather than
+         nine, the same way a file row carries the description for its own four views. -->
+    <string name="welcome_formats_spoken">Opens PDFs, Word documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown and text files.</string>
     <string name="open_a_file">Open a file</string>
     <string name="recent_files">Recent files</string>
     <string name="folders">Folders</string>
@@ -35,7 +47,6 @@
          a PDF, where nothing else knows how far in you are -->
     <string name="scroll_position">%1$d%%</string>
     <string name="scroll_position_spoken">%1$d percent through the document</string>
-    <string name="supported_formats">PDF · Word (.docx) · Excel (.xlsx, .xls, .csv, .ods) · PowerPoint (.pptx) · Photos (JPG, PNG, WebP, GIF, HEIC, SVG and more) · Video (MP4, MKV, WebM, MOV and more) · Audio (MP3, FLAC, WAV, OGG and more) · Markdown · Text, JSON and code files</string>
     <string name="open_with_hint">Tip: in your file manager, tap any file and choose Open with &gt; Gander.</string>
     <string name="back">Back</string>
     <string name="about_gander">About Gander</string>

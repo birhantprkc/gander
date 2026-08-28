@@ -35,8 +35,6 @@ import java.util.concurrent.Executors
 class MainActivity : AppCompatActivity() {
 
     private sealed interface Row {
-        /** Shown on a first run, in place of a Recent files header with nothing under it. */
-        data object Welcome : Row
         data class Header(val title: String) : Row
         data class Hint(val text: String) : Row
         data class Item(
@@ -51,6 +49,16 @@ class MainActivity : AppCompatActivity() {
         ) : Row
     }
 
+    /**
+     * What one pass over a location produced: the rows to draw, and whether this is a
+     * first run and so wants the welcome block in place of the list.
+     *
+     * The flag is carried rather than inferred from an empty list. "This folder is empty"
+     * and "nothing has ever been opened" both produce no rows and only the second one
+     * replaces the screen.
+     */
+    private data class Screen(val rows: List<Row>, val welcome: Boolean = false)
+
     private data class Crumb(val treeUri: Uri, val docId: String, val label: String)
 
     private val stack = ArrayDeque<Crumb>()
@@ -58,6 +66,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var toolbar: MaterialToolbar
     private lateinit var lockup: View
     private lateinit var progress: LinearProgressIndicator
+    private lateinit var list: RecyclerView
+    private lateinit var welcome: View
+    private lateinit var fab: ExtendedFloatingActionButton
 
     /**
      * Where the rows are built.
@@ -141,13 +152,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
         progress = findViewById(R.id.loadProgress)
-        findViewById<RecyclerView>(R.id.list).let {
-            it.layoutManager = LinearLayoutManager(this)
-            it.adapter = adapter
-        }
-        findViewById<ExtendedFloatingActionButton>(R.id.openFab).setOnClickListener {
-            openDocument.launch(arrayOf("*/*"))
-        }
+        list = findViewById(R.id.list)
+        list.layoutManager = LinearLayoutManager(this)
+        list.adapter = adapter
+
+        // Built once here rather than on every render: the nine kinds Gander opens do not
+        // change while it is running, and the block itself is shown or hidden, not rebuilt.
+        welcome = findViewById(R.id.welcome)
+        fillFormatGrid(findViewById(R.id.formatGrid))
+
+        // Three controls, two destinations. The FAB and the welcome block's filled button
+        // are the same action seen in two states of the screen, and the outlined button is
+        // what the "+ Add a folder" row does once there is a list to put it in.
+        fab = findViewById(R.id.openFab)
+        val openFile = View.OnClickListener { openDocument.launch(arrayOf("*/*")) }
+        fab.setOnClickListener(openFile)
+        findViewById<View>(R.id.openFileButton).setOnClickListener(openFile)
+        findViewById<View>(R.id.addFolderButton).setOnClickListener { openTree.launch(null) }
+
         onBackPressedDispatcher.addCallback(this, backCallback)
     }
 
@@ -296,18 +318,22 @@ class MainActivity : AppCompatActivity() {
         main.postDelayed(announce, RENDER_PROGRESS_DELAY_MS)
 
         loader.execute {
-            val rows = if (here == null) homeRows() else folderRows(here)
+            val screen = if (here == null) homeRows() else folderRows(here)
             main.post {
                 main.removeCallbacks(announce)
                 if (token != renderToken || isDestroyed) return@post
                 progress.visibility = View.GONE
-                adapter.submit(rows)
+                // Inside the token guard, so a slow load that finishes after the reader has
+                // moved on cannot put the welcome block back over a folder they are in.
+                welcome.visibility = if (screen.welcome) View.VISIBLE else View.GONE
+                list.visibility = if (screen.welcome) View.GONE else View.VISIBLE
+                if (screen.welcome) fab.hide() else fab.show()
+                adapter.submit(screen.rows)
             }
         }
     }
 
-    private fun homeRows(): List<Row> {
-        val rows = mutableListOf<Row>()
+    private fun homeRows(): Screen {
         val recents = Recents.all(this)
         // Labelled first, then sorted. sortedBy runs its selector on every comparison,
         // so naming the tree inside it cost a provider query per comparison rather than
@@ -317,16 +343,17 @@ class MainActivity : AppCompatActivity() {
             .map { it to treeLabel(it.uri) }
             .sortedBy { (_, label) -> label.lowercase() }
 
-        // Nothing opened and nothing granted is a first run, and a first run gets told
-        // what this is rather than being shown two empty headings. Once either has
-        // happened the reader knows, and the ordinary list comes back for good.
-        if (recents.isEmpty() && roots.isEmpty()) {
-            rows += Row.Welcome
+        // Nothing opened and nothing granted is a first run, and a first run gets the
+        // welcome block in place of the list rather than two empty headings above three
+        // paragraphs about what this is. Once either has happened the reader knows, and
+        // the ordinary list comes back for good.
+        if (recents.isEmpty() && roots.isEmpty()) return Screen(emptyList(), welcome = true)
+
+        val rows = mutableListOf<Row>()
+        rows += Row.Header(getString(R.string.recent_files))
+        if (recents.isEmpty()) {
+            rows += Row.Hint(getString(R.string.no_recents_hint))
         } else {
-            rows += Row.Header(getString(R.string.recent_files))
-            if (recents.isEmpty()) {
-                rows += Row.Hint(getString(R.string.no_recents_hint))
-            } else {
             recents.forEach { r ->
                 val (badge, color) = badgeFor(r.name, null)
                 val ext = r.name.substringAfterLast('.', "").lowercase()
@@ -344,7 +371,6 @@ class MainActivity : AppCompatActivity() {
                     thumbUri = uri.takeIf { Thumbs.supported(FileKind.detect(ext, null), ext) },
                     thumbExt = ext
                 )
-            }
             }
         }
         rows += Row.Header(getString(R.string.folders))
@@ -371,10 +397,10 @@ class MainActivity : AppCompatActivity() {
         }
         rows += Row.Item("+", ADD_COLOR, getString(R.string.add_folder), null,
             onClick = { openTree.launch(null) })
-        return rows
+        return Screen(rows)
     }
 
-    private fun folderRows(crumb: Crumb): List<Row> {
+    private fun folderRows(crumb: Crumb): Screen {
         data class Child(
             val docId: String, val name: String, val mime: String,
             val size: Long, val modified: Long
@@ -440,7 +466,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
         if (rows.isEmpty()) rows += Row.Hint(getString(R.string.empty_folder))
-        return rows
+        return Screen(rows)
     }
 
     private fun isTreeUri(uri: Uri): Boolean =
@@ -485,18 +511,43 @@ class MainActivity : AppCompatActivity() {
     private fun badgeFor(name: String, mime: String?): Pair<String, Int> {
         val ext = name.substringAfterLast('.', "").lowercase()
         return when (FileKind.detect(ext, mime)) {
-            FileKind.PDF -> "PDF" to 0xFFB3261E.toInt()
-            FileKind.DOCX -> "DOC" to 0xFF1565C0.toInt()
-            FileKind.XLSX -> "XLS" to 0xFF2E7D32.toInt()
-            FileKind.PPTX -> "PPT" to 0xFFB25000.toInt()
-            FileKind.IMAGE, FileKind.IMAGE_WEB -> "IMG" to 0xFF7B1FA2.toInt()
-            FileKind.PLAYER ->
-                if (FileKind.isAudioExt(ext)) "AUD" to 0xFF00838F.toInt()
-                else "VID" to 0xFFAD1457.toInt()
-            FileKind.MD -> "MD" to 0xFF455A64.toInt()
-            FileKind.TEXT -> "TXT" to 0xFF616161.toInt()
+            FileKind.PDF -> PDF_BADGE
+            FileKind.DOCX -> DOC_BADGE
+            FileKind.XLSX -> XLS_BADGE
+            FileKind.PPTX -> PPT_BADGE
+            FileKind.IMAGE, FileKind.IMAGE_WEB -> IMG_BADGE
+            FileKind.PLAYER -> if (FileKind.isAudioExt(ext)) AUD_BADGE else VID_BADGE
+            FileKind.MD -> MD_BADGE
+            FileKind.TEXT -> TXT_BADGE
             FileKind.UNSUPPORTED -> "FILE" to 0xFF607884.toInt()
         }
+    }
+
+    /**
+     * Draws the nine tiles of the welcome grid, from the same pairs [badgeFor] returns.
+     *
+     * The grid is filled here rather than declared nine times in the layout so that a new
+     * file kind is one line in [WELCOME_BADGES] and the first screen cannot end up naming
+     * a different set of things from the rows underneath it. The tint is the same call the
+     * adapter makes on a real row.
+     */
+    private fun fillFormatGrid(grid: ViewGroup) {
+        val gap = (TILE_GAP_DP * resources.displayMetrics.density).toInt()
+        WELCOME_BADGES.forEach { (label, color) ->
+            val tile = layoutInflater.inflate(R.layout.view_welcome_tile, grid, false) as TextView
+            tile.text = label
+            tile.background.mutate().setTint(color)
+            (tile.layoutParams as ViewGroup.MarginLayoutParams).setMargins(gap, gap, gap, gap)
+            // Set here as well as in the layout: the tiles are decoration for the sentence
+            // below, and nine stops that each say three letters is worse than one that says
+            // the sentence.
+            tile.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            grid.addView(tile)
+        }
+        // One description for all nine, and screenReaderFocusable is what makes the grid a
+        // single stop rather than a container TalkBack walks into.
+        grid.contentDescription = getString(R.string.welcome_formats_spoken)
+        ViewCompat.setScreenReaderFocusable(grid, true)
     }
 
     override fun onDestroy() {
@@ -507,6 +558,45 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
+        /**
+         * The badge for each file kind, named once.
+         *
+         * These used to be nine hex literals inside badgeFor. They are pulled out because
+         * the welcome grid draws the same nine, and two hardcoded copies of a palette drift
+         * the first time one is edited. Plain vals rather than consts: 0xFFB3261E.toInt()
+         * is not a compile-time constant expression, which is why DIR_COLOR below has
+         * always been one too.
+         */
+        val PDF_BADGE = "PDF" to 0xFFB3261E.toInt()
+        val DOC_BADGE = "DOC" to 0xFF1565C0.toInt()
+        val XLS_BADGE = "XLS" to 0xFF2E7D32.toInt()
+        val PPT_BADGE = "PPT" to 0xFFB25000.toInt()
+        val IMG_BADGE = "IMG" to 0xFF7B1FA2.toInt()
+        val VID_BADGE = "VID" to 0xFFAD1457.toInt()
+        val AUD_BADGE = "AUD" to 0xFF00838F.toInt()
+        val MD_BADGE = "MD" to 0xFF455A64.toInt()
+        val TXT_BADGE = "TXT" to 0xFF616161.toInt()
+
+        /**
+         * What the welcome grid shows, in reading order.
+         *
+         * Kinds rather than formats, which is what makes the grid hold still: FileKind maps
+         * 77 extensions onto these nine, so adding .odt or .rst or another codec changes
+         * nothing here. A tenth tile means a tenth renderer, and the layout's columnCount is
+         * the number to revisit when that happens.
+         *
+         * FILE is deliberately absent. It is what an unsupported file falls back to, and
+         * this grid is a list of what Gander opens.
+         */
+        val WELCOME_BADGES = listOf(
+            PDF_BADGE, DOC_BADGE, XLS_BADGE,
+            PPT_BADGE, IMG_BADGE, VID_BADGE,
+            AUD_BADGE, MD_BADGE, TXT_BADGE,
+        )
+
+        /** Margin on every side of a tile, so the gap between two of them is twice this. */
+        const val TILE_GAP_DP = 6
+
         val DIR_COLOR = 0xFF8A6D1F.toInt()
 
         /**
@@ -540,7 +630,6 @@ class MainActivity : AppCompatActivity() {
             is Row.Header -> 0
             is Row.Hint -> 1
             is Row.Item -> 2
-            is Row.Welcome -> 3
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -548,7 +637,6 @@ class MainActivity : AppCompatActivity() {
             val layout = when (viewType) {
                 0 -> R.layout.row_header
                 1 -> R.layout.row_hint
-                3 -> R.layout.row_welcome
                 else -> R.layout.row_item
             }
             return object : RecyclerView.ViewHolder(inflater.inflate(layout, parent, false)) {}
@@ -558,8 +646,6 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             when (val row = rows[position]) {
-                // Every word of it is in the layout.
-                is Row.Welcome -> Unit
                 is Row.Header ->
                     holder.itemView.findViewById<TextView>(R.id.headerText).text = row.title
                 is Row.Hint ->

@@ -90,12 +90,15 @@
   rather than typed, so it looks the same on every device, and it sits in the middle of the
   bar with the app icon beside it. Go into a folder and the bar shows that folder's name
   instead, on the left, next to the way back out.
-- A fresh install says what Gander is. The home screen used to open on an empty Recent files
-  heading, an empty Folders heading, and three sentences about Android refusing to grant the
-  Downloads root, so the first thing anybody read about the app was a limitation of somebody
-  else's software. The line describing what Gander does and the list of what it opens had
-  both been written and never put on a screen; they are the first thing there now, with the
-  tip about Open with under them, and they go for good the moment you open a file or grant a
+- A fresh install says what Gander is, in about twenty words. The home screen used to open on
+  an empty Recent files heading, an empty Folders heading, and three sentences about Android
+  refusing to grant the Downloads root, so the first thing anybody read about the app was a
+  limitation of somebody else's software. It opens now on a single line, the nine kinds of
+  file it handles shown as the same coloured tiles the file list uses further down, the
+  promise that nothing is uploaded, and the two ways to begin: open a file, or add a folder.
+  The paragraph naming every extension is gone, and so is a tip that was coloured like a link
+  and was not one; both still read in full under About, which is where somebody who wants the
+  detail goes looking. The whole block leaves for good the moment you open a file or grant a
   folder. The Downloads note is gone entirely: Android says the same thing itself, in the
   picker, at the moment it matters.
 
