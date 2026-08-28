@@ -170,7 +170,44 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.openFileButton).setOnClickListener(openFile)
         findViewById<View>(R.id.addFolderButton).setOnClickListener { openTree.launch(null) }
 
+        restoreStack(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, backCallback)
+    }
+
+    /**
+     * Keeps the reader where they were browsing across a configuration change.
+     *
+     * This activity is recreated on a rotation, a font size change, a theme change and a
+     * multi-window resize, and [stack] is an ordinary field, so all of them used to drop
+     * whoever was three folders deep straight back to the root with no way to tell why.
+     * A phone is rarely rotated mid-browse and a tablet is rotated constantly, which is
+     * where this was found.
+     *
+     * Three parallel lists rather than a Parcelable Crumb: a crumb is a URI and two
+     * strings, and this needs no new type, no @Parcelize plugin, and none of the
+     * getParcelableArrayList deprecation dance.
+     *
+     * The rows are not saved with it. They come from a provider that may have changed
+     * while the activity was gone, so onResume re-reads the folder rather than restoring
+     * a stale listing of it.
+     */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putStringArrayList(STATE_TREE_URIS, ArrayList(stack.map { it.treeUri.toString() }))
+        outState.putStringArrayList(STATE_DOC_IDS, ArrayList(stack.map { it.docId }))
+        outState.putStringArrayList(STATE_LABELS, ArrayList(stack.map { it.label }))
+    }
+
+    private fun restoreStack(state: Bundle?) {
+        val uris = state?.getStringArrayList(STATE_TREE_URIS) ?: return
+        val docIds = state.getStringArrayList(STATE_DOC_IDS) ?: return
+        val labels = state.getStringArrayList(STATE_LABELS) ?: return
+        // Defensive: a truncated Bundle would otherwise index out of bounds, and landing
+        // at the root is the same place a failure here would land anyway.
+        if (uris.size != docIds.size || uris.size != labels.size) return
+        uris.indices.forEach { i ->
+            stack.addLast(Crumb(Uri.parse(uris[i]), docIds[i], labels[i]))
+        }
     }
 
     override fun onResume() {
@@ -615,6 +652,11 @@ class MainActivity : AppCompatActivity() {
 
         /** How long a folder may take to read before the screen says anything about it. */
         const val RENDER_PROGRESS_DELAY_MS = 150L
+
+        /** Where the reader had browsed to, kept across a configuration change. */
+        const val STATE_TREE_URIS = "stack.treeUris"
+        const val STATE_DOC_IDS = "stack.docIds"
+        const val STATE_LABELS = "stack.labels"
     }
 
     private class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {

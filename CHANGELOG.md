@@ -82,6 +82,11 @@
   bottom edge of the screen, which is where a video puts them to keep them off the picture. Playback still stops when you leave Gander, and always will: carrying on in
   the background needs a foreground service, a service needs a permission, and a permission is
   the one thing this app will not add.
+- Turning the phone no longer loses your place in a folder. Browsing three folders into a
+  granted tree and rotating dropped you back to the top of the list with no way to tell why,
+  and so did changing the system font size, switching to dark mode, or resizing the app in
+  split screen. Where you had got to survives all four now. It was hard to meet on a phone,
+  which is rarely turned mid-browse, and constant on a tablet, which is.
 - Gander's own name is written in Gander's own typeface. The title at the top of the home
   screen was Roboto, the system default, because the geometric face the website and the app
   icon have used from the start is one Android does not ship and quietly substitutes
