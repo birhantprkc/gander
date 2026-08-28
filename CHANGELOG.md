@@ -25,6 +25,10 @@
   move through blind. It appears as soon as the file opens rather than waiting for you to
   cross a page boundary, and it is measured against what is actually on screen, so it stays
   right when you have pinched in to read something small.
+- You can jump to a page in a PDF. Tap the page pill, or pick Go to page from the menu,
+  type a number, and you are there. It goes straight to the page rather than travelling
+  through everything in between, which on a long document is the difference between
+  arriving and waiting.
 
 ## 1.13 (2026-08-25)
 

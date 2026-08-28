@@ -7,6 +7,14 @@
         android:title="@string/search_in_document"
         android:visible="false"
         app:showAsAction="ifRoom" />
+    <!-- Hidden until pdf.html says how many pages there are, the way the search item
+         waits for something searchable. It is also the route a screen reader takes to
+         this, since the pill it sits beside can be faded out. -->
+    <item
+        android:id="@+id/action_go_to_page"
+        android:title="@string/go_to_page"
+        android:visible="false"
+        app:showAsAction="never" />
     <item
         android:id="@+id/action_share"
         android:icon="@drawable/ic_share"

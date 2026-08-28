@@ -26,6 +26,11 @@
     <!-- Spoken form, for the same reason match_count has one: a screen reader reads
          "12/357" as a fraction -->
     <string name="page_indicator_spoken">Page %1$d of %2$d</string>
+    <string name="go_to_page">Go to page</string>
+    <string name="page_number">Page number</string>
+    <string name="page_range">1 to %1$d</string>
+    <string name="page_out_of_range">Enter a page between 1 and %1$d</string>
+    <string name="go">Go</string>
     <string name="supported_formats">PDF · Word (.docx) · Excel (.xlsx, .xls, .csv, .ods) · PowerPoint (.pptx) · Photos (JPG, PNG, WebP, GIF, HEIC, SVG and more) · Video (MP4, MKV, WebM, MOV and more) · Audio (MP3, FLAC, WAV, OGG and more) · Markdown · Text, JSON and code files</string>
     <string name="open_with_hint">Tip: in your file manager, tap any file and choose Open with &gt; Gander.</string>
     <string name="back">Back</string>

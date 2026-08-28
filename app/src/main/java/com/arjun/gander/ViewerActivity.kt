@@ -11,13 +11,17 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import android.text.InputType
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -27,6 +31,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
@@ -47,6 +52,7 @@ import com.arjun.gander.FileKind.Companion.detect
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -251,6 +257,7 @@ class ViewerActivity : AppCompatActivity() {
         setContentView(R.layout.activity_viewer)
         applySystemBarInsets(findViewById(R.id.root))
         onBackPressedDispatcher.addCallback(this, searchBackCallback)
+        pageIndicator.setOnClickListener { askForPage() }
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
 
@@ -305,6 +312,9 @@ class ViewerActivity : AppCompatActivity() {
         ext: String,
         mime: String?
     ) {
+        goToPageItem = toolbar.menu.findItem(R.id.action_go_to_page).apply {
+            setOnMenuItemClickListener { askForPage(); true }
+        }
         toolbar.menu.findItem(R.id.action_share).setOnMenuItemClickListener {
             shareFile(uri, ext, mime)
             true
@@ -485,6 +495,9 @@ class ViewerActivity : AppCompatActivity() {
 
     private val pageIndicator: TextView by lazy { findViewById(R.id.pageIndicator) }
 
+    /** Bound once the toolbar exists, shown once pdf.html has said how long the file is. */
+    private var goToPageItem: MenuItem? = null
+
     private val hidePageIndicator = Runnable { fadePageIndicatorOut() }
 
     /**
@@ -537,6 +550,65 @@ class ViewerActivity : AppCompatActivity() {
         pill.removeCallbacks(hidePageIndicator)
         pill.animate().cancel()
         pill.visibility = View.GONE
+    }
+
+    /**
+     * Asks for a page number and goes there.
+     *
+     * A bare EditText rather than a TextInputLayout. That widget is used nowhere else
+     * here, and pulling more of Material in for a floating label is a poor trade in a
+     * release whose headline was the download halving. setError is also what Android 16
+     * names as the way to report a bad value now that announcements are deprecated, so
+     * the small answer is the accessible one too.
+     */
+    private fun askForPage() {
+        val total = pageTotal
+        if (total < 2) return
+
+        val entry = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            imeOptions = EditorInfo.IME_ACTION_GO
+            hint = getString(R.string.page_number)
+            setText(pageAt.toString())
+            setSelection(text.length)
+        }
+        val gutter = (24 * resources.displayMetrics.density).toInt()
+        val holder = FrameLayout(this).apply {
+            setPadding(gutter, gutter / 3, gutter, 0)
+            addView(
+                entry,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.go_to_page)
+            .setMessage(getString(R.string.page_range, total))
+            .setView(holder)
+            .setPositiveButton(R.string.go, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialog.show()
+
+        // Bound after show() on purpose: the button a builder makes dismisses the dialog
+        // before its listener runs, and a number outside the document has to be able to
+        // say so without the box closing under the answer.
+        val go = {
+            val n = entry.text.toString().trim().toIntOrNull()
+            if (n == null || n < 1 || n > total) {
+                entry.error = getString(R.string.page_out_of_range, total)
+            } else {
+                // Straight down the channel search uses. See PortFinder for the shape.
+                searchPort?.postMessage(WebMessageCompat("g$n"))
+                dialog.dismiss()
+            }
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { go() }
+        entry.setOnEditorActionListener { _, _, _ -> go(); true }
     }
 
     private fun touchExplorationOn(): Boolean =
@@ -655,7 +727,7 @@ class ViewerActivity : AppCompatActivity() {
      */
     private var pendingQuery: String = ""
 
-    /** One letter of command, then the query. Read by onSearch() in pdf.html. */
+    /** One letter of command, then the payload. Read by onCommand() in pdf.html. */
     private inner class PortFinder : Finder {
         private fun send(s: String) {
             searchPort?.postMessage(WebMessageCompat(s))
@@ -708,6 +780,7 @@ class ViewerActivity : AppCompatActivity() {
                         val n = said[1].toIntOrNull() ?: return
                         val of = said[2].toIntOrNull() ?: return
                         if (n < 1 || of < 1 || n > of) return
+                        if (pageTotal == 0) goToPageItem?.isVisible = true
                         pageAt = n
                         pageTotal = of
                         showPageIndicator()
@@ -925,6 +998,7 @@ class ViewerActivity : AppCompatActivity() {
         closeSearchBar()
         pageAt = 0
         pageTotal = 0
+        goToPageItem?.isVisible = false
         hidePageIndicatorNow()
         findViewById<MaterialToolbar>(R.id.toolbar).menu
             .findItem(R.id.action_search)?.isVisible = false

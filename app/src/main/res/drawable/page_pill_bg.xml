@@ -3,9 +3,17 @@
      Material 3 gives a surface sitting over content rather than in it, which is the
      job a Snackbar does, and they are the one pair that stays legible over a white
      PDF page, the slate chrome around it and a dark slide alike. Theme attributes
-     rather than literals, so values-night handles this without a second drawable. -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="?attr/colorSurfaceInverse" />
-    <corners android:radius="16dp" />
-</shape>
+     rather than literals, so values-night handles this without a second drawable.
+
+     Inset rather than a bare shape because the pill is tappable. The view is 48dp
+     tall so the touch target is a legal one; the 8dp either side keeps what is drawn
+     at 32dp, which is the size it should look. The elevation shadow follows the inset
+     shape too, since InsetDrawable passes getOutline through to what it wraps. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetTop="8dp"
+    android:insetBottom="8dp">
+    <shape android:shape="rectangle">
+        <solid android:color="?attr/colorSurfaceInverse" />
+        <corners android:radius="16dp" />
+    </shape>
+</inset>
