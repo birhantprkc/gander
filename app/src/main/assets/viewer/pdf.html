@@ -1437,6 +1437,26 @@ function vwUnlockable(task) {
 }
 
 /*
+ * Adobe's predefined CMap tables, which pdf.js reads from the assets on demand.
+ *
+ * A PDF that uses a CJK font without embedding it does not carry a glyph
+ * mapping of its own; it names one of Adobe's encodings instead, UniGB-UCS2-H
+ * and the like. pdf.js cannot turn character codes into glyphs without the
+ * matching table, and the way it fails is the problem: the text is dropped
+ * from the canvas and from the text layer both, so the page renders looking
+ * complete while whole paragraphs are simply absent. Nothing throws, and there
+ * are no fallback boxes to notice.
+ *
+ * Applied through a helper because both loaders below need it, and a document
+ * that opened down the wrong branch would fail this way without saying so.
+ */
+function vwWithCMaps(opts) {
+  opts.cMapUrl = "./lib/cmaps/";
+  opts.cMapPacked = true;
+  return opts;
+}
+
+/*
  * Two ways in. Small documents are read whole, which is a single request. Large
  * ones are range-requested so pdf.js pulls only what it is about to draw instead
  * of holding the entire file in memory for as long as it is open.
@@ -1447,9 +1467,9 @@ function vwUnlockable(task) {
 function vwOpenDoc() {
   return vwParams.get("ranged") !== "1"
     ? vwFetchDoc("buffer").then(function (buf) {
-        return vwUnlockable(pdfjsLib.getDocument({ data: buf }));
+        return vwUnlockable(pdfjsLib.getDocument(vwWithCMaps({ data: buf })));
       })
-    : vwUnlockable(pdfjsLib.getDocument({
+    : vwUnlockable(pdfjsLib.getDocument(vwWithCMaps({
         url: vwDocUrl(),
         rangeChunkSize: 65536,
         // Both of these are needed, and they are not the same switch.
@@ -1462,7 +1482,7 @@ function vwOpenDoc() {
         // bytes without it, and under 5% before pdf.js hung up with it.
         disableAutoFetch: true,
         disableStream: true
-      }));
+      })));
 }
 
 /*

@@ -12,9 +12,27 @@ get jszip3.min.js       "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jsz
 # The legacy build, which is transpiled for older system WebViews.
 # Needs Chromium 125+; read "Before upgrading pdf.js" in docs/VENDORED.md first,
 # because Android 8 and 9 top out at 138 and cannot go past it.
-PDFJS="https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/legacy/build"
+PDFJS_VER="5.7.284"
+PDFJS="https://cdn.jsdelivr.net/npm/pdfjs-dist@$PDFJS_VER/legacy/build"
 get pdf.min.mjs         "$PDFJS/pdf.min.mjs"
 get pdf.worker.min.mjs  "$PDFJS/pdf.worker.min.mjs"
+
+# Adobe's predefined CMap tables, which pdf.js loads on demand.
+# A PDF whose CJK font is not embedded names an encoding like UniGB-UCS2-H
+# instead of carrying a glyph mapping of its own. Without these tables pdf.js
+# cannot turn its character codes into glyphs, and the failure is silent: the
+# text is dropped from both the canvas and the text layer, so the page renders
+# looking complete while whole paragraphs are missing. Nothing throws.
+# Kept on the same version as the build above, because the table names are
+# read out of the worker.
+# 169 small files, so this comes from the npm tarball in one request.
+CMAPS="$LIB/cmaps"
+rm -rf "$CMAPS"
+mkdir -p "$CMAPS"
+curl -sfL --retry 2 "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-$PDFJS_VER.tgz" \
+  | tar xz -C "$CMAPS" --strip-components=2 package/cmaps
+echo "fetched cmaps/ ($(ls "$CMAPS" | wc -l | tr -d ' ') files)"
+
 get docx-preview.min.js "https://cdn.jsdelivr.net/npm/docx-preview/dist/docx-preview.min.js"
 get xlsx.full.min.js    "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
 get marked.min.js       "https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"

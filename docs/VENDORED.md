@@ -17,6 +17,7 @@ commit.
 | --- | --- | --- | --- | --- |
 | `pdf.min.mjs` | pdf.js (legacy build) | 5.7.284 | Apache-2.0 | https://github.com/mozilla/pdf.js |
 | `pdf.worker.min.mjs` | pdf.js worker (legacy build) | 5.7.284 | Apache-2.0 | https://github.com/mozilla/pdf.js |
+| `cmaps/` (169 files) | Adobe CMap resources, redistributed by pdf.js | 1990-2009, via pdf.js 5.7.284 | BSD-3-Clause | https://github.com/adobe-type-tools/cmap-resources |
 | `jszip3.min.js` | JSZip | 3.10.1 | MIT or GPL-3.0 dual | https://github.com/Stuk/jszip |
 | `docx-preview.min.js` | docx-preview | 0.3.x (jsdelivr latest, fetched 2026-07-19) | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
 | `xlsx.full.min.js` | SheetJS Community Edition | 0.20.3 | Apache-2.0 | https://git.sheetjs.com/sheetjs/sheetjs |
@@ -30,6 +31,23 @@ commit.
 | `pptx/d3.min.js` | D3 | 3.5.10 | BSD-3-Clause | https://github.com/d3/d3 |
 | `pptx/nv.d3.min.js` | NVD3 | 1.8.1 | Apache-2.0 | https://github.com/novus/nvd3 |
 | `pptx/pptxjs.css`, `pptx/nv.d3.min.css` | PPTXjs / NVD3 styles | see above | see above | see above |
+
+## The CMap tables
+
+`cmaps/` is 1.6 MB of Adobe's predefined CMap tables, which pdf.js loads from
+the assets on demand. They are not optional decoration: a PDF that uses a CJK
+font without embedding it carries no glyph mapping of its own and names an
+encoding like `UniGB-UCS2-H` instead, and without the matching table pdf.js
+cannot resolve its character codes.
+
+What makes it worth the weight is how it fails. There is no error, no exception
+and no fallback boxes; the text is dropped from the canvas and the text layer
+both, so the page renders looking finished while whole paragraphs are missing.
+That was issue #21, reported against 1.13 as "all Chinese text is missing".
+
+Keep them on the same version as the build above. Dropping the directory to
+save space, or trimming it to the encodings that look current, re-opens the bug
+silently for whatever was trimmed.
 
 ## Before upgrading pdf.js
 

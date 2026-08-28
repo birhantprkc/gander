@@ -118,6 +118,9 @@
      * already sits: "3.7 MB" was 30px wider and ran into it, which cost this gap
      * a temporary drop to 29px until the figure was rounded to "4 MB". Measure
      * the rendered row against 709px after changing the figure; do not nudge it.
+     * "5 MB" replaced "4 MB" at the same character count: the rendered row came
+     * out 1px narrower, away from the stamp rather than into it, so this gap
+     * did not have to change.
      */
     display: flex; align-items: baseline; gap: 37px;
     line-height: 1; white-space: nowrap;
@@ -242,16 +245,20 @@
 
   <!-- The APK size is not local to this file, whatever an earlier version of
        this comment claimed. It also lives in README.md twice (the prose and the
-       alt text for the render of this page), docs/index.html, the Play full
-       description, and docs/screenshot-captions.html. Believing it lived here
-       alone is how 1.13 halved the APK and still shipped "8 MB" onto the live
-       listing. Change it in all six, then re-render this file and the captions;
-       the numbers here are baked into committed PNGs, so a text edit alone
-       changes nothing anyone sees. -->
+       alt text for the render of this page), docs/index.html and the Play full
+       description: five places across four files. Believing it lived here alone
+       is how 1.13 halved the APK and still shipped "8 MB" onto the live listing.
+       Change it in all five, then re-render this file; the number here is baked
+       into a committed PNG, so a text edit alone changes nothing anyone sees.
+
+       docs/screenshot-captions.html is deliberately not on that list any more
+       and must not be added back: it carries no figure at all, because a number
+       baked into a Play screenshot costs a re-render and a re-upload to correct.
+       Its own header comment explains the reasoning. -->
   <div class="claims">
     <span><b>100%</b><small>OFFLINE</small></span>
     <span class="bullet"></span>
-    <span><b>4 MB</b><small>APK</small></span>
+    <span><b>5 MB</b><small>APK</small></span>
     <span class="bullet"></span>
     <span><b>0</b><small>ADS OR TRACKERS</small></span>
   </div>

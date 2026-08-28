@@ -34,6 +34,7 @@ Released under the MIT Licence, the full text of which appears below.
 | FileReader.js | 0.99 | MIT |
 | jQuery | 1.11.3 | MIT |
 | D3 | 3.5.10 | BSD-3-Clause |
+| Adobe CMap resources (bundled with pdf.js) | 1990-2009, via pdf.js 5.7.284 | BSD-3-Clause |
 
 The minified files are unmodified upstream distribution artifacts.
 `docs/VENDORED.md` in the repository records where each one came from, and
@@ -82,8 +83,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## The BSD 3-Clause Licence
 
-Applies to D3 3.5.10, Copyright (c) 2010-2016 Michael Bostock. All rights
-reserved.
+Applies to the following bundled libraries:
+
+- D3 3.5.10, Copyright (c) 2010-2016 Michael Bostock. All rights reserved.
+- The Adobe CMap resources in `viewer/lib/cmaps/`, which pdf.js redistributes
+  and Gander bundles for CJK text, Copyright 1990-2009 Adobe Systems
+  Incorporated. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:

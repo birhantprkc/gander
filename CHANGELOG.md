@@ -112,6 +112,14 @@
   somebody who wants the detail goes looking. The whole block leaves for good the moment you
   open a file or grant a folder. The Downloads note is gone entirely: Android says the same
   thing itself, in the picker, at the moment it matters.
+- Chinese, Japanese and Korean text shows up in PDFs that do not carry their own fonts.
+  A document written in one of these scripts often names a standard encoding rather than
+  embedding the characters it uses, and Gander was missing the tables that turn those names
+  back into readable text. The result was not an error message or a row of empty boxes: the
+  page opened looking perfectly finished, with entire paragraphs silently absent, so there
+  was nothing to tell you that you were reading a document with pieces taken out of it. The
+  tables ship with the app now, all of them, so this holds for older documents as well as
+  current ones and for all three scripts rather than the one that happened to be reported.
 
 ## 1.13 (2026-08-25)
 
