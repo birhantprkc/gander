@@ -31,6 +31,10 @@
     <string name="page_range">1 to %1$d</string>
     <string name="page_out_of_range">Enter a page between 1 and %1$d</string>
     <string name="go">Go</string>
+    <!-- What the readout says while the thumb is dragged through anything that is not
+         a PDF, where nothing else knows how far in you are -->
+    <string name="scroll_position">%1$d%%</string>
+    <string name="scroll_position_spoken">%1$d percent through the document</string>
     <string name="supported_formats">PDF · Word (.docx) · Excel (.xlsx, .xls, .csv, .ods) · PowerPoint (.pptx) · Photos (JPG, PNG, WebP, GIF, HEIC, SVG and more) · Video (MP4, MKV, WebM, MOV and more) · Audio (MP3, FLAC, WAV, OGG and more) · Markdown · Text, JSON and code files</string>
     <string name="open_with_hint">Tip: in your file manager, tap any file and choose Open with &gt; Gander.</string>
     <string name="back">Back</string>

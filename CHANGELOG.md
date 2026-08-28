@@ -29,6 +29,13 @@
   type a number, and you are there. It goes straight to the page rather than travelling
   through everything in between, which on a long document is the difference between
   arriving and waiting.
+- Long documents have a scroll thumb you can drag. It appears at the right edge once there
+  is more than a couple of screens to move through and fades when you stop, and the page
+  readout at the foot of the screen keeps count as you go. It works in Word documents, spreadsheets, slides, Markdown and text files as well as PDFs,
+  where it shows how far through you are rather than a page number. On a phone using gesture
+  navigation it takes its own strip of the edge, so reaching for it is not read as going
+  back. Gander still opens every document at the beginning rather than where you left off,
+  which is a separate thing and not done yet.
 
 ## 1.13 (2026-08-25)
 

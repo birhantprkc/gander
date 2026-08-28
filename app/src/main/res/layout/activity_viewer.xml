@@ -100,7 +100,42 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <!-- Which page of a PDF is on screen. Deliberately not a live region: the
+        <!-- The fast-scroll track and the thumb that rides it. The track is 48dp wide
+             so the grab is a legal touch target, though only 6dp of it is ever drawn,
+             and it is gone unless there is enough document to be worth scrubbing. A
+             touch on the strip that misses the thumb is handed back so it reaches the
+             document instead, which is where a right thumb scrolling expects it to go.
+             Both use end gravity, so under RTL they move to the left edge, which is
+             also where the system puts a scrollbar.
+
+             Invisible rather than gone, and that is load bearing. A gone view is never
+             measured, so the track would have no height, and the height of the track is
+             the thing the thumb's size and position are worked out from: gone here means
+             the thumb can never appear at all. Invisible it is laid out all along and
+             still takes no touches, because a view only receives them while visible,
+             which is exactly the behaviour wanted when there is nothing to grab. -->
+        <View
+            android:id="@+id/fastScrollTrack"
+            android:layout_width="48dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="end"
+            android:importantForAccessibility="no"
+            android:visibility="invisible" />
+
+        <View
+            android:id="@+id/fastScrollThumb"
+            android:layout_width="6dp"
+            android:layout_height="48dp"
+            android:layout_gravity="end|top"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/scroll_thumb"
+            android:importantForAccessibility="no"
+            android:visibility="invisible" />
+
+        <!-- Which page of a PDF is on screen. One readout, in one place, whether the
+             document is being scrolled or the thumb dragged.
+
+             Deliberately not a live region: the
              counter changes on every page crossed during a fling, and a region would
              read every one of them out. It is focusable and labelled instead, so a
              screen reader answers the question when asked rather than continuously. -->
@@ -119,7 +154,7 @@
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
             android:textAppearance="?attr/textAppearanceLabelLarge"
-            android:textColor="?attr/colorOnSurfaceInverse"
+            android:textColor="#FFFFFF"
             android:visibility="gone" />
     </FrameLayout>
 </LinearLayout>
