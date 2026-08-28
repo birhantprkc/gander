@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- One row, because landscape is short rather than narrow: three rows of tiles push
-         the two buttons off the bottom of a first run, which is the one screen where they
-         are the only thing to do. -->
-    <integer name="welcome_grid_columns">9</integer>
-</resources>

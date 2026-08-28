@@ -125,12 +125,19 @@
                      never disagree with the badges on the rows.
 
                      The column count is a resource rather than a measurement. Three across
-                     is a square block of nine and always fits, since the tiles and their
-                     margins need 204dp and the narrowest phone has about 296dp to give.
-                     Landscape uses one row instead, because landscape is short rather than
-                     narrow and three rows of tiles push the two buttons off the bottom of
-                     the one screen where they are the only thing to do. If a tenth kind
-                     ever lands, those two integers are what to revisit. -->
+                     needs 268dp including this layout's padding, and the narrowest phone
+                     has 320dp to give, so it fits everywhere in either orientation.
+
+                     A values-land override putting all nine on one row was tried and
+                     dropped: it needs 676dp, which a 411x731dp emulator has and a 720p
+                     xhdpi phone (360x640dp) does not, so the last tiles were clipped on
+                     one of the commonest geometries there is. In phone landscape the block
+                     scrolls instead, which is what the ScrollView is for. If it is worth
+                     revisiting, shrink the tiles for that qualifier rather than adding
+                     columns, and check the arithmetic against 533dp before 731dp. -->
+                <!-- Note for a future qualifier: smallestWidth outranks orientation in the
+                     resource table, so values-sw600dp beats a values-land on a landscape
+                     tablet, and resolution is per resource name rather than per folder. -->
                 <GridLayout
                     android:id="@+id/formatGrid"
                     android:layout_width="wrap_content"
@@ -158,7 +165,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="32dp"
-                    android:minWidth="240dp"
+                    android:minWidth="@dimen/welcome_action_min_width"
                     android:text="@string/open_a_file" />
 
                 <com.google.android.material.button.MaterialButton
@@ -167,7 +174,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:minWidth="240dp"
+                    android:minWidth="@dimen/welcome_action_min_width"
                     android:text="@string/add_folder" />
             </LinearLayout>
         </ScrollView>

@@ -10,11 +10,11 @@
      Not important for accessibility: the GridLayout carries one description for all nine,
      the same way a file row carries one for its badge, thumbnail, title and subtitle. -->
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="56dp"
-    android:layout_height="56dp"
+    android:layout_width="@dimen/welcome_tile_size"
+    android:layout_height="@dimen/welcome_tile_size"
     android:background="@drawable/badge_bg"
     android:gravity="center"
     android:importantForAccessibility="no"
     android:textColor="#FFFFFF"
-    android:textSize="14sp"
+    android:textSize="@dimen/welcome_tile_text"
     android:textStyle="bold" />

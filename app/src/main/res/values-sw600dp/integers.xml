@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Probe: does sw600dp beat values-land on a landscape tablet? -->
+    <integer name="welcome_grid_columns">3</integer>
+    <integer name="home_list_columns">2</integer>
+</resources>

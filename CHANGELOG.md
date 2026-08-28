@@ -95,6 +95,11 @@
   rather than typed, so it looks the same on every device, and it sits in the middle of the
   bar with the app icon beside it. Go into a folder and the bar shows that folder's name
   instead, on the left, next to the way back out.
+- The home screen lays itself out for a tablet. It was a phone screen stretched: one column
+  of filenames with about nine tenths of the width empty beside them, and a first-run block
+  drawn at phone size in the middle of a much larger screen. Files and folders sit in two
+  columns on a large screen now, section headings still run the full width, and the welcome
+  block is drawn to suit the screen it is on. Nothing about a phone changes.
 - A fresh install says what Gander is, in about twenty words. The home screen used to open on
   an empty Recent files heading, an empty Folders heading, and three sentences about Android
   refusing to grant the Downloads root, so the first thing anybody read about the app was a

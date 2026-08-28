@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     The welcome block's own scale. Everything else on the home screen is a Material
+     component at its standard size; this block is the one thing drawn to fit a screen,
+     so it is the one thing with a size per screen. values-sw600dp holds the tablet set.
+-->
+<resources>
+    <!-- Matches the 48dp badge on a file row, plus a little, because these are the
+         subject of the screen here rather than a marker beside a filename. -->
+    <dimen name="welcome_tile_size">56dp</dimen>
+    <dimen name="welcome_tile_text">14sp</dimen>
+    <!-- Margin on every side, so the gap between two tiles is twice this. -->
+    <dimen name="welcome_tile_gap">6dp</dimen>
+    <!-- A minimum rather than a width, so a large system font size grows the button
+         instead of ellipsising its label. -->
+    <dimen name="welcome_action_min_width">240dp</dimen>
+</resources>

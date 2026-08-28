@@ -22,7 +22,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
@@ -153,7 +153,17 @@ class MainActivity : AppCompatActivity() {
         }
         progress = findViewById(R.id.loadProgress)
         list = findViewById(R.id.list)
-        list.layoutManager = LinearLayoutManager(this)
+        // One column on a phone, which is exactly what a LinearLayoutManager did, and two
+        // on a tablet, where a single column of filenames left about nine tenths of the
+        // screen empty. Headers and hints label the whole list rather than a cell, so they
+        // take every span.
+        val columns = resources.getInteger(R.integer.home_list_columns)
+        list.layoutManager = GridLayoutManager(this, columns).apply {
+            spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                override fun getSpanSize(position: Int) =
+                    if (adapter.isFullSpan(position)) columns else 1
+            }
+        }
         list.adapter = adapter
 
         // Built once here rather than on every render: the nine kinds Gander opens do not
@@ -569,7 +579,7 @@ class MainActivity : AppCompatActivity() {
      * adapter makes on a real row.
      */
     private fun fillFormatGrid(grid: ViewGroup) {
-        val gap = (TILE_GAP_DP * resources.displayMetrics.density).toInt()
+        val gap = resources.getDimensionPixelSize(R.dimen.welcome_tile_gap)
         WELCOME_BADGES.forEach { (label, color) ->
             val tile = layoutInflater.inflate(R.layout.view_welcome_tile, grid, false) as TextView
             tile.text = label
@@ -624,15 +634,16 @@ class MainActivity : AppCompatActivity() {
          *
          * FILE is deliberately absent. It is what an unsupported file falls back to, and
          * this grid is a list of what Gander opens.
+         *
+         * One thing here does not update itself: welcome_formats_spoken is the sentence a
+         * screen reader hears in place of these tiles, and it is prose. Adding a kind means
+         * editing that string too, or the grid and its description stop agreeing.
          */
         val WELCOME_BADGES = listOf(
             PDF_BADGE, DOC_BADGE, XLS_BADGE,
             PPT_BADGE, IMG_BADGE, VID_BADGE,
             AUD_BADGE, MD_BADGE, TXT_BADGE,
         )
-
-        /** Margin on every side of a tile, so the gap between two of them is twice this. */
-        const val TILE_GAP_DP = 6
 
         val DIR_COLOR = 0xFF8A6D1F.toInt()
 
@@ -667,6 +678,16 @@ class MainActivity : AppCompatActivity() {
             rows.addAll(newRows)
             notifyDataSetChanged()
         }
+
+        /**
+         * Whether the row at [position] wants the whole width rather than one cell.
+         *
+         * Out-of-range answers full span on purpose: the layout manager can ask about a
+         * position mid-update, and a header-shaped guess reflows harmlessly where a
+         * cell-shaped one would throw.
+         */
+        fun isFullSpan(position: Int): Boolean =
+            position !in rows.indices || rows[position] !is Row.Item
 
         override fun getItemViewType(position: Int): Int = when (rows[position]) {
             is Row.Header -> 0
