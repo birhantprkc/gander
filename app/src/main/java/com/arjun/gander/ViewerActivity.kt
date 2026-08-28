@@ -13,6 +13,7 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -119,6 +120,18 @@ class ViewerActivity : AppCompatActivity() {
          * unreadable version blocks instead of being waved through.
          */
         private val LOCKED_WEBVIEW_PACKAGES = setOf("com.huawei.webview")
+
+        /**
+         * How long the page readout stays up after the last scroll, and how long it
+         * takes to arrive and leave.
+         *
+         * Two seconds rather than the usual one and a half because the pill is a tap
+         * target as well as a readout, and one and a half races the hand of somebody
+         * who has just decided to reach for it.
+         */
+        private const val PAGE_IDLE_MS = 2000L
+        private const val PAGE_FADE_IN_MS = 120L
+        private const val PAGE_FADE_OUT_MS = 180L
     }
 
     private var webView: WebView? = null
@@ -460,6 +473,76 @@ class ViewerActivity : AppCompatActivity() {
         override fun handleOnBackPressed() = closeSearchBar()
     }
 
+    /** Last page pdf.html reported, and how many there are. Zero until it says. */
+    private var pageAt = 0
+    private var pageTotal = 0
+
+    /**
+     * True while the find box is up. The page readout stands down for it: two counters
+     * on one screen, the lower of them behind the keyboard, is not information.
+     */
+    private var searchBarOpen = false
+
+    private val pageIndicator: TextView by lazy { findViewById(R.id.pageIndicator) }
+
+    private val hidePageIndicator = Runnable { fadePageIndicatorOut() }
+
+    /**
+     * Put the page readout on screen, or keep it there.
+     *
+     * Called from two places that know different things. pdf.html says which page is on
+     * screen, over the port search already uses, and only when that number changes. The
+     * WebView says that something scrolled at all, which is what decides the pill is
+     * worth showing: scrolling within one tall page changes no page number, and a
+     * readout that only appeared on crossing a boundary would be absent exactly when
+     * somebody goes looking for it.
+     *
+     * A no-op for everything that is not a PDF of more than one page, because nothing
+     * else ever sets the total.
+     */
+    private fun showPageIndicator() {
+        if (pageTotal < 2 || searchBarOpen) return
+        val pill = pageIndicator
+        // Description before text, as the search counter does it: anything already
+        // reading this node has to find the spoken form in place by the time the
+        // visible one changes under it.
+        pill.contentDescription =
+            getString(R.string.page_indicator_spoken, pageAt, pageTotal)
+        pill.text = getString(R.string.page_indicator, pageAt, pageTotal)
+
+        pill.animate().cancel()
+        if (pill.visibility != View.VISIBLE) {
+            pill.alpha = 0f
+            pill.visibility = View.VISIBLE
+        }
+        pill.animate().alpha(1f).setDuration(PAGE_FADE_IN_MS).start()
+
+        pill.removeCallbacks(hidePageIndicator)
+        // Under a screen reader it does not fade at all. A view at zero alpha cannot be
+        // reached by swipe navigation, and this is the only thing on screen that knows
+        // where in the document the reader is. Same reason media controls stay up.
+        if (!touchExplorationOn()) pill.postDelayed(hidePageIndicator, PAGE_IDLE_MS)
+    }
+
+    private fun fadePageIndicatorOut() {
+        val pill = pageIndicator
+        pill.animate().cancel()
+        pill.animate().alpha(0f).setDuration(PAGE_FADE_OUT_MS)
+            .withEndAction { pill.visibility = View.GONE }.start()
+    }
+
+    /** Straight off, with no fade: for a document that has stopped being one. */
+    private fun hidePageIndicatorNow() {
+        val pill = pageIndicator
+        pill.removeCallbacks(hidePageIndicator)
+        pill.animate().cancel()
+        pill.visibility = View.GONE
+    }
+
+    private fun touchExplorationOn(): Boolean =
+        (getSystemService(ACCESSIBILITY_SERVICE) as? AccessibilityManager)
+            ?.isTouchExplorationEnabled == true
+
     /** In-document search: findAllAsync for most formats, a message port for PDF. */
     private fun setUpSearch(toolbar: MaterialToolbar, kind: FileKind) {
         val bar = findViewById<LinearLayout>(R.id.searchBar)
@@ -524,6 +607,8 @@ class ViewerActivity : AppCompatActivity() {
         searchItem.setOnMenuItemClickListener {
             bar.visibility = LinearLayout.VISIBLE
             searchBackCallback.isEnabled = true
+            searchBarOpen = true
+            hidePageIndicatorNow()
             input.requestFocus()
             imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
             true
@@ -555,6 +640,7 @@ class ViewerActivity : AppCompatActivity() {
             find { it.clear() }
             bar.visibility = LinearLayout.GONE
             searchBackCallback.isEnabled = false
+            searchBarOpen = false
         }
         findViewById<ImageButton>(R.id.searchClose).setOnClickListener { closeSearchBar() }
     }
@@ -615,6 +701,18 @@ class ViewerActivity : AppCompatActivity() {
             object : WebMessagePortCompat.WebMessageCallbackCompat() {
                 override fun onMessage(port: WebMessagePortCompat, message: WebMessageCompat?) {
                     val said = message?.data?.split(" ") ?: return
+                    // Tagged, and read first. The search message below is three bare
+                    // numbers and is left exactly as it was; "page" is not an integer,
+                    // so it was already being dropped there before this branch existed.
+                    if (said.size == 3 && said[0] == "page") {
+                        val n = said[1].toIntOrNull() ?: return
+                        val of = said[2].toIntOrNull() ?: return
+                        if (n < 1 || of < 1 || n > of) return
+                        pageAt = n
+                        pageTotal = of
+                        showPageIndicator()
+                        return
+                    }
                     if (said.size != 3) return
                     val at = said[0].toIntOrNull() ?: return
                     val total = said[1].toIntOrNull() ?: return
@@ -798,6 +896,10 @@ class ViewerActivity : AppCompatActivity() {
             ): Boolean = request.url.host != ASSET_HOST
         }
 
+        // Any scroll at all is what brings the readout up; the number in it comes from
+        // the port. See showPageIndicator for why the two are separate.
+        web.setOnScrollChangeListener { _, _, _, _, _ -> showPageIndicator() }
+
         container.addView(web, matchParent())
         // The load strategy is decided here, not in the page, so the headers we serve
         // and the loader the page picks cannot disagree
@@ -821,6 +923,9 @@ class ViewerActivity : AppCompatActivity() {
         // it can neither be asked anything nor answer. The activity restarts to get a
         // working one, which is where a new channel comes from.
         closeSearchBar()
+        pageAt = 0
+        pageTotal = 0
+        hidePageIndicatorNow()
         findViewById<MaterialToolbar>(R.id.toolbar).menu
             .findItem(R.id.action_search)?.isVisible = false
         closeSearchChannel()

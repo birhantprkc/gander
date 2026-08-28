@@ -20,6 +20,11 @@
   the app away, so it looked like the phone had decided to leave. Back now closes the box and
   leaves you where you were reading; a second press leaves the document, as before. With the
   keyboard up it takes one press more, because the keyboard goes first.
+- A PDF tells you which page you are on. A pill at the foot of the screen reads "128/357"
+  while you scroll and fades once you stop, so a long document is no longer something you
+  move through blind. It appears as soon as the file opens rather than waiting for you to
+  cross a page boundary, and it is measured against what is actually on screen, so it stays
+  right when you have pinched in to read something small.
 
 ## 1.13 (2026-08-25)
 

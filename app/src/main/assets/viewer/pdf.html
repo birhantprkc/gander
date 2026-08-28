@@ -1184,6 +1184,68 @@ function report() {
   searchPort.postMessage(at + " " + total + " " + done);
 }
 
+/*
+ * Which page sits under the middle of the screen, for the readout in the toolbar.
+ *
+ * "page <n> <total>", tagged, unlike report()'s three bare numbers. The two messages
+ * would otherwise be the same shape, so the Kotlin side reads the tag first and the
+ * search message it already understood is left exactly as it was.
+ *
+ * Measured against the visual viewport, and that is the whole reason this is a scroll
+ * handler rather than a third IntersectionObserver beside the two below, which is what
+ * the rest of this file would lead you to write. An observer's root rect is the layout
+ * viewport by specification, and is deliberately unaffected by pinch zoom on the
+ * grounds that zooming is a magnifying glass and must not change layout. This page
+ * lays out at a fixed 980 CSS px that the WebView zooms to fit, see the note in the
+ * head, so an observer would confidently name the page under the middle of a viewport
+ * the reader cannot see. distance() lives with that same approximation because
+ * ordering renders by it is close enough. A number on screen is not.
+ */
+var lastPageSent = 0;
+
+function reportPage() {
+  if (!searchPort || !doc || doc.numPages < 2 || !slots.length) return;
+  var vv = window.visualViewport;
+  /* Zero height happens once, between the port arriving and the first layout. There is
+     no support fallback below this: visualViewport has existed since Chromium 61 and
+     this file refuses to run below 125. */
+  if (!vv || !vv.height) return;
+  var middle = vv.pageTop + vv.height / 2;
+
+  /* Binary search rather than a walk: nine reads of an already laid out box on a
+     357-page document instead of three hundred and fifty seven. The rect plus scrollY
+     rather than offsetTop, because offsetTop is only document-absolute here for as long
+     as #pages and body both stay static and unpositioned, and nothing would say so if
+     one of them stopped. */
+  var lo = 0, hi = slots.length - 1, at = 0;
+  while (lo <= hi) {
+    var mid = (lo + hi) >> 1;
+    if (slots[mid].box.getBoundingClientRect().top + window.scrollY <= middle) {
+      at = mid; lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  if (at + 1 === lastPageSent) return;
+  lastPageSent = at + 1;
+  searchPort.postMessage("page " + lastPageSent + " " + doc.numPages);
+}
+
+/* One measurement per frame, however many events arrive in it. */
+var pageRaf = 0;
+function schedulePageReport() {
+  if (pageRaf) return;
+  pageRaf = requestAnimationFrame(function () { pageRaf = 0; reportPage(); });
+}
+
+window.addEventListener("scroll", schedulePageReport, { passive: true });
+if (window.visualViewport) {
+  /* Both of these and not just the window scroll: moving a WebView while the reader is
+     pinched in scrolls the visual viewport, which need not fire a window scroll at all. */
+  window.visualViewport.addEventListener("scroll", schedulePageReport, { passive: true });
+  window.visualViewport.addEventListener("resize", schedulePageReport, { passive: true });
+}
+
 window.addEventListener("message", function (e) {
   /* The only message this page ever receives is the one handing it the port, sent
      by ViewerActivity once the document is up. Anything else is not ours. */
@@ -1191,6 +1253,10 @@ window.addEventListener("message", function (e) {
   searchPort = e.ports[0];
   searchPort.onmessage = function (m) { onSearch(String(m.data || "")); };
   searchPort.start();
+  /* The document may well have opened before the port arrived, in which case the first
+     report went nowhere and no other would follow until the reader scrolled. The same
+     reason openSearchChannel replays a query typed before there was anywhere to send it. */
+  reportPage();
 });
 
 /* One letter of command, then the rest is payload. A query is arbitrary text and
@@ -1542,6 +1608,10 @@ if (!vwPdfBlocked) {
     .then(function () {
       vwStatusDone();
       if (doc.numPages > 1) observePages();
+      /* Once, unprompted. Somebody who opens a document and reads the first page
+         without scrolling still has to be told how long it is, and the jump-to-page
+         control has no total to check against until this has been sent. */
+      reportPage();
       /* Asked for before there was anything to ask. */
       if (finding.query) { buildIndex(); report(); }
     })

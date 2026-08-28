@@ -84,9 +84,42 @@
         android:visibility="gone"
         app:trackCornerRadius="0dp" />
 
+    <!-- The document, and the things that float over it.
+
+         The overlays are siblings of the container rather than children of it because
+         showRendererGone empties the container, and a page number left standing over
+         the card that replaces a document would be a claim about something no longer
+         on screen. -->
     <FrameLayout
-        android:id="@+id/container"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
+
+        <FrameLayout
+            android:id="@+id/container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Which page of a PDF is on screen. Deliberately not a live region: the
+             counter changes on every page crossed during a fling, and a region would
+             read every one of them out. It is focusable and labelled instead, so a
+             screen reader answers the question when asked rather than continuously. -->
+        <TextView
+            android:id="@+id/pageIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/page_pill_bg"
+            android:elevation="3dp"
+            android:focusable="true"
+            android:gravity="center"
+            android:minHeight="32dp"
+            android:minWidth="56dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="?attr/colorOnSurfaceInverse"
+            android:visibility="gone" />
+    </FrameLayout>
 </LinearLayout>

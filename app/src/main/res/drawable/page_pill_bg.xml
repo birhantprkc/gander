@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The floating page readout. colorSurfaceInverse and its onSurface pair are what
+     Material 3 gives a surface sitting over content rather than in it, which is the
+     job a Snackbar does, and they are the one pair that stays legible over a white
+     PDF page, the slate chrome around it and a dark slide alike. Theme attributes
+     rather than literals, so values-night handles this without a second drawable. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurfaceInverse" />
+    <corners android:radius="16dp" />
+</shape>
