@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private val stack = ArrayDeque<Crumb>()
     private val adapter = RowAdapter()
     private lateinit var toolbar: MaterialToolbar
+    private lateinit var lockup: View
     private lateinit var progress: LinearProgressIndicator
 
     /**
@@ -125,6 +126,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         toolbar = findViewById(R.id.toolbar)
+        lockup = findViewById(R.id.lockup)
         toolbar.setNavigationOnClickListener { backCallback.handleOnBackPressed() }
         // render() rewrites the title and navigation icon on every resume and on
         // every folder change, but never touches the menu, so inflating once here
@@ -273,7 +275,12 @@ class MainActivity : AppCompatActivity() {
     private fun render() {
         val here = stack.lastOrNull()
         backCallback.isEnabled = here != null
-        toolbar.title = here?.label ?: getString(R.string.app_name)
+        // At the root the wordmark is the title, centred; inside a folder the title is the
+        // folder's name, where Android puts it, beside the back arrow. A mark is an identity
+        // and a folder name is a location, so these are two kinds of content sharing a slot
+        // rather than one element that moves.
+        toolbar.title = here?.label.orEmpty()
+        lockup.visibility = if (here == null) View.VISIBLE else View.GONE
         toolbar.navigationIcon =
             if (here == null) null
             else androidx.appcompat.content.res.AppCompatResources.getDrawable(this, R.drawable.ic_back)

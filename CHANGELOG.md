@@ -82,6 +82,14 @@
   bottom edge of the screen, which is where a video puts them to keep them off the picture. Playback still stops when you leave Gander, and always will: carrying on in
   the background needs a foreground service, a service needs a permission, and a permission is
   the one thing this app will not add.
+- Gander's own name is written in Gander's own typeface. The title at the top of the home
+  screen was Roboto, the system default, because the geometric face the website and the app
+  icon have used from the start is one Android does not ship and quietly substitutes
+  something else for. The app was showing whatever the phone happened to have, and so, it
+  turns out, has the website, on every phone that has ever visited it. The name is drawn now
+  rather than typed, so it looks the same on every device, and it sits in the middle of the
+  bar with the app icon beside it. Go into a folder and the bar shows that folder's name
+  instead, on the left, next to the way back out.
 - A fresh install says what Gander is. The home screen used to open on an empty Recent files
   heading, an empty Folders heading, and three sentences about Android refusing to grant the
   Downloads root, so the first thing anybody read about the app was a limitation of somebody
