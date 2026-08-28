@@ -66,6 +66,12 @@
   the contents of a PDF dark is a different thing and is still to come. The light theme moved
   as well, off the blue-grey these viewers were built on and onto the warm ground the app now
   has, so the surround stops changing temperature at the bottom edge of the toolbar.
+- The last two cool surfaces went warm with it. A PDF page and a slide were read against a
+  blue grey chosen back when the accent was blue, and they were the only part of the app left
+  on the old palette. Both grounds were matched on lightness rather than picked by eye, so a
+  page stands off its surround by exactly as much as it did before and only the temperature
+  has moved. The prompt that asks for a locked PDF's password got the brand colour on its
+  button while the file was open.
 
 ## 1.13 (2026-08-25)
 

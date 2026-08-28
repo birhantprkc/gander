@@ -11,7 +11,11 @@
      922 px, below native, so it would make pages blurrier, not better. -->
 <link rel="stylesheet" href="app.css">
 <style>
-  body { background: #37474f; }
+  /* The surround a page is read against. Warm, to match the rest of the app, and
+     matched on lightness rather than picked by eye: this is L* 29.0 where the Blue Grey
+     700 it replaces was 29.1, so a page sits against exactly as much contrast as it did
+     before and only the temperature has moved. */
+  body { background: #48443D; }
   #pages { padding: 8px 0; }
   /*
    * A page is a box holding two layers: the canvas that is the picture of it, and
@@ -300,10 +304,10 @@
     box-sizing: border-box;
     min-height: calc(48px * var(--vw-zoom));
     padding: 0 calc(10px * var(--vw-zoom));
-    border: calc(1px * var(--vw-zoom)) solid #b0bec5;
+    border: calc(1px * var(--vw-zoom)) solid #CFC5B2;
     border-radius: calc(6px * var(--vw-zoom));
     background: #fff;
-    color: #37474f;
+    color: #1E1B15;
   }
   .vw-ask-btn {
     flex: 0 0 auto;
@@ -313,7 +317,8 @@
     padding: 0 calc(16px * var(--vw-zoom));
     border: 0;
     border-radius: calc(6px * var(--vw-zoom));
-    background: #37474f;
+    /* The brand accent, like every other primary action in the app. */
+    background: #AF2D18;
     color: #fff;
   }
 </style>
