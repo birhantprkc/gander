@@ -35,6 +35,12 @@ html, body {
  * remember to restate html.
  */
 body {
+  /* Plain value first, token second. pdf.html notes that a WebView without custom
+     properties "gets app.css back": that is only true while app.css itself still says
+     something such an engine can read, so every token here is preceded by the literal
+     it resolves to in the light theme. An engine that understands var() takes the
+     second declaration; one that does not drops it and keeps the first. */
+  background: #ECE8DF;
   background: var(--vw-ground);
 }
 
@@ -43,15 +49,20 @@ body {
   max-width: 420px;
   padding: 14px 18px;
   border-radius: 10px;
+  background: #ffffff;
   background: var(--vw-card);
+  color: #1E1B15;
   color: var(--vw-ink);
   font-size: 15px;
   text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   box-shadow: 0 1px 4px var(--vw-shadow);
 }
 
 .vw-error {
+  background: #fdecea;
   background: var(--vw-error);
+  color: #8c1d18;
   color: var(--vw-error-ink);
   text-align: left;
 }
