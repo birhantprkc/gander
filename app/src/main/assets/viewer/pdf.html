@@ -140,6 +140,22 @@
 
   .textLayer .markedContent { display: contents; }
 
+  /*
+   * The colour a selection is drawn in, which is the viewer's rather than the
+   * platform's. pdf.js styles only the background here and lets the selected text keep
+   * whatever colour it had, which in this layer is transparent, because the picture
+   * underneath is already showing the words. Left out, a selection comes back in the
+   * WebView's own grey.
+   *
+   * The second rule is for the line breaks pdf.js puts between runs. They carry no
+   * text of their own, so a highlight on one is a block of colour past the end of a
+   * line.
+   */
+  .textLayer ::selection {
+    background: rgba(33, 150, 243, 0.35);
+  }
+  .textLayer br::selection { background: transparent; }
+
   /* An image standing in for text is not text to select. */
   .textLayer span[role="img"] { user-select: none; cursor: default; }
 
