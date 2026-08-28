@@ -31,11 +31,22 @@
   arriving and waiting.
 - Long documents have a scroll thumb you can drag. It appears at the right edge once there
   is more than a couple of screens to move through and fades when you stop, and the page
-  readout at the foot of the screen keeps count as you go. It works in Word documents, spreadsheets, slides, Markdown and text files as well as PDFs,
-  where it shows how far through you are rather than a page number. On a phone using gesture
+  readout at the foot of the screen keeps count as you go. It works in Word documents,
+  spreadsheets, slides, Markdown and text files as well as PDFs, where it shows how far
+  through you are rather than a page number. On a phone using gesture
   navigation it takes its own strip of the edge, so reaching for it is not read as going
   back. Gander still opens every document at the beginning rather than where you left off,
   which is a separate thing and not done yet.
+- Browsing a granted folder no longer freezes the screen. Gander asked the folder for its
+  contents on the same thread that draws, so opening one holding a few thousand files, or
+  one on an SD card or a USB stick, stopped the app dead until the answer came back: over
+  a second of frozen screen on a folder of 1,500 files, and the sort of thing Android
+  eventually reports as "app isn't responding". The reading happens off to one side now.
+  The folder name and the back arrow change at once, the list you were looking at stays up
+  until the new one is ready rather than blinking through empty, and a thin progress line
+  appears only when the wait is long enough to be worth mentioning. Naming a granted folder
+  was also costing a lookup every time two of them were compared while sorting; that is one
+  each now, and remembered.
 
 ## 1.13 (2026-08-25)
 

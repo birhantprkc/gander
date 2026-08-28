@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.DocumentsContract
 import android.text.format.DateUtils
 import android.text.format.Formatter
@@ -26,7 +28,9 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.io.File
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -50,6 +54,38 @@ class MainActivity : AppCompatActivity() {
     private val stack = ArrayDeque<Crumb>()
     private val adapter = RowAdapter()
     private lateinit var toolbar: MaterialToolbar
+    private lateinit var progress: LinearProgressIndicator
+
+    /**
+     * Where the rows are built.
+     *
+     * Reading a granted folder is a query to another app's DocumentsProvider, and so is
+     * asking a tree for its display name. Both were done inline in render(), which runs
+     * on every resume and every tap, so a folder holding a few thousand files, or a
+     * provider on an SD card, a USB stick or a cloud account, froze the home screen and
+     * would eventually have shown up as an ANR. Play tracks ANR rate and a bad one
+     * suppresses the listing, which makes this the one item on the pre-launch list that
+     * could quietly cost reach.
+     *
+     * Single threaded on purpose: one folder is being looked at at a time, and it keeps
+     * treeLabels below confined to one thread without a lock.
+     */
+    private val loader = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+
+    /**
+     * Bumped by every render. A load that finishes after another has been asked for is
+     * dropped rather than drawn: tapping through three folders quickly used to be three
+     * blocking reads in order, and now it is three racing ones, only the last of which
+     * describes where the reader actually is.
+     */
+    private var renderToken = 0
+
+    /**
+     * Display names for granted trees, which cost a query each and never change while
+     * the grant lasts. Read and written only on [loader], so it needs no synchronising.
+     */
+    private val treeLabels = mutableMapOf<String, String>()
 
     private val backCallback = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
@@ -100,6 +136,7 @@ class MainActivity : AppCompatActivity() {
                 false
             }
         }
+        progress = findViewById(R.id.loadProgress)
         findViewById<RecyclerView>(R.id.list).let {
             it.layoutManager = LinearLayoutManager(this)
             it.adapter = adapter
@@ -223,15 +260,41 @@ class MainActivity : AppCompatActivity() {
             .onFailure { Toast.makeText(this, R.string.no_browser, Toast.LENGTH_SHORT).show() }
     }
 
+    /**
+     * Redraws the screen for wherever the reader is now.
+     *
+     * The toolbar changes at once and the list follows, because the title is known here
+     * and the rows are not: they come from a provider that may be slow. Nothing is
+     * cleared in the meantime, so returning from a document leaves the old list on
+     * screen until the new one is ready rather than blinking through empty.
+     */
     private fun render() {
-        backCallback.isEnabled = stack.isNotEmpty()
-        val rows = if (stack.isEmpty()) homeRows() else folderRows(stack.last())
-        toolbar.title = if (stack.isEmpty()) getString(R.string.app_name) else stack.last().label
+        val here = stack.lastOrNull()
+        backCallback.isEnabled = here != null
+        toolbar.title = here?.label ?: getString(R.string.app_name)
         toolbar.navigationIcon =
-            if (stack.isEmpty()) null
+            if (here == null) null
             else androidx.appcompat.content.res.AppCompatResources.getDrawable(this, R.drawable.ic_back)
         toolbar.navigationContentDescription = getString(R.string.back)
-        adapter.submit(rows)
+
+        val token = ++renderToken
+        // Delayed rather than shown at once. Most folders come back in a few
+        // milliseconds, and a bar that appears and vanishes inside one frame reads as a
+        // flicker rather than as progress.
+        val announce = Runnable {
+            if (token == renderToken && !isDestroyed) progress.visibility = View.VISIBLE
+        }
+        main.postDelayed(announce, RENDER_PROGRESS_DELAY_MS)
+
+        loader.execute {
+            val rows = if (here == null) homeRows() else folderRows(here)
+            main.post {
+                main.removeCallbacks(announce)
+                if (token != renderToken || isDestroyed) return@post
+                progress.visibility = View.GONE
+                adapter.submit(rows)
+            }
+        }
     }
 
     private fun homeRows(): List<Row> {
@@ -261,12 +324,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
         rows += Row.Header(getString(R.string.folders))
+        // Labelled first, then sorted. sortedBy runs its selector on every comparison,
+        // so naming the tree inside it cost a provider query per comparison rather than
+        // one per folder.
         val roots = contentResolver.persistedUriPermissions
             .filter { it.isReadPermission && isTreeUri(it.uri) }
-            .sortedBy { treeLabel(it.uri).lowercase() }
+            .map { it to treeLabel(it.uri) }
+            .sortedBy { (_, label) -> label.lowercase() }
         if (roots.isEmpty()) rows += Row.Hint(getString(R.string.no_folders_hint))
-        roots.forEach { perm ->
-            val label = treeLabel(perm.uri)
+        roots.forEach { (perm, label) ->
             rows += Row.Item(
                 "DIR", DIR_COLOR, label, null,
                 onClick = {
@@ -364,7 +430,11 @@ class MainActivity : AppCompatActivity() {
         runCatching { DocumentsContract.getTreeDocumentId(uri) }.isSuccess &&
             uri.pathSegments.firstOrNull() == "tree"
 
-    private fun treeLabel(uri: Uri): String {
+    /** Cached: the name of a granted tree costs a query and does not change. */
+    private fun treeLabel(uri: Uri): String =
+        treeLabels.getOrPut(uri.toString()) { readTreeLabel(uri) }
+
+    private fun readTreeLabel(uri: Uri): String {
         val id = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return "Folder"
         val name = runCatching {
             contentResolver.query(
@@ -393,10 +463,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        // Anything already queued still runs to completion and the thread ends with it,
+        // rather than outliving the activity it was drawing.
+        loader.shutdown()
+        super.onDestroy()
+    }
+
     private companion object {
         val DIR_COLOR = 0xFFF9A825.toInt()
         val ADD_COLOR = 0xFF1565C0.toInt()
         const val LICENCES_ASSET = "licences.md"
+
+        /** How long a folder may take to read before the screen says anything about it. */
+        const val RENDER_PROGRESS_DELAY_MS = 150L
     }
 
     private class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {

@@ -17,6 +17,17 @@
             android:background="?attr/colorSurface"
             app:titleTextAppearance="?attr/textAppearanceTitleLarge" />
 
+        <!-- Sits between the toolbar and the list while a folder is being read, the
+             same shape the viewer uses for a long save. Only appears if the read takes
+             long enough to be worth mentioning; see RENDER_PROGRESS_DELAY_MS. -->
+        <com.google.android.material.progressindicator.LinearProgressIndicator
+            android:id="@+id/loadProgress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:indeterminate="true"
+            android:visibility="gone"
+            app:trackCornerRadius="0dp" />
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/list"
             android:layout_width="match_parent"
