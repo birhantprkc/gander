@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The first thing a new install shows.
+
+     Before this the screen opened on "Recent files", an empty list, "Folders", and three
+     sentences about Android refusing to grant the Downloads root: the first thing anybody
+     read about Gander was a limitation of somebody else's software. What the app is and
+     what it opens was written down in strings.xml the whole time and never put on a
+     screen. This is that text, and it appears only until the first file is opened or the
+     first folder granted. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingEnd="20dp"
+    android:paddingTop="20dp"
+    android:paddingBottom="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/main_subtitle"
+        android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:lineSpacingExtra="2dp"
+        android:text="@string/supported_formats"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?attr/colorOnSurfaceVariant" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="@string/open_with_hint"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?attr/colorPrimary" />
+</LinearLayout>

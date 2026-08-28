@@ -82,6 +82,14 @@
   bottom edge of the screen, which is where a video puts them to keep them off the picture. Playback still stops when you leave Gander, and always will: carrying on in
   the background needs a foreground service, a service needs a permission, and a permission is
   the one thing this app will not add.
+- A fresh install says what Gander is. The home screen used to open on an empty Recent files
+  heading, an empty Folders heading, and three sentences about Android refusing to grant the
+  Downloads root, so the first thing anybody read about the app was a limitation of somebody
+  else's software. The line describing what Gander does and the list of what it opens had
+  both been written and never put on a screen; they are the first thing there now, with the
+  tip about Open with under them, and they go for good the moment you open a file or grant a
+  folder. The Downloads note is gone entirely: Android says the same thing itself, in the
+  picker, at the moment it matters.
 
 ## 1.13 (2026-08-25)
 

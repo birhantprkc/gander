@@ -35,6 +35,8 @@ import java.util.concurrent.Executors
 class MainActivity : AppCompatActivity() {
 
     private sealed interface Row {
+        /** Shown on a first run, in place of a Recent files header with nothing under it. */
+        data object Welcome : Row
         data class Header(val title: String) : Row
         data class Hint(val text: String) : Row
         data class Item(
@@ -299,11 +301,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun homeRows(): List<Row> {
         val rows = mutableListOf<Row>()
-        rows += Row.Header(getString(R.string.recent_files))
         val recents = Recents.all(this)
-        if (recents.isEmpty()) {
-            rows += Row.Hint(getString(R.string.no_recents_hint))
+        // Labelled first, then sorted. sortedBy runs its selector on every comparison,
+        // so naming the tree inside it cost a provider query per comparison rather than
+        // one per folder.
+        val roots = contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission && isTreeUri(it.uri) }
+            .map { it to treeLabel(it.uri) }
+            .sortedBy { (_, label) -> label.lowercase() }
+
+        // Nothing opened and nothing granted is a first run, and a first run gets told
+        // what this is rather than being shown two empty headings. Once either has
+        // happened the reader knows, and the ordinary list comes back for good.
+        if (recents.isEmpty() && roots.isEmpty()) {
+            rows += Row.Welcome
         } else {
+            rows += Row.Header(getString(R.string.recent_files))
+            if (recents.isEmpty()) {
+                rows += Row.Hint(getString(R.string.no_recents_hint))
+            } else {
             recents.forEach { r ->
                 val (badge, color) = badgeFor(r.name, null)
                 val ext = r.name.substringAfterLast('.', "").lowercase()
@@ -322,15 +338,9 @@ class MainActivity : AppCompatActivity() {
                     thumbExt = ext
                 )
             }
+            }
         }
         rows += Row.Header(getString(R.string.folders))
-        // Labelled first, then sorted. sortedBy runs its selector on every comparison,
-        // so naming the tree inside it cost a provider query per comparison rather than
-        // one per folder.
-        val roots = contentResolver.persistedUriPermissions
-            .filter { it.isReadPermission && isTreeUri(it.uri) }
-            .map { it to treeLabel(it.uri) }
-            .sortedBy { (_, label) -> label.lowercase() }
         if (roots.isEmpty()) rows += Row.Hint(getString(R.string.no_folders_hint))
         roots.forEach { (perm, label) ->
             rows += Row.Item(
@@ -523,6 +533,7 @@ class MainActivity : AppCompatActivity() {
             is Row.Header -> 0
             is Row.Hint -> 1
             is Row.Item -> 2
+            is Row.Welcome -> 3
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -530,6 +541,7 @@ class MainActivity : AppCompatActivity() {
             val layout = when (viewType) {
                 0 -> R.layout.row_header
                 1 -> R.layout.row_hint
+                3 -> R.layout.row_welcome
                 else -> R.layout.row_item
             }
             return object : RecyclerView.ViewHolder(inflater.inflate(layout, parent, false)) {}
@@ -539,6 +551,8 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             when (val row = rows[position]) {
+                // Every word of it is in the layout.
+                is Row.Welcome -> Unit
                 is Row.Header ->
                     holder.itemView.findViewById<TextView>(R.id.headerText).text = row.title
                 is Row.Hint ->
