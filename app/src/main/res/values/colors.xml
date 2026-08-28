@@ -1,6 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+     Gander's Material 3 colour scheme.
+
+     The palette is not new. The site, the launcher icon and the social preview have
+     run one scheme for four documented rounds of iteration: warm paper, cool ink,
+     terracotta accent. The app was the only surface it never reached. themes.xml used
+     to set exactly one of Material's thirty-five colour roles, colorPrimary, so the
+     other thirty-four still resolved to Material's baseline, which is built on purple.
+     That is why the "Open a file" button was lavender on a faintly violet white while
+     the section headers above it were blue: two accent families on one screen, neither
+     of them the brand.
+
+     colorPrimary is #AF2D18 exactly, which is the red custom property in docs/index.html. Material wants
+     the light primary at tone 40, and tone 40 of this hue lands within 0.3 of L* of the
+     hex the site already ships, so the brand red was already sitting in the right slot
+     and nothing had to be compromised to adopt it.
+
+     Secondary is deliberately cool, from the site's navy ink, rather than another tone
+     of the terracotta: warm ground, cool ink, one warm accent is the whole idea.
+
+     Every foreground and background pair here clears WCAG AA, and most clear AAA;
+     the numbers are in the commit that introduced this file. Night values live in
+     values-night/colors.xml under the same names, so themes.xml maps each role once.
+-->
 <resources>
-    <color name="gander_primary">#1565C0</color>
-    <color name="gander_primary_night">#90CAF9</color>
+    <color name="gander_primary">#AF2D18</color>
+    <color name="gander_on_primary">#FFFFFF</color>
+    <color name="gander_primary_container">#FFD9CE</color>
+    <color name="gander_on_primary_container">#390D00</color>
+    <color name="gander_secondary">#4F6075</color>
+    <color name="gander_on_secondary">#FFFFFF</color>
+    <color name="gander_secondary_container">#D2E4FD</color>
+    <color name="gander_on_secondary_container">#091D2E</color>
+    <color name="gander_tertiary">#6A5D2F</color>
+    <color name="gander_on_tertiary">#FFFFFF</color>
+    <color name="gander_tertiary_container">#F4E0A9</color>
+    <color name="gander_on_tertiary_container">#221B00</color>
+    <color name="gander_error">#B3261E</color>
+    <color name="gander_on_error">#FFFFFF</color>
+    <color name="gander_error_container">#F9DEDC</color>
+    <color name="gander_on_error_container">#410E0B</color>
+    <color name="gander_surface">#FEF9F0</color>
+    <color name="gander_on_surface">#1E1B15</color>
+    <color name="gander_surface_variant">#ECE1CE</color>
+    <color name="gander_on_surface_variant">#4D4636</color>
+    <color name="gander_surface_container_lowest">#FFFFFF</color>
+    <color name="gander_surface_container_low">#F8F3EA</color>
+    <color name="gander_surface_container">#F2EDE4</color>
+    <color name="gander_surface_container_high">#ECE8DF</color>
+    <color name="gander_surface_container_highest">#E7E2D9</color>
+    <color name="gander_surface_dim">#DFDACF</color>
+    <color name="gander_surface_bright">#FEF9F0</color>
+    <color name="gander_outline">#7F7664</color>
+    <color name="gander_outline_variant">#CFC5B2</color>
+    <color name="gander_inverse_surface">#333027</color>
+    <color name="gander_inverse_on_surface">#F8F3EA</color>
+    <color name="gander_inverse_primary">#FFB39E</color>
+
+    <!-- Unchanged: the icon and the app it opens are one family already, and
+         retouching it means regenerating two baked PNGs that are not in this repo. -->
     <color name="ic_launcher_background">#F6F1E6</color>
 </resources>

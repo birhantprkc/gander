@@ -1,8 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+         Every role, not one.
+
+         Setting colorPrimary alone left the other thirty-four resolving to Material's
+         baseline theme, which is purple, so the FAB, the surfaces and every container
+         role were a colour that appears nowhere else in this project. The names below
+         are defined twice, in values/colors.xml and values-night/colors.xml, so this
+         list is written once and night mode follows on its own.
+
+         windowBackground is here as well as colorBackground so the warm ground reaches
+         behind the list rather than showing through as the platform default.
+    -->
     <style name="Theme.Gander" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/gander_primary</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="colorOnPrimary">@color/gander_on_primary</item>
+        <item name="colorPrimaryContainer">@color/gander_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/gander_on_primary_container</item>
+        <item name="colorSecondary">@color/gander_secondary</item>
+        <item name="colorOnSecondary">@color/gander_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/gander_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/gander_on_secondary_container</item>
+        <item name="colorTertiary">@color/gander_tertiary</item>
+        <item name="colorOnTertiary">@color/gander_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/gander_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/gander_on_tertiary_container</item>
+        <item name="colorError">@color/gander_error</item>
+        <item name="colorOnError">@color/gander_on_error</item>
+        <item name="colorErrorContainer">@color/gander_error_container</item>
+        <item name="colorOnErrorContainer">@color/gander_on_error_container</item>
+        <item name="colorSurface">@color/gander_surface</item>
+        <item name="colorOnSurface">@color/gander_on_surface</item>
+        <item name="colorOnBackground">@color/gander_on_surface</item>
+        <item name="colorSurfaceVariant">@color/gander_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/gander_on_surface_variant</item>
+        <item name="colorSurfaceContainerLowest">@color/gander_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/gander_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/gander_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/gander_surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/gander_surface_container_highest</item>
+        <item name="colorSurfaceDim">@color/gander_surface_dim</item>
+        <item name="colorSurfaceBright">@color/gander_surface_bright</item>
+        <item name="colorOutline">@color/gander_outline</item>
+        <item name="colorOutlineVariant">@color/gander_outline_variant</item>
+        <item name="colorSurfaceInverse">@color/gander_inverse_surface</item>
+        <item name="colorOnSurfaceInverse">@color/gander_inverse_on_surface</item>
+        <item name="colorPrimaryInverse">@color/gander_inverse_primary</item>
+        <item name="android:colorBackground">@color/gander_surface</item>
+        <item name="android:windowBackground">@color/gander_surface</item>
+        <item name="android:windowLightStatusBar">@bool/gander_light_status_bar</item>
     </style>
 
     <style name="ShapeAppearance.Gander.Thumb" parent="">

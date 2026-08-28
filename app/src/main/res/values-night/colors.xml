@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Night values for the roles in values/colors.xml.
+
+     The palette is not new. The site, the launcher icon and the social preview have
+     run one scheme for four documented rounds of iteration: warm paper, cool ink,
+     terracotta accent. The app was the only surface it never reached. themes.xml used
+     to set exactly one of Material's thirty-five colour roles, colorPrimary, so the
+     other thirty-four still resolved to Material's baseline, which is built on purple.
+     That is why the "Open a file" button was lavender on a faintly violet white while
+     the section headers above it were blue: two accent families on one screen, neither
+     of them the brand.
+
+     colorPrimary is #AF2D18 exactly, which is the red custom property in docs/index.html. Material wants
+     the light primary at tone 40, and tone 40 of this hue lands within 0.3 of L* of the
+     hex the site already ships, so the brand red was already sitting in the right slot
+     and nothing had to be compromised to adopt it.
+
+     Secondary is deliberately cool, from the site's navy ink, rather than another tone
+     of the terracotta: warm ground, cool ink, one warm accent is the whole idea.
+
+     Every foreground and background pair here clears WCAG AA, and most clear AAA;
+     the numbers are in the commit that introduced this file. Night values live in
+     values-night/colors.xml under the same names, so themes.xml maps each role once.
+-->
+<resources>
+    <color name="gander_primary">#FFB39E</color>
+    <color name="gander_on_primary">#650B00</color>
+    <color name="gander_primary_container">#910A00</color>
+    <color name="gander_on_primary_container">#FFD9CE</color>
+    <color name="gander_secondary">#B7C8E0</color>
+    <color name="gander_on_secondary">#21374B</color>
+    <color name="gander_secondary_container">#37485C</color>
+    <color name="gander_on_secondary_container">#D2E4FD</color>
+    <color name="gander_tertiary">#D7C68F</color>
+    <color name="gander_on_tertiary">#3A3100</color>
+    <color name="gander_tertiary_container">#514619</color>
+    <color name="gander_on_tertiary_container">#F4E0A9</color>
+    <color name="gander_error">#F2B8B5</color>
+    <color name="gander_on_error">#601410</color>
+    <color name="gander_error_container">#8C1D18</color>
+    <color name="gander_on_error_container">#F9DEDC</color>
+    <color name="gander_surface">#17130A</color>
+    <color name="gander_on_surface">#E7E2D9</color>
+    <color name="gander_surface_variant">#4D4636</color>
+    <color name="gander_on_surface_variant">#CFC5B2</color>
+    <color name="gander_surface_container_lowest">#120E02</color>
+    <color name="gander_surface_container_low">#1E1B15</color>
+    <color name="gander_surface_container">#221F19</color>
+    <color name="gander_surface_container_high">#2D2A23</color>
+    <color name="gander_surface_container_highest">#38342D</color>
+    <color name="gander_surface_dim">#17130A</color>
+    <color name="gander_surface_bright">#3D392F</color>
+    <color name="gander_outline">#99907D</color>
+    <color name="gander_outline_variant">#4D4636</color>
+    <color name="gander_inverse_surface">#E7E2D9</color>
+    <color name="gander_inverse_on_surface">#1E1B15</color>
+    <color name="gander_inverse_primary">#AF2D18</color>
+</resources>

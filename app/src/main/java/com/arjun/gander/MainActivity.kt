@@ -446,20 +446,39 @@ class MainActivity : AppCompatActivity() {
         return name ?: id.substringAfterLast(':').ifEmpty { id }
     }
 
+    /**
+     * The two or three letters, and the colour behind them, for a file.
+     *
+     * Four of these moved when the app adopted the brand's terracotta primary. PPT sat
+     * about four degrees of hue from the new accent, so a PowerPoint tile and the app's
+     * own accent would have read as one signal; it moved to 16 degrees off. The other
+     * three moved because they were already failing WCAG AA against their own white
+     * label, which is what Play's pre-launch accessibility scan looks for: DIR was the
+     * worst thing in the app at 1.97:1, FILE at 3.35 and PPT at 3.92, against the 4.5
+     * that 12sp bold needs. They now measure 4.90, 4.65 and 5.20.
+     *
+     * PDF moved too, from 4.98 to 6.54. It was already passing, and it sits close to the
+     * accent, but Thumbs draws a real first page over it whenever it can, so the tile is
+     * mostly a placeholder. Mostly: a document that will not render, an encrypted one
+     * above all, falls back to this badge and keeps it.
+     *
+     * The rest are untouched. Every one of them clears AA and sits at least 82 degrees
+     * of hue away from the accent.
+     */
     private fun badgeFor(name: String, mime: String?): Pair<String, Int> {
         val ext = name.substringAfterLast('.', "").lowercase()
         return when (FileKind.detect(ext, mime)) {
-            FileKind.PDF -> "PDF" to 0xFFD32F2F.toInt()
+            FileKind.PDF -> "PDF" to 0xFFB3261E.toInt()
             FileKind.DOCX -> "DOC" to 0xFF1565C0.toInt()
             FileKind.XLSX -> "XLS" to 0xFF2E7D32.toInt()
-            FileKind.PPTX -> "PPT" to 0xFFE64A19.toInt()
+            FileKind.PPTX -> "PPT" to 0xFFB25000.toInt()
             FileKind.IMAGE, FileKind.IMAGE_WEB -> "IMG" to 0xFF7B1FA2.toInt()
             FileKind.PLAYER ->
                 if (FileKind.isAudioExt(ext)) "AUD" to 0xFF00838F.toInt()
                 else "VID" to 0xFFAD1457.toInt()
             FileKind.MD -> "MD" to 0xFF455A64.toInt()
             FileKind.TEXT -> "TXT" to 0xFF616161.toInt()
-            FileKind.UNSUPPORTED -> "FILE" to 0xFF78909C.toInt()
+            FileKind.UNSUPPORTED -> "FILE" to 0xFF607884.toInt()
         }
     }
 
@@ -471,8 +490,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
-        val DIR_COLOR = 0xFFF9A825.toInt()
-        val ADD_COLOR = 0xFF1565C0.toInt()
+        val DIR_COLOR = 0xFF8A6D1F.toInt()
+
+        /**
+         * The brand accent, and the one badge that is an action rather than a file type.
+         *
+         * Fixed rather than ?attr/colorPrimary, which is what it looks like it should be.
+         * Material inverts primary for dark mode, to #FFB39E, and the label on every
+         * badge is a hardcoded white in row_item.xml: a white "+" on that measured
+         * 1.72:1, worse than the amber DIR badge this release exists partly to fix.
+         * Pinned to the light tone it stays 6.54:1 in both themes, and against the night
+         * surface it sits at 2.83 against the DOC badge's 3.22, so it reads as a shape
+         * exactly like its neighbours.
+         */
+        val ADD_COLOR = 0xFFAF2D18.toInt()
         const val LICENCES_ASSET = "licences.md"
 
         /** How long a folder may take to read before the screen says anything about it. */

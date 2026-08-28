@@ -47,6 +47,16 @@
   appears only when the wait is long enough to be worth mentioning. Naming a granted folder
   was also costing a lookup every time two of them were compared while sorting; that is one
   each now, and remembered.
+- Gander looks like Gander now. The website, the launcher icon and the social preview have
+  run one palette for a while: warm paper, cool ink, a terracotta accent. The app never got
+  it. It set exactly one of Material's thirty-five colour roles, so the other thirty-four
+  fell back to Material's own defaults, which are built on purple, and that is why the
+  "Open a file" button was lavender and the white behind it faintly violet, under headings
+  that were blue. All thirty-five are set now, from the same red the website uses, and the
+  night palette is derived from it rather than guessed at. Four of the file badges moved
+  too: three were failing the contrast standard against their own white lettering, the amber
+  folder badge worst of anything in the app, and the PowerPoint orange sat close enough to
+  the new accent that a slide deck and the app's own colour would have read as one thing.
 
 ## 1.13 (2026-08-25)
 
