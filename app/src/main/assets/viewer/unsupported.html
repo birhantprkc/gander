@@ -10,9 +10,9 @@
     margin: 32px 16px;
     padding: 20px;
     border-radius: 12px;
-    background: #ffffff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
-    color: #1E1B15;
+    background: var(--vw-card);
+    box-shadow: 0 1px 4px var(--vw-shadow);
+    color: var(--vw-ink);
   }
   .card h2 { margin: 0 0 8px; font-size: 18px; }
   .card .fname { font-weight: 600; word-break: break-all; }
@@ -24,8 +24,8 @@
     padding: 12px 16px;
     border: 0;
     border-radius: 8px;
-    background: #af2d18;
-    color: #ffffff;
+    background: var(--vw-accent);
+    color: var(--vw-accent-ink);
     font: 500 15px Roboto, -apple-system, "Segoe UI", sans-serif;
   }
   .as-text:active { background: #8a2413; }
@@ -33,9 +33,7 @@
 
   /* Nothing here is a document, it is all chrome, so all of it turns over. */
   @media (prefers-color-scheme: dark) {
-    body { background: #17130A; }
-    .card { background: #221F19; color: #E7E2D9; box-shadow: 0 1px 4px rgba(0,0,0,0.5); }
-    .as-text { background: #FFB39E; color: #650B00; }
+    .card { background: #221F19; color: var(--vw-ink); box-shadow: 0 1px 4px var(--vw-shadow); }
     .as-text:active { background: #E09883; }
   }
 </style>

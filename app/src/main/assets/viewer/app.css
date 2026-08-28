@@ -1,3 +1,25 @@
+/*
+ * The palette, once.
+ *
+ * These are the app's own roles, and every viewer that links this file reads them
+ * rather than retyping the hex. Before this they were hand-copied into five pages,
+ * which is how text.html and md.html came to keep a cool ground under a warm card:
+ * the shared rule moved and their own copy did not. A viewer that wants a different
+ * ground now sets the token, so the card, the accent and the ink follow it.
+ *
+ * pdf.html, pptx.html and imgweb.html paint their own and are still left alone.
+ */
+:root {
+  --vw-ground: #ECE8DF;
+  --vw-card: #ffffff;
+  --vw-ink: #1E1B15;
+  --vw-accent: #af2d18;
+  --vw-accent-ink: #ffffff;
+  --vw-error: #fdecea;
+  --vw-error-ink: #8c1d18;
+  --vw-shadow: rgba(0, 0, 0, 0.15);
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -13,7 +35,7 @@ html, body {
  * remember to restate html.
  */
 body {
-  background: #ECE8DF;
+  background: var(--vw-ground);
 }
 
 .vw-status {
@@ -21,16 +43,16 @@ body {
   max-width: 420px;
   padding: 14px 18px;
   border-radius: 10px;
-  background: #ffffff;
-  color: #1E1B15;
+  background: var(--vw-card);
+  color: var(--vw-ink);
   font-size: 15px;
   text-align: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 4px var(--vw-shadow);
 }
 
 .vw-error {
-  background: #fdecea;
-  color: #8c1d18;
+  background: var(--vw-error);
+  color: var(--vw-error-ink);
   text-align: left;
 }
 
@@ -59,16 +81,14 @@ body {
  * colour matrix rather than a stylesheet.
  */
 @media (prefers-color-scheme: dark) {
-  body { background: #17130A; }
-
-  .vw-status {
-    background: #2D2A23;
-    color: #E7E2D9;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-  }
-
-  .vw-error {
-    background: #8C1D18;
-    color: #F9DEDC;
+  :root {
+    --vw-ground: #17130A;
+    --vw-card: #2D2A23;
+    --vw-ink: #E7E2D9;
+    --vw-accent: #FFB39E;
+    --vw-accent-ink: #650B00;
+    --vw-error: #8C1D18;
+    --vw-error-ink: #F9DEDC;
+    --vw-shadow: rgba(0, 0, 0, 0.5);
   }
 }

@@ -27,19 +27,18 @@
   }
   .more button {
     padding: 10px 20px;
-    border: 1px solid #af2d18;
+    border: 1px solid var(--vw-accent);
     border-radius: 8px;
     background: transparent;
-    color: #af2d18;
+    color: var(--vw-accent);
     font: 500 15px Roboto, -apple-system, "Segoe UI", sans-serif;
   }
   .more button:active { background: #f7e4e0; }
   .more button[disabled] { opacity: 0.5; }
   @media (prefers-color-scheme: dark) {
-    body { background: #121212; }
+    body { background: var(--vw-ground); }
     pre { color: #e0e0e0; }
     .more p { color: #9e9e9e; }
-    .more button { border-color: #FFB39E; color: #FFB39E; }
     .more button:active { background: #3a2620; }
   }
 </style>

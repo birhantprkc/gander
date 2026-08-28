@@ -28,9 +28,9 @@
     padding: 6px 14px;
   }
   #tabs button.active {
-    background: #af2d18;
-    border-color: #af2d18;
-    color: #ffffff;
+    background: var(--vw-accent);
+    border-color: var(--vw-accent);
+    color: var(--vw-accent-ink);
   }
   #sheet { padding: 8px; overflow: auto; }
   #sheet table { border-collapse: collapse; font-size: 13px; }
@@ -48,12 +48,11 @@
      clears 3:1 against the ground so the structure is still legible, while staying
      far enough behind the cell text not to compete with the numbers. */
   @media (prefers-color-scheme: dark) {
-    body { background: #17130A; }
+    body { background: var(--vw-ground); }
     #tabs { background: #221F19; border-bottom-color: #4D4636; }
-    #tabs button { background: #2D2A23; border-color: #4D4636; color: #E7E2D9; }
-    #tabs button.active { background: #FFB39E; border-color: #FFB39E; color: #650B00; }
-    #sheet td, #sheet th { border-color: #6B6250; color: #E7E2D9; }
-    #sheet tr:first-child td { background: #2D2A23; }
+    #tabs button { background: var(--vw-card); border-color: #4D4636; color: var(--vw-ink); }
+    #sheet td, #sheet th { border-color: #6B6250; color: var(--vw-ink); }
+    #sheet tr:first-child td { background: var(--vw-card); }
   }
 </style>
 <script src="lib/xlsx.full.min.js"></script>
