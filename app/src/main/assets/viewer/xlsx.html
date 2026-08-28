@@ -15,32 +15,46 @@
     overflow-x: auto;
     gap: 6px;
     padding: 8px;
-    background: #eceff1;
-    border-bottom: 1px solid #cfd8dc;
+    background: #ECE8DF;
+    border-bottom: 1px solid #CFC5B2;
   }
   #tabs button {
     flex: 0 0 auto;
-    border: 1px solid #b0bec5;
+    border: 1px solid #CFC5B2;
     border-radius: 16px;
     background: #ffffff;
-    color: #37474f;
+    color: #4D4636;
     font-size: 13px;
     padding: 6px 14px;
   }
   #tabs button.active {
-    background: #1565c0;
-    border-color: #1565c0;
+    background: #af2d18;
+    border-color: #af2d18;
     color: #ffffff;
   }
   #sheet { padding: 8px; overflow: auto; }
   #sheet table { border-collapse: collapse; font-size: 13px; }
   #sheet td, #sheet th {
-    border: 1px solid #cfd8dc;
+    border: 1px solid #CFC5B2;
     padding: 4px 8px;
     white-space: pre;
     min-width: 40px;
   }
-  #sheet tr:first-child td { background: #f5f7f8; font-weight: 600; }
+  #sheet tr:first-child td { background: #F2EDE4; font-weight: 600; }
+
+  /* A spreadsheet has no paper to be faithful to, unlike a Word page, so the whole
+     thing goes dark rather than just the surround. The rules are borrowed from the
+     app's night palette. The grid is #6B6250 and not the lighter outline tone: it
+     clears 3:1 against the ground so the structure is still legible, while staying
+     far enough behind the cell text not to compete with the numbers. */
+  @media (prefers-color-scheme: dark) {
+    body { background: #17130A; }
+    #tabs { background: #221F19; border-bottom-color: #4D4636; }
+    #tabs button { background: #2D2A23; border-color: #4D4636; color: #E7E2D9; }
+    #tabs button.active { background: #FFB39E; border-color: #FFB39E; color: #650B00; }
+    #sheet td, #sheet th { border-color: #6B6250; color: #E7E2D9; }
+    #sheet tr:first-child td { background: #2D2A23; }
+  }
 </style>
 <script src="lib/xlsx.full.min.js"></script>
 </head>

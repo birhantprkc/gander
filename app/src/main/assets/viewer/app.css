@@ -13,7 +13,7 @@ html, body {
  * remember to restate html.
  */
 body {
-  background: #eceff1;
+  background: #ECE8DF;
 }
 
 .vw-status {
@@ -22,7 +22,7 @@ body {
   padding: 14px 18px;
   border-radius: 10px;
   background: #ffffff;
-  color: #37474f;
+  color: #1E1B15;
   font-size: 15px;
   text-align: center;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
@@ -43,4 +43,32 @@ body {
   font-size: 13px;
   opacity: 0.85;
   word-break: break-word;
+}
+
+/*
+ * Night, for every viewer that does not paint its own.
+ *
+ * Verified first that this media query fires at all: a WebView reports the host app's
+ * theme through it with no setting to turn on, which is why md.html and text.html have
+ * worked since they were written. The values are the app's own night roles, so passing
+ * from the file list into a document does not change temperature.
+ *
+ * pdf.html, pptx.html and imgweb.html paint their own dark ground and are left alone.
+ * The document itself stays as the document: a Word page is paper and is white at
+ * midnight too. Inverting the contents is a separate feature, issue #19, and wants a
+ * colour matrix rather than a stylesheet.
+ */
+@media (prefers-color-scheme: dark) {
+  body { background: #17130A; }
+
+  .vw-status {
+    background: #2D2A23;
+    color: #E7E2D9;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  }
+
+  .vw-error {
+    background: #8C1D18;
+    color: #F9DEDC;
+  }
 }

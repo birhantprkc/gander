@@ -57,6 +57,15 @@
   too: three were failing the contrast standard against their own white lettering, the amber
   folder badge worst of anything in the app, and the PowerPoint orange sat close enough to
   the new accent that a slide deck and the app's own colour would have read as one thing.
+- Documents follow your dark mode. Opening a spreadsheet at night used to be a full screen
+  of white: only the Markdown and text viewers had ever been told about dark mode, so the
+  loading and error cards, a Word document's surround, the unknown-format card and the sheet
+  tabs along the top of a workbook stayed light whatever the phone was set to. They all turn
+  over now, in the colours the rest of the app uses at night. The document itself does not,
+  and that is deliberate: a Word page is paper, and paper is white at midnight too. Turning
+  the contents of a PDF dark is a different thing and is still to come. The light theme moved
+  as well, off the blue-grey these viewers were built on and onto the warm ground the app now
+  has, so the surround stops changing temperature at the bottom edge of the toolbar.
 
 ## 1.13 (2026-08-25)
 

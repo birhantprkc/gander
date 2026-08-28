@@ -12,7 +12,7 @@
     border-radius: 12px;
     background: #ffffff;
     box-shadow: 0 1px 4px rgba(0,0,0,0.15);
-    color: #37474f;
+    color: #1E1B15;
   }
   .card h2 { margin: 0 0 8px; font-size: 18px; }
   .card .fname { font-weight: 600; word-break: break-all; }
@@ -24,12 +24,20 @@
     padding: 12px 16px;
     border: 0;
     border-radius: 8px;
-    background: #1565c0;
+    background: #af2d18;
     color: #ffffff;
     font: 500 15px Roboto, -apple-system, "Segoe UI", sans-serif;
   }
-  .as-text:active { background: #0d47a1; }
+  .as-text:active { background: #8a2413; }
   .card .caveat { font-size: 13px; opacity: 0.75; }
+
+  /* Nothing here is a document, it is all chrome, so all of it turns over. */
+  @media (prefers-color-scheme: dark) {
+    body { background: #17130A; }
+    .card { background: #221F19; color: #E7E2D9; box-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+    .as-text { background: #FFB39E; color: #650B00; }
+    .as-text:active { background: #E09883; }
+  }
 </style>
 </head>
 <body>

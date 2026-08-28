@@ -5,8 +5,15 @@
 <title>Word document</title>
 <link rel="stylesheet" href="app.css">
 <style>
-  .docx-wrapper { background: #eceff1 !important; padding: 16px 8px !important; }
+  .docx-wrapper { background: #ECE8DF !important; padding: 16px 8px !important; }
   .docx-wrapper > section.docx { box-shadow: 0 1px 6px rgba(0,0,0,0.25) !important; margin-bottom: 16px !important; }
+
+  /* The surround only. section.docx is the page itself, and a page is paper: it stays
+     white here for the same reason a PDF page does. */
+  @media (prefers-color-scheme: dark) {
+    .docx-wrapper { background: #17130A !important; }
+    .docx-wrapper > section.docx { box-shadow: 0 1px 8px rgba(0,0,0,0.6) !important; }
+  }
 </style>
 <script src="lib/jszip3.min.js"></script>
 <script src="lib/docx-preview.min.js"></script>
