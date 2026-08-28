@@ -24,6 +24,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
@@ -236,6 +237,7 @@ class ViewerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_viewer)
         applySystemBarInsets(findViewById(R.id.root))
+        onBackPressedDispatcher.addCallback(this, searchBackCallback)
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
 
@@ -436,6 +438,28 @@ class ViewerActivity : AppCompatActivity() {
     /** Set once the counter exists, called with (position, total, indexFinished). */
     private var onSearchCount: ((Int, Int, Boolean) -> Unit)? = null
 
+    /**
+     * Closes the search bar, whoever asked: the close button, Back, or a renderer that
+     * died underneath it. Held as a field because showRendererGone has to reach it from
+     * outside setUpSearch, and it stays a no-op until there is a bar to close.
+     */
+    private var closeSearchBar: () -> Unit = {}
+
+    /**
+     * Takes Back while the search bar is open, so it closes the bar instead of the
+     * document. Until this existed, Back on a document with the search box open threw
+     * away the reading position and the query together, and from targetSdk 35 on it did
+     * it while playing the predictive back animation, so the app visibly peeled away
+     * toward the launcher with the cursor still in the box.
+     *
+     * Nothing here calls finish(). The callback closes the bar and switches itself off,
+     * and the next press falls through to the default, which is what keeps predictive
+     * back working: an enabled callback suppresses the animation and owns the event.
+     */
+    private val searchBackCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = closeSearchBar()
+    }
+
     /** In-document search: findAllAsync for most formats, a message port for PDF. */
     private fun setUpSearch(toolbar: MaterialToolbar, kind: FileKind) {
         val bar = findViewById<LinearLayout>(R.id.searchBar)
@@ -489,9 +513,17 @@ class ViewerActivity : AppCompatActivity() {
             finder = NativeFinder(web)
         }
 
+        // Every call into the finder goes through here. NativeFinder holds the WebView
+        // directly, and onRenderProcessGone destroys it and nulls the field before
+        // showRendererGone runs, so a clear arriving after that would land on a dead
+        // one. The close path reaches this twice over: once itself, and once through the
+        // text watcher that emptying the box fires.
+        fun find(action: (Finder) -> Unit) { if (webView != null) action(finder) }
+
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         searchItem.setOnMenuItemClickListener {
             bar.visibility = LinearLayout.VISIBLE
+            searchBackCallback.isEnabled = true
             input.requestFocus()
             imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
             true
@@ -502,26 +534,29 @@ class ViewerActivity : AppCompatActivity() {
             override fun afterTextChanged(s: android.text.Editable?) {
                 val q = s?.toString().orEmpty()
                 if (q.isEmpty()) {
-                    finder.clear()
+                    find { it.clear() }
                     count.text = ""
                     count.contentDescription = null
                 } else {
-                    finder.query(q)
+                    find { it.query(q) }
                 }
             }
         })
         input.setOnEditorActionListener { _, _, _ ->
-            finder.next()
+            find { it.next() }
             true
         }
-        findViewById<ImageButton>(R.id.searchPrev).setOnClickListener { finder.prev() }
-        findViewById<ImageButton>(R.id.searchNext).setOnClickListener { finder.next() }
-        findViewById<ImageButton>(R.id.searchClose).setOnClickListener {
+        findViewById<ImageButton>(R.id.searchPrev).setOnClickListener { find { it.prev() } }
+        findViewById<ImageButton>(R.id.searchNext).setOnClickListener { find { it.next() } }
+
+        closeSearchBar = {
             imm.hideSoftInputFromWindow(input.windowToken, 0)
             input.text.clear()
-            finder.clear()
+            find { it.clear() }
             bar.visibility = LinearLayout.GONE
+            searchBackCallback.isEnabled = false
         }
+        findViewById<ImageButton>(R.id.searchClose).setOnClickListener { closeSearchBar() }
     }
 
     /**
@@ -785,7 +820,7 @@ class ViewerActivity : AppCompatActivity() {
         // PDF so does the channel: its far end was in the renderer that just died, so
         // it can neither be asked anything nor answer. The activity restarts to get a
         // working one, which is where a new channel comes from.
-        findViewById<LinearLayout>(R.id.searchBar).visibility = View.GONE
+        closeSearchBar()
         findViewById<MaterialToolbar>(R.id.toolbar).menu
             .findItem(R.id.action_search)?.isVisible = false
         closeSearchChannel()

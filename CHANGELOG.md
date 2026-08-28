@@ -14,6 +14,12 @@
   search that only looked at those would quietly miss the rest. Counting, next and previous
   behave as they do everywhere else. On a long document the count climbs while the file is
   read, rather than the box waiting for the end of it.
+- Back closes the search bar rather than the document. Opening the find box on a long PDF,
+  typing, and pressing Back used to close the file outright, losing both the query and where
+  you had got to, and from Android 15 on it did that while playing the animation that slides
+  the app away, so it looked like the phone had decided to leave. Back now closes the box and
+  leaves you where you were reading; a second press leaves the document, as before. With the
+  keyboard up it takes one press more, because the keyboard goes first.
 
 ## 1.13 (2026-08-25)
 
