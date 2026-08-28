@@ -3,6 +3,7 @@ package com.arjun.gander
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
@@ -29,6 +30,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -36,11 +38,13 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -1197,17 +1201,77 @@ class ViewerActivity : AppCompatActivity() {
         imageView.setImage(ImageSource.uri(uri))
     }
 
+    /**
+     * Video, and audio, which used to be handed the same screen.
+     *
+     * A track got a black rectangle with a scrubber that took itself away after two and a
+     * half seconds, leaving nothing at all, and the screen was held awake for the length
+     * of it: an hour of podcast with the display lit and no reason for it. Three things
+     * differ now. The controls do not hide, because on a file with no picture they are
+     * the only thing on screen. The screen is allowed to sleep, because nothing is being
+     * looked at. And where a video would show its first frame, a track shows its cover
+     * art if it has any, or a plain note if it does not.
+     *
+     * What this deliberately does not do is play on in the background. That needs a
+     * foreground service, a foreground service needs a permission, and a permission fails
+     * the build. Audio stops when Gander does, which is the honest consequence of the
+     * promise on the front of the app.
+     */
     private fun showPlayer(container: FrameLayout, uri: Uri, name: String, ext: String) {
-        val playerView = PlayerView(this)
-        playerView.setBackgroundColor(Color.BLACK)
-        playerView.keepScreenOn = true
-        playerView.controllerShowTimeoutMs = 2500
+        val audio = FileKind.isAudioExt(ext)
+        // Audio comes from a layout because its transport does: controller_layout_id is
+        // an XML attribute with no setter behind it.
+        val playerView =
+            if (audio) layoutInflater.inflate(R.layout.view_audio_player, container, false) as PlayerView
+            else PlayerView(this)
+        playerView.keepScreenOn = !audio
+        playerView.controllerShowTimeoutMs = if (audio) 0 else 2500
+
+        // The cover, and the note that stands in for one. It sits in the transport layout
+        // rather than PlayerView's own artwork slot, because that slot centres what it is
+        // given and centred is where the play button is: the picture came out underneath
+        // the control covering it.
+        var cover: ImageView? = null
+        if (audio) {
+            // Warm near-black rather than pure black. A track is a screen somebody sits
+            // and looks at, so it may as well be the dark the rest of the app uses.
+            container.setBackgroundColor(0xFF17130A.toInt())
+            cover = playerView.findViewById<ImageView>(R.id.audioCover)?.apply {
+                contentDescription = name
+            }
+
+            playerView.setBackgroundColor(Color.TRANSPARENT)
+            playerView.setShutterBackgroundColor(Color.TRANSPARENT)
+            playerView.artworkDisplayMode = PlayerView.ARTWORK_DISPLAY_MODE_OFF
+            playerView.controllerHideOnTouch = false
+            // One file, so there is nothing to be previous or next to.
+            playerView.setShowPreviousButton(false)
+            playerView.setShowNextButton(false)
+        } else {
+            playerView.setBackgroundColor(Color.BLACK)
+        }
         container.addView(playerView, matchParent())
 
         val exo = ExoPlayer.Builder(this).build()
         player = exo
         playerView.player = exo
         exo.addListener(object : Player.Listener {
+            /**
+             * Cover art, once the extractor has read the tags. Taken from the player
+             * rather than opened a second time with a MediaMetadataRetriever, because
+             * ExoPlayer has already parsed the ID3 or Vorbis picture by the time this
+             * fires and holds the bytes. Decoding here is a few milliseconds on a few
+             * hundred kilobytes, which is what PlayerView itself would have done.
+             */
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+                val view = cover ?: return
+                val bytes = mediaMetadata.artworkData ?: return
+                val bmp = runCatching {
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                }.getOrNull() ?: return
+                view.setImageBitmap(bmp)
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 exo.release()
                 player = null

@@ -72,6 +72,16 @@
   page stands off its surround by exactly as much as it did before and only the temperature
   has moved. The prompt that asks for a locked PDF's password got the brand colour on its
   button while the file was open.
+- An audio file gets a screen of its own. An MP3 used to be handed the video player: a black
+  rectangle whose controls took themselves away after two and a half seconds and left nothing
+  at all behind, with the display held awake for the length of the track, so an hour of
+  podcast lit an hour of blank screen. The controls stay put now, because on a file with no
+  picture they are the only thing on it. The screen is allowed to sleep, because nothing is
+  being looked at. And the track's own cover art is shown if it carries any, or a plain note
+  if it does not, with the seek bar and the clock sitting under it rather than pinned to the
+  bottom edge of the screen, which is where a video puts them to keep them off the picture. Playback still stops when you leave Gander, and always will: carrying on in
+  the background needs a foreground service, a service needs a permission, and a permission is
+  the one thing this app will not add.
 
 ## 1.13 (2026-08-25)
 
