@@ -79,9 +79,10 @@
   picture they are the only thing on it. The screen is allowed to sleep, because nothing is
   being looked at. And the track's own cover art is shown if it carries any, or a plain note
   if it does not, with the seek bar and the clock sitting under it rather than pinned to the
-  bottom edge of the screen, which is where a video puts them to keep them off the picture. Playback still stops when you leave Gander, and always will: carrying on in
-  the background needs a foreground service, a service needs a permission, and a permission is
-  the one thing this app will not add.
+  bottom edge of the screen, which is where a video puts them to keep them off the picture.
+  Playback still stops when you leave Gander, and always will: carrying on in the background
+  needs a foreground service, a service needs a permission, and a permission is the one thing
+  this app will not add.
 - Turning the phone no longer loses your place in a folder. Browsing three folders into a
   granted tree and rotating dropped you back to the top of the list with no way to tell why,
   and so did changing the system font size, switching to dark mode, or resizing the app in
@@ -108,9 +109,9 @@
   promise that nothing is uploaded, and the two ways to begin: open a file, or add a folder.
   The paragraph naming every extension is gone for good, and so is a tip that was coloured
   like a link and was not one, though that tip still reads under About, which is where
-  somebody who wants the detail goes looking. The whole block leaves for good the moment you open a file or grant a
-  folder. The Downloads note is gone entirely: Android says the same thing itself, in the
-  picker, at the moment it matters.
+  somebody who wants the detail goes looking. The whole block leaves for good the moment you
+  open a file or grant a folder. The Downloads note is gone entirely: Android says the same
+  thing itself, in the picker, at the moment it matters.
 
 ## 1.13 (2026-08-25)
 

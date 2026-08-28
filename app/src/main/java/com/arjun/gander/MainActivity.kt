@@ -162,6 +162,13 @@ class MainActivity : AppCompatActivity() {
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int) =
                     if (adapter.isFullSpan(position)) columns else 1
+            }.apply {
+                // Uncached, getSpanIndex walks getSpanSize from zero for every item, so
+                // laying out a large folder is quadratic in its length. Free on a phone,
+                // where one column returns immediately, and not on the tablet this grid
+                // exists for. submit's notifyDataSetChanged already clears the cache.
+                isSpanIndexCacheEnabled = true
+                isSpanGroupIndexCacheEnabled = true
             }
         }
         list.adapter = adapter
@@ -365,6 +372,11 @@ class MainActivity : AppCompatActivity() {
         main.postDelayed(announce, RENDER_PROGRESS_DELAY_MS)
 
         loader.execute {
+            // Checked here as well as after, because loader is a single thread: without
+            // this, tapping into a folder and straight back out makes the second read
+            // wait for the whole of the first, which on the slow provider this exists
+            // for is the wait it was meant to remove.
+            if (token != renderToken) return@execute
             val screen = if (here == null) homeRows() else folderRows(here)
             main.post {
                 main.removeCallbacks(announce)
@@ -478,14 +490,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // sortedWith and not sortedBy, for the reason homeRows gives: the selector runs
+        // on every comparison, so lowercase() there allocated some sixteen thousand
+        // strings on a folder of fifteen hundred files rather than none.
+        val byName = compareBy(String.CASE_INSENSITIVE_ORDER) { c: Child -> c.name }
         val dirs = children
             .filter { it.mime == DocumentsContract.Document.MIME_TYPE_DIR }
             .filterNot { it.name.startsWith(".") }
-            .sortedBy { it.name.lowercase() }
+            .sortedWith(byName)
         val files = children
             .filter { it.mime != DocumentsContract.Document.MIME_TYPE_DIR }
             .filterNot { it.name.startsWith(".") }
-            .sortedBy { it.name.lowercase() }
+            .sortedWith(byName)
 
         val rows = mutableListOf<Row>()
         dirs.forEach { d ->
@@ -579,16 +595,10 @@ class MainActivity : AppCompatActivity() {
      * adapter makes on a real row.
      */
     private fun fillFormatGrid(grid: ViewGroup) {
-        val gap = resources.getDimensionPixelSize(R.dimen.welcome_tile_gap)
         WELCOME_BADGES.forEach { (label, color) ->
             val tile = layoutInflater.inflate(R.layout.view_welcome_tile, grid, false) as TextView
             tile.text = label
             tile.background.mutate().setTint(color)
-            (tile.layoutParams as ViewGroup.MarginLayoutParams).setMargins(gap, gap, gap, gap)
-            // Set here as well as in the layout: the tiles are decoration for the sentence
-            // below, and nine stops that each say three letters is worse than one that says
-            // the sentence.
-            tile.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             grid.addView(tile)
         }
         // One description for all nine, and screenReaderFocusable is what makes the grid a
