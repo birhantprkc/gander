@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-play="pending">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,6 +9,25 @@
 <meta name="theme-color" content="#0f141a" media="(prefers-color-scheme: dark)">
 <meta name="author" content="Arjun Maniyani">
 <link rel="canonical" href="https://arjun.maniyani.com/gander/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Gander">
+<meta property="og:url" content="https://arjun.maniyani.com/gander/">
+<meta property="og:title" content="Gander: take a gander at any file">
+<meta property="og:description" content="An offline file viewer for Android. It opens PDF, Word, Excel, PowerPoint, photos, video, audio, Markdown and code on the device. No permissions, and no internet permission at all.">
+<meta property="og:image" content="https://arjun.maniyani.com/gander/social-preview.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<!-- The alt text deliberately states no download size. That figure is asserted in
+     five places already and every one of them has to move together; see the list
+     in docs/social-preview.html. This is not becoming a sixth. -->
+<meta property="og:image:alt" content="Gander: take a gander at any file. An open source Android viewer for PDF, DOCX, XLSX, PPTX, JPG, MP4, MP3 and Markdown. Zero permissions, no ads or trackers, fully offline.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Gander: take a gander at any file">
+<meta name="twitter:description" content="An offline file viewer for Android. No permissions, and no internet permission at all.">
+<meta name="twitter:image" content="https://arjun.maniyani.com/gander/social-preview.png">
+<meta name="twitter:image:alt" content="Gander: take a gander at any file. Zero permissions, no ads or trackers, fully offline.">
 <!--
   Served at https://arjun.maniyani.com/gander/. Shares the type, palette and
   printed-sheet frame of privacy.html so the two read as one site, and holds to
@@ -20,6 +39,12 @@
   that property. It exists so the authorship is machine-readable: every URL this
   project owns reads "mokshablr", and without this a crawler has no way to tie
   the app to the person who wrote it.
+
+  The og: and twitter: tags above are inert in the same way. The card image is
+  fetched by the scraper at LinkedIn or Slack when somebody shares the link, and
+  never by a visitor's browser, which loads no image at all until it reaches the
+  screenshot in section 02. Both of those files are served from this origin
+  rather than hot-linked, so the page still makes no third-party request.
 -->
 <script type="application/ld+json">
 {
@@ -28,6 +53,7 @@
   "name": "Gander",
   "description": "Offline file viewer for Android. Opens PDF, Word, Excel, PowerPoint, photos, video, audio, Markdown and code with zero permissions and no internet access.",
   "url": "https://arjun.maniyani.com/gander/",
+  "image": "https://arjun.maniyani.com/gander/social-preview.png",
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Android 8.0+",
   "license": "https://opensource.org/licenses/MIT",
@@ -39,7 +65,7 @@
     "@type": "Person",
     "name": "Arjun Maniyani",
     "url": "https://arjun.maniyani.com/",
-    "sameAs": ["https://github.com/mokshablr"]
+    "sameAs": ["https://github.com/mokshablr", "https://www.linkedin.com/in/arjun-maniyani/"]
   }
 }
 </script>
@@ -559,6 +585,147 @@
     to   { border-left-color: var(--red); }
   }
 
+  /* ---- the ask ----
+     One line directly under the numbers. Until now the first thing a visitor
+     could act on was two screens down, past three sections of explanation, which
+     is a strange way to treat somebody who arrived already convinced. It points
+     at the section rather than straight at the opt-in URL on purpose: joining
+     the group under a different Google account than the phone's is the step that
+     fails silently, so it has to be read before it is done. */
+
+  /* Sits directly under the claim, above the explanation, because the page used
+     to carry no ask at all until 886px: past the fold on a phone, and set as a
+     sentence when it got there. The lede argues the case for whoever wants it;
+     this is for whoever already agrees. It points at the section rather than at
+     the opt-in URL, because joining the group under a different Google account
+     than the phone's is the step that fails silently, so it has to be read
+     first. */
+
+  .cta { margin: 1.7rem 0 1.7rem; }
+
+  .cta .btn {
+    display: inline-block;
+    font-family: var(--geo);
+    font-weight: 700;
+    font-size: 0.86rem;
+    letter-spacing: 0.015em;
+    padding: 0.7rem 1.15rem;
+    background: var(--ink);
+    color: var(--desk-top);
+    text-decoration: none;
+    border-radius: 2px;
+  }
+
+  .cta .btn:hover { background: var(--red); color: var(--desk-top); }
+
+  .cta .btn:focus-visible { outline-offset: 3px; }
+
+  .cta .aside {
+    display: inline-block;
+    margin-left: 0.7rem;
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+  }
+
+  /* Google's badge, unmodified and served from here rather than hot-linked.
+     Their guidelines set a 28px floor and ask for clear space of a quarter of
+     the badge height on every side; 60px and 15px satisfy both. */
+  .badge {
+    display: block;
+    height: 60px;
+    width: auto;
+    margin: 15px 0;
+  }
+
+  /* ---- the permissions screenshot ----
+     Android's own App info screen, not Gander's About dialog. The app already
+     tells you it holds no permissions; a claim a thing makes about itself is
+     exactly the claim a reader discounts, so this is the operating system
+     saying it instead. */
+
+  .shot { margin: 1.7rem 0 0; }
+
+  .shot img {
+    display: block;
+    width: 100%;
+    max-width: 24rem;
+    height: auto;
+    border: 1px solid var(--rule-firm);
+  }
+
+  .shot figcaption {
+    max-width: 24rem;
+    margin-top: 0.65rem;
+    font-size: 0.86em;
+    font-style: italic;
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+
+  /* ---- what other people said ---- */
+
+  ul.said { margin: 0; padding: 0; list-style: none; }
+  ul.said > li { margin-bottom: 0.9rem; }
+  ul.said > li:last-child { margin-bottom: 0; }
+
+  blockquote {
+    margin: 0;
+    padding: 1rem 1.2rem 0.95rem;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--red);
+  }
+
+  blockquote p {
+    margin: 0 0 0.6rem;
+    font-style: italic;
+    text-wrap: pretty;
+  }
+
+  blockquote cite {
+    display: block;
+    font-style: normal;
+    font-family: var(--geo);
+    font-weight: 700;
+    font-size: 0.62rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ---- the two Play states inside one list row ----
+     Both live in a single <li> so that the row's own rules, and the list's top
+     border, do not depend on which of the two is showing. */
+
+  ul.kept li > div > :last-child { margin-bottom: 0; }
+
+  ul.kept ol { margin: 0.75rem 0 0.9rem; padding-left: 1.2rem; }
+  ul.kept ol li { padding: 0; border: 0; margin-bottom: 0.45rem; }
+  /* :first-child is class-level, so ul.kept li:first-child above outranks a
+     plain descendant selector and would draw its rule across the nested list. */
+  ul.kept ol li:first-child { border-top: 0; }
+  ul.kept ol li:last-child { margin-bottom: 0; }
+
+
+  /* ---- the launch switch ----
+     Both Play states ship in the markup; data-play on <html> decides which one
+     is shown. At T0, when the store listing starts returning 200, the whole
+     procedure is: edit the <html> tag on line 2 to data-play="live", and
+     re-upload this one file to cPanel.
+
+     Edit that tag by hand. A find-and-replace for data-play="pending" would
+     rewrite the selector below it as well, which switches nothing and quietly
+     hides both states at once.
+
+     Written as html[...] and kept last of the ordinary rules so nothing outranks
+     them, and nothing else in this stylesheet may set display on a .when-*
+     element. It cannot collide with the theme switcher: that only ever writes
+     data-theme, and no data-theme rule mentions display. */
+
+  html[data-play="pending"] .when-live    { display: none; }
+  html[data-play="live"]    .when-pending { display: none; }
+
   @media print {
     body {
       background: #fff;
@@ -573,6 +740,9 @@
     :root { --doc-face: #ffffff; }
     .stats { border: 1px solid #999; border-left-width: 2px; background: none; }
     .fingerprint { background: none; border: 1px solid #999; }
+    blockquote { background: none; border: 1px solid #999; border-left-width: 2px; }
+    .cta .btn { background: none; color: #000; border: 1px solid #999; }
+    .shot img { border: 1px solid #999; }
     a { color: #000; text-decoration: none; }
     a[href^="http"]::after {
       content: " (" attr(href) ")";
@@ -642,6 +812,13 @@
   <p class="claim">Gander will not send your documents anywhere. Not as a promise
   it makes, but as a <strong>capability it does not have</strong>.</p>
 
+  <p class="cta">
+    <span class="when-pending"><a class="btn" href="#get-it">Join the closed test</a><span
+    class="aside">or <a href="https://github.com/mokshablr/gander/releases">download the APK</a></span></span>
+    <a class="when-live" href="https://play.google.com/store/apps/details?id=com.arjun.gander"><img
+      class="badge" src="play-badge.png" width="646" height="250" alt="Get it on Google Play"></a>
+  </p>
+
   <p class="lede">Every phone ships with a dozen half-viewers that bounce your
   documents through a cloud service to render them. Gander is the opposite: one
   small app that opens PDFs, Word documents, spreadsheets, slides, photos, video,
@@ -654,6 +831,7 @@
     <div><dt>5 MB</dt><dd>Download</dd></div>
     <div><dt>100%</dt><dd>Offline</dd></div>
   </dl>
+
 
   <section>
     <h2><span class="num">01</span> What it opens</h2>
@@ -684,16 +862,93 @@
 
     <p>The permission list is also checked at build time: the build fails if a
     dependency quietly adds one. And the app's own About screen asks Android what
-    it requests and shows you the answer.</p>
+    it requests and shows you the answer. So does Android, which is the version
+    worth looking at, because it is not Gander's account of itself:</p>
+
+    <figure class="shot">
+      <img src="permissions.png" width="720" height="813" loading="lazy"
+           decoding="async"
+           alt="Android's App info screen for Gander. The Permissions row is greyed
+                out, and the line under it reads: No permissions requested.">
+      <figcaption>Settings, Apps, Gander. The Permissions row is greyed out
+      because there is nothing behind it to manage.</figcaption>
+    </figure>
   </section>
 
   <section>
-    <h2><span class="num">03</span> Get it</h2>
+    <h2><span class="num">03</span> What other people said</h2>
+
+    <ul class="said">
+      <li>
+        <blockquote>
+          <p>&ldquo;Permission path beats feature list.&rdquo;</p>
+          <cite><a href="https://www.linkedin.com/feed/update/urn:li:activity:7492452879027564544/">Pedro
+          de Sousa Avelino, LinkedIn</a></cite>
+        </blockquote>
+      </li>
+      <li>
+        <blockquote>
+          <p>&ldquo;You built an excellent tool to solve a real-world problem:
+          being able to open files on the fly without granting internet access
+          and without having to install 400 MB bloated suites that track
+          everything.&rdquo;</p>
+          <cite><a href="https://news.ycombinator.com/item?id=49121537">chesscoachx,
+          Hacker News</a></cite>
+        </blockquote>
+      </li>
+      <li>
+        <blockquote>
+          <p>&ldquo;The app is pleasingly very responsive. I don't think I've
+          used anything else on Android that lets me open and close PDFs rapidly
+          without getting bogged down.&rdquo;</p>
+          <cite><a href="https://news.ycombinator.com/item?id=49123024">array4277,
+          Hacker News</a></cite>
+        </blockquote>
+      </li>
+      <li>
+        <blockquote>
+          <p>&ldquo;I was able to open the prior 117 MB 520 page PDF without a
+          problem, and could also scroll straight through from page 1 to the end
+          at page 520. [&hellip;] No crash, no error.&rdquo;</p>
+          <cite><a href="https://github.com/mokshablr/gander/issues/16#issuecomment-5383775161">mjschwart,
+          closed tester, on GitHub</a></cite>
+        </blockquote>
+      </li>
+    </ul>
+  </section>
+
+  <section id="get-it">
+    <h2><span class="num">04</span> Get it</h2>
 
     <ul class="kept">
+      <!-- Both Play states are here at once and the data-play attribute on <html>
+           picks one. At T0 change it to "live" and re-upload this file; nothing
+           else on the page has to move. -->
       <li>
-        <b>Google Play</b>
-        Coming shortly. This page will link it when the listing is live.
+        <div class="when-pending">
+          <b>Join the closed test on Google Play</b>
+          <p>Google will not let a new developer account publish until twelve
+          people have used the app for fourteen continuous days, and that is the
+          only thing left between Gander and everyone who will never install an
+          APK by hand. A closed test is an ordinary Play install: it updates
+          itself, and it stays put when the app goes public.</p>
+          <ol>
+            <li>Join <a href="https://groups.google.com/g/gander-testers">the
+            tester group</a>, using the same Google account your phone's Play
+            Store is signed in to. This is the step that goes wrong quietly.</li>
+            <li>Open <a href="https://play.google.com/apps/testing/com.arjun.gander">the
+            opt-in link</a> and accept.</li>
+            <li>Install it, and set it as your default for PDFs.</li>
+          </ol>
+          <p>Questions go in <a href="https://github.com/mokshablr/gander/discussions/14">the
+          discussion thread</a>.</p>
+        </div>
+        <div class="when-live">
+          <b>Google Play</b>
+          <p>Gander is on
+          <a href="https://play.google.com/store/apps/details?id=com.arjun.gander">Google
+          Play</a>, and updates itself from there.</p>
+        </div>
       </li>
       <li>
         <b>Download the APK</b>
@@ -716,7 +971,7 @@
   </section>
 
   <section>
-    <h2><span class="num">04</span> Verify what you installed</h2>
+    <h2><span class="num">05</span> Verify what you installed</h2>
 
     <p>Every release is signed with the same key, so you can confirm an APK really
     came from this project rather than from someone who repackaged it. Obtainium
@@ -729,7 +984,7 @@
   </section>
 
   <section>
-    <h2><span class="num">05</span> Honest about what it is not</h2>
+    <h2><span class="num">06</span> Honest about what it is not</h2>
 
     <ul class="plain">
       <li>It is a viewer, not an editor. It will not change your files.</li>
@@ -742,23 +997,27 @@
   </section>
 
   <section>
-    <h2><span class="num">06</span> Who made it</h2>
+    <h2><span class="num">07</span> Who made it</h2>
 
     <p>Gander is made by <a href="https://arjun.maniyani.com/">Arjun Maniyani</a>.
     It started as a small annoyance, which was that opening a PDF attachment on
     Android usually means handing it to something that wants an account first.</p>
 
     <p>It is MIT licensed and the whole thing is readable at
-    <a href="https://github.com/mokshablr/gander">github.com/mokshablr/gander</a>
-    &mdash; issues and small pull requests are welcome. The zero-permission,
+    <a href="https://github.com/mokshablr/gander">github.com/mokshablr/gander</a>:
+    issues and small pull requests are welcome. The zero-permission,
     zero-network property is the one thing that is not up for negotiation.</p>
+
+    <p>Elsewhere: <a rel="me" href="https://github.com/mokshablr">GitHub</a> and
+    <a rel="me" href="https://www.linkedin.com/in/arjun-maniyani/">LinkedIn</a>.</p>
   </section>
 
   <footer>
     <span class="mit">MIT licensed</span>
     <span>Made by <a href="https://arjun.maniyani.com/">Arjun Maniyani</a></span>
     <span><a href="privacy.html">Privacy policy</a></span>
-    <span><a href="https://github.com/mokshablr/gander">Source on GitHub</a></span>
+    <span><a href="https://github.com/mokshablr/gander">GitHub</a></span>
+    <span><a rel="me" href="https://www.linkedin.com/in/arjun-maniyani/">LinkedIn</a></span>
   </footer>
 
 </div>

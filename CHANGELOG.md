@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The website asks for something now. A link to it rendered as a bare URL wherever it was
+  shared, because the page carried no preview card at all; it has one now, and so does the
+  privacy policy. Get it leads with joining the closed test rather than mentioning Play in
+  passing, the zero-permission section shows Android's own App info screen for Gander with
+  the permissions row greyed out and nothing behind it, four people are quoted on what they
+  made of it, and GitHub and LinkedIn are linked. The Play badge is already written into the
+  page behind a switch, so the day the listing goes live is a one-word edit to one file.
 - PDFs have text in them now, as far as the rest of the app is concerned. Pages were drawn
   as pictures and nothing else, so there was nothing to select, nothing to copy, nothing for
   a screen reader to read out and nothing for the search box to look through, which is why
