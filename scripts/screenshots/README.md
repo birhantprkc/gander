@@ -105,6 +105,51 @@ point of the shot is that the tiled decoder stays sharp on something huge.
 The walkthrough video in the recents list is likewise not committed. Any short
 `.mp4` will do; only its thumbnail is ever visible.
 
+## The README demo GIF
+
+`docs/demo.gif` is rebuilt by `record_demo.py`, which records the flow named in the
+README's alt text (recents, folder browsing, PDF, Word, Excel, Markdown) and
+assembles the GIF:
+
+```sh
+python3 scripts/screenshots/record_demo.py
+```
+
+Device state must be the same as for the stills: samples pushed, a folder
+granted, recents populated. Intermediates land in `docs/screenshots/demo-build/`,
+which is gitignored.
+
+Three things about this are worth knowing before changing it, because each cost a
+wasted recording.
+
+**`screenrecord` only writes a frame when the screen changes.** A two-second hold
+on a document produces three near-identical frames, not sixty, and about 70% of
+what it does write are exact duplicates. Encoding at a constant frame rate
+therefore destroys the pacing: the holds collapse to a flash and the whole thing
+races. The dwell time lives in the presentation timestamps, so the assembler
+reads them back and gives every frame its own delay.
+
+**"Has the new screen rendered" cannot be answered by "is the content
+non-blank".** The screen being navigated away from is itself non-blank, so that
+test passes instantly and every subsequent tap lands on the wrong screen - the
+first attempt produced a recording in which all four viewers were blank.
+Readiness means the content has *changed from the screen that was tapped on* and
+then stopped moving, and the reference must be sampled **before** the tap or the
+back, never after.
+
+**Played straight, the recording is about 60% one scrolling PDF**, plus three
+seconds of loading screens in which the Excel spinner outlasts Excel. So frames
+are grouped by their toolbar strip, loading screens dropped, the scroll thinned,
+and each document given a deliberate dwell from `DWELL`. That is also what keeps
+the file small: the balanced cut is ~630kB against 1.4MB for the same footage
+played straight.
+
+Detecting the "Rendering document..." card needs care. Mean brightness does not
+separate it - its dark band covers only about a third of the body, so the white
+around it lifts the mean to 230 against a page's 239, and its dark-pixel fraction
+sits too close to a dense file listing's. What no text page ever has is a
+**full-width dark row**; measured, the card scores 44 and every real screen 0 to 3.
+
 ## Known rough edges
 
 - **SheetJS drops cell fills**, so the workbook's header shading does not survive

@@ -13,3 +13,6 @@ __pycache__/
 # Signing key stays local, never in the public repo
 keystore/
 dist/
+
+# Intermediates from scripts/screenshots/record_demo.py (mp4 + extracted frames)
+docs/screenshots/demo-build/
