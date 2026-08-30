@@ -8,6 +8,21 @@ supported as a general-purpose tool. It is here because rebuilding it from
 nothing costs the better part of a day, and the store listing wants re-shooting
 every time the UI changes or a listing experiment needs a new variant.
 
+## What else is in here
+
+Two subdirectories hold the generators for the 1.14 listing assets, which are a
+separate pass over the captures this tooling produces:
+
+- **`store-art/`** builds the seven phone frames, the four tablet frames and the
+  feature graphic. Its README carries the capture gotchas worth reading before any
+  reshoot, the debug resource overlay among them.
+- **`promo-video/`** builds the Play promo video, and holds the YouTube and Play
+  Console settings it is uploaded with.
+
+Neither keeps its working data in the repo. The captures and rendered canvases sit
+under the gitignored `docs/screenshots/v1.14/`, and the assets that actually ship are
+committed under `fastlane/metadata/android/en-US/images/`.
+
 ## Why the samples look like real documents
 
 The store screenshots used to show `sample.pdf` and a Region / Q1-Q4 grid. Filler

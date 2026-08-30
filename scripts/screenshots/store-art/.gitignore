@@ -1,0 +1,20 @@
+# Everything these scripts render. fg.html is a hand-written source and is kept;
+# every other .html here is written by the .py file of the same name.
+b.html
+c.html
+tab.html
+tab2.html
+fg2.html
+fg3.html
+fg4.html
+fg5.html
+fg6.html
+fg7.html
+
+# Rendered canvases and the cropped document content fg2/fg7 read. See README.md
+# for the magick crops that recreate pages/ from the device captures.
+pages/
+*-canvas.png
+fg-4x.png
+fg-old.png
+flat.png

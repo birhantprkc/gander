@@ -16,3 +16,10 @@ dist/
 
 # Intermediates from scripts/screenshots/record_demo.py (mp4 + extracted frames)
 docs/screenshots/demo-build/
+
+# Working files from the v1.14 store-art and promo-video shoots: device captures,
+# rendered canvases and video segments, about 240 MB. The generators are committed
+# under scripts/screenshots/store-art and promo-video, and the assets that ship are
+# under fastlane/metadata/android/en-US/images.
+docs/screenshots/v1.14/
+docs/screenshots/v1.14-tab/
