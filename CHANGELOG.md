@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.14 (2026-08-30)
 
 - The website asks for something now. A link to it rendered as a bare URL wherever it was
   shared, because the page carried no preview card at all; it has one now, and so does the
