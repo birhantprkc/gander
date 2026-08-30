@@ -127,6 +127,9 @@
   was nothing to tell you that you were reading a document with pieces taken out of it. The
   tables ship with the app now, all of them, so this holds for older documents as well as
   current ones and for all three scripts rather than the one that happened to be reported.
+  Carrying every table costs 1.6 MB on disk, and the download grows with it: the APK is
+  4.7 MB against 1.13's 3.7 MB. That is the price of not having to guess in advance which
+  scripts a reader is going to open.
 
 ## 1.13 (2026-08-25)
 
