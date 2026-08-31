@@ -5,10 +5,15 @@
 <title>PDF document</title>
 <!-- Deliberately no viewport meta, unlike the other viewers. Without one the
      WebView lays out at its default 980 CSS px and loadWithOverviewMode zooms
-     that down to fit, which measured on a Nothing Phone 2 as a 1960 px canvas
-     shown across 1080 device px: sharp at fit-to-width, and a max pinch of
-     about 10x rather than 5x. Adding width=device-width shrinks the canvas to
-     922 px, below native, so it would make pages blurrier, not better. -->
+     that down to fit, which on a Nothing Phone 2 puts one CSS px at about 1.1
+     device px and gives a pinch range of about 10x rather than 5x.
+
+     This used to be a sharpness argument as well. Every page was drawn at twice
+     the layout width so a pinch had spare pixels to magnify, and the 922 px a
+     width=device-width layout would lay out at was fewer of them. It is not
+     that any more: a page is drawn at the resolution the screen actually has,
+     and the part of it being looked at is drawn again at whatever zoom the
+     reader reaches, so the pinch range is the whole of what this width buys. -->
 <link rel="stylesheet" href="app.css">
 <style>
   /* The surround a page is read against. Warm, to match the rest of the app, and
@@ -60,6 +65,37 @@
     display: block;
     width: 100%;
     height: 100%;
+  }
+
+  /*
+   * The sharp patch.
+   *
+   * The canvas above is drawn once, at the resolution the screen has with the page
+   * fitted to its width, and pinching in is the compositor magnifying that bitmap.
+   * Past a point it has no pixels left to magnify, so the part of the page being
+   * looked at is drawn a second time, at the zoom the reader has actually reached,
+   * and laid over the top. That second picture is this.
+   *
+   * Placed in percentages of the box rather than in pixels. .pg is a percentage width
+   * carrying an aspect-ratio, so its box is fractional; a percentage resolves against
+   * the same fractional box the canvas underneath fills, where px would round away
+   * from it and leave the two pictures half a device pixel apart, which is exactly the
+   * detail this exists to recover. Left, top, width and height are written inline once
+   * the tile is drawn, and beat the rule above.
+   *
+   * z-index is stated rather than left to tree order, because the text layer carries
+   * one too and the words have to stay over the picture.
+   *
+   * pointer-events and aria-hidden say the same thing twice, once to the finger and once
+   * to a screen reader: this is a second copy of a picture that is already there, and it
+   * is not a thing in its own right. Without the first it would sit between the text
+   * layer and a touch meant for selecting a word; without the second a reader would be
+   * told about two canvases per page instead of one.
+   */
+  .pg > canvas.tile {
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
   }
 
   /*
@@ -411,20 +447,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "./lib/pdf.worker.min.mjs";
 var pages = document.getElementById("pages");
 
 /*
- * How much bitmap a page is worth, and the multiplier on everything below.
- *
- * This reads as a sharpness knob and is really the memory budget. The page lays out
- * at 980 CSS px and is zoomed down to fit (see the note in the head), so at 2 this
- * draws a 1960 px canvas for a page shown across about 1080 device px. The extra is
- * not waste: it is the headroom that keeps a page sharp when pinched, to about 10x
- * rather than 5x. It is also why one A4 page costs about 21 MB rather than 6.
- *
- * Anything that has to move the memory ceiling a long way should move this, and
- * should say it is trading pinch sharpness for it rather than pretending otherwise.
- */
-var DPR = Math.min(window.devicePixelRatio || 1, 2);
-
-/*
  * The width every page is laid out at, read once.
  *
  * There is no viewport meta, so this is Chromium's fixed 980 CSS px default and
@@ -433,6 +455,118 @@ var DPR = Math.min(window.devicePixelRatio || 1, 2);
  * relayout of a several-hundred-child block flow to re-learn a constant.
  */
 var PAGE_WIDTH = pages.clientWidth || window.innerWidth;
+
+/*
+ * What this file used to call DPR, kept only as the answer for when the platform will
+ * not give a straight one.
+ *
+ * It was 2 because 2 bought pinch headroom: a page drawn at twice the layout width had
+ * spare pixels for the compositor to magnify, which is what kept it sharp to about
+ * 1.8x and is why one A4 page cost about 21 MB rather than 6. Tiles buy that headroom
+ * now, and buy all of it rather than 1.8x of it, so this is no longer the sharpness
+ * knob. It is the last-resort scale, and the ceiling nothing below is allowed to
+ * exceed, so that a measurement that comes out wrong is this file's old behaviour
+ * rather than a new failure.
+ */
+var DPR_FALLBACK = Math.min(window.devicePixelRatio || 1, 2);
+
+/* A tenth over the screen's own resolution for a page bitmap. .pg is fractionally
+   wide, so a bitmap at exactly 1:1 is still resampled by a fraction of a pixel; a
+   tenth costs 21% of the pixels and takes that away. Tuned by eye at fit-to-width. */
+var BASE_HEADROOM = 1.1;
+
+/*
+ * The most bitmap one canvas may hold, per side and in total.
+ *
+ * Less a memory budget than a floor under the failure. A page bitmap is sized from its
+ * width, so a page far taller than it is wide costs whatever that comes to: on the phone
+ * this was measured on, where A4 comes to two megapixels, a receipt or a long ticket at
+ * aspect 0.2 comes to seven. Past Blink's limit of 32767 px the canvas is simply not
+ * allocated, and a canvas that failed to allocate is a blank page with nothing said
+ * about it.
+ *
+ * 8192 is well inside that limit and inside the GPU texture limits Android devices
+ * report, which are commonly between 4096 and 16384. Both caps first bite around aspect
+ * 0.15, a page seven times taller than it is wide, so A4, Letter, Legal and both of the
+ * maps in issue #20 are nowhere near either.
+ */
+var MAX_SIDE = 8192;
+var BASE_MAX_PIXELS = 8e6;
+
+/*
+ * How wide the WebView is in real device pixels, or 0 if that cannot be established.
+ *
+ * Everything about sharpness in this file reduces to one ratio, device pixels per CSS
+ * pixel, and that ratio is this number divided by however much of the layout is
+ * currently visible. visualViewport.width is that visible width and shrinks as the
+ * reader pinches in. This number does not move.
+ *
+ * Blink treats pinch as page scale, a step applied after rendering, so it never moves
+ * devicePixelRatio and it is exactly what visualViewport.scale reports. The product
+ * below is therefore the same at every zoom, which is why it is asked for afresh each
+ * time rather than captured once: loadWithOverviewMode applies the fit scale after
+ * layout, and a value read at startup can be the one from before it.
+ *
+ * Checked against a second opinion from a different part of the platform, because
+ * getting this wrong would not fail loudly, it would be blurry pages everywhere. The
+ * invariant worth testing is that a WebView cannot be wider than the screen it sits in.
+ * The lower bound is loose deliberately: in split screen the WebView really is much
+ * narrower than the screen and is still being measured correctly, so only nonsense is
+ * being caught. Fail either bound and this returns 0, and every caller falls back on
+ * what this file did before it could ask.
+ */
+function physicalWidth() {
+  var vv = window.visualViewport;
+  if (!vv || !(vv.width > 0)) return 0;
+  var dpr = window.devicePixelRatio || 1;
+  var seen = vv.width * dpr * (vv.scale > 0 ? vv.scale : 1);
+  var screenWidth = window.screen && window.screen.width > 0
+    ? window.screen.width * dpr
+    : 0;
+  if (!(seen > 0) || !(screenWidth > 0)) return 0;
+  if (seen > screenWidth * 1.05 || seen < screenWidth * 0.25) return 0;
+  return seen;
+}
+
+/*
+ * Canvas pixels per CSS pixel for a page bitmap: the resolution the screen has with the
+ * page fitted to its width, and no more than that.
+ *
+ * Deliberately not a function of the current zoom, so a page that happens to be drawn
+ * while the reader is pinched in is the same size as one drawn while they are not, and
+ * so a document costs the same whatever anybody is doing to it.
+ */
+function baseScale() {
+  var w = physicalWidth();
+  return w ? Math.min((w / PAGE_WIDTH) * BASE_HEADROOM, DPR_FALLBACK) : DPR_FALLBACK;
+}
+
+/*
+ * Canvas pixels per CSS pixel needed to draw sharp at the pinch the reader is at now.
+ *
+ * The fallback needs nothing measured. PAGE_WIDTH over the visible width is how much
+ * more magnified than fit-to-width the reader is, one at fit by construction, so
+ * multiplying the old constant by it reproduces the old sharpness at every zoom.
+ */
+function liveScale() {
+  var vv = window.visualViewport;
+  if (!vv || !(vv.width > 0)) return DPR_FALLBACK;
+  var w = physicalWidth();
+  return w ? w / vv.width : DPR_FALLBACK * (PAGE_WIDTH / vv.width);
+}
+
+/*
+ * How far a bitmap of this size has to be scaled down to be allowed, and 1 when it
+ * already is. One answer to what this file will ask a canvas for, shared by the page
+ * bitmaps and by the tiles laid over them.
+ */
+function within(w, h, maxPixels) {
+  var f = 1;
+  if (w > MAX_SIDE) f = Math.min(f, MAX_SIDE / w);
+  if (h > MAX_SIDE) f = Math.min(f, MAX_SIDE / h);
+  if (w * h > maxPixels) f = Math.min(f, Math.sqrt(maxPixels / (w * h)));
+  return f;
+}
 
 /*
  * How many pages may be rasterising at once.
@@ -488,10 +622,21 @@ var doc = null;
  * under MAX_IN_FLIGHT. "drawing" holds a live pdf.js RenderTask. "drawn" holds a
  * painted bitmap. The rest of this file is about moving pages between those four as
  * they come into and go out of view.
+ *
+ * All four are about that one canvas. A drawn page may be carrying a tile besides: a
+ * second and sharper picture of the part of it on screen, and another on its way to
+ * replacing it. Those hang off the slot without being states of it, because a page is
+ * no more or less drawn for having one. See the note further down beside TILE_GATE.
  */
 var slots = [];
 var queue = [];
 var inFlight = 0;
+
+/* Tiles waiting for a turn, at most one per page on screen. Separate from the queue
+   above rather than mixed into it because the two are picked between on different
+   grounds: a page is chosen by how near the middle of the screen it is, and a tile is
+   chosen ahead of every page there is. Both spend the same MAX_IN_FLIGHT. */
+var tileQueue = [];
 
 /*
  * Everything the search knows.
@@ -605,6 +750,18 @@ function blank(slot) {
   slot.canvas.width = 0;
   slot.canvas.height = 0;
   slot.state = "blank";
+  slot.unscaled = null;
+
+  /*
+   * The sharp patch goes too, and it goes before the cleanup() at the end of this
+   * function rather than after it. cleanup() declines while any render on the page is
+   * still outstanding, and a tile is a render on the page.
+   *
+   * Not fragile if that order ever slips. cleanup() leaves its flag set when it
+   * declines and pdf.js runs the reclaim again as the last render finishes, so the
+   * memory still comes back; the order is here to keep it from taking a detour.
+   */
+  dropTile(slot);
 
   /*
    * The words go with the picture.
@@ -647,7 +804,19 @@ function blank(slot) {
 }
 
 function pump() {
-  while (inFlight < MAX_IN_FLIGHT && queue.length) {
+  while (inFlight < MAX_IN_FLIGHT) {
+    /*
+     * Tiles first, and out of the same allowance.
+     *
+     * A tile is the picture the reader is looking at; the queue behind it is pages they
+     * might reach. Giving tiles a lane of their own would have been simpler and would
+     * have quietly moved MAX_IN_FLIGHT from three to four, and that three was measured
+     * against a fling that got the renderer killed. It is not a number to add to on the
+     * side. The cost of sharing is that a tile can wait behind one page already being
+     * drawn, a few hundred milliseconds on a heavy one.
+     */
+    if (tileQueue.length) { drawTile(tileQueue.shift()); continue; }
+    if (!queue.length) return;
     var next = 0;
     var best = distance(queue[0]);
     for (var i = 1; i < queue.length; i++) {
@@ -668,23 +837,31 @@ function draw(slot) {
     /* Correct the placeholder to this page's own shape. Page 1's shape was a
        stand-in for it until now, and in a document of uniform pages it was exact. */
     shape(slot.box, unscaled);
+    /* Kept because a tile has to be able to build a viewport for this page later,
+       without another round trip for a matrix that has already been built. Dropped in
+       blank() with everything else the page was holding. */
+    slot.unscaled = unscaled;
 
     /*
-     * Two scales, and they are not the same number.
+     * Three scales now, and no two of them are the same number.
      *
-     * The canvas is a bitmap and wants device pixels, so it is drawn at DPR times
-     * the layout width and shown scaled down, which is the headroom that keeps it
-     * sharp under a pinch. The text layer is DOM and wants CSS pixels: it has to
-     * land on the box, which is PAGE_WIDTH wide whatever the bitmap behind it is.
-     * Handing the text layer the canvas viewport puts every word at twice its
-     * offset, off the bottom of the page.
+     * This canvas is a bitmap and wants device pixels, so it is drawn at baseScale()
+     * times the layout width: the resolution the screen has with the page fitted to its
+     * width. The tile drawn over it later wants device pixels too, but at whatever the
+     * live pinch needs, which is larger the moment anybody zooms in. The text layer is
+     * DOM and wants CSS pixels: it has to land on the box, which is PAGE_WIDTH wide
+     * whatever the bitmaps behind it are. Hand the text layer a canvas viewport and
+     * every word lands at a multiple of its offset, off the bottom of the page.
      *
-     * Keep these apart. The blur fix in #20 changes the canvas scale and must not
-     * be allowed to collapse the two back into one.
+     * Keep all three apart. This note used to say that the blur fix in #20 would change
+     * the canvas scale and must not be allowed to collapse two of these into one. It
+     * did change the canvas scale, and that is still the way to break this.
      */
     var cssScale = PAGE_WIDTH / unscaled.width;
+    var scale = cssScale * baseScale();
+    scale *= within(unscaled.width * scale, unscaled.height * scale, BASE_MAX_PIXELS);
     /* clone rather than a second getViewport: the same matrix, already built. */
-    var viewport = unscaled.clone({ scale: cssScale * DPR });
+    var viewport = unscaled.clone({ scale: scale });
     var canvas = slot.canvas;
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -702,6 +879,9 @@ function draw(slot) {
        registry rather than this page's part of it, because that is one code path
        over about eleven drawn pages rather than two that have to agree. */
     if (finding.query) { paint(); reveal(); }
+    /* A page arriving while the reader is pinched in wants its sharp patch, and no
+       event is going to say so: they are holding still, waiting for this. */
+    scheduleRefine();
   }, function () {
     /* Cancelled or genuinely broken. Both end the same way: nothing held, and free
        to be asked for again if the reader comes back to it. */
@@ -711,6 +891,339 @@ function draw(slot) {
     inFlight--;
     pump();
   });
+}
+
+/*
+ * Drawing the page again, at the zoom the reader is actually at.
+ *
+ * Everything above draws a page once. Pinch zoom is Chromium's compositor magnifying
+ * that bitmap, so past the point where it runs out of pixels the reader is looking at an
+ * upscale. That was issue #20: two A3 tube maps, which have to be taken to six or ten
+ * times before a station name is legible at all, held up against MuPDF, which redraws.
+ *
+ * Redrawing a whole page at ten times is not on offer. Measured on a Nothing Phone 2,
+ * eight times the fit zoom is 8.8 device pixels to the CSS pixel, which puts an A4 page
+ * at 8,624 by 12,195 px, about 420 MB, in a file whose MAX_IN_FLIGHT exists because an
+ * uncapped fling once took this renderer to 836 MB and had it killed twice in one
+ * sitting. So only the part on screen is drawn again, and that is the whole of why this
+ * is safe: a tile is bounded by the screen rather than by the page. Measured on the same
+ * phone, a tile stayed at 4.4 megapixels at every zoom from 2.7 to 11.7 device pixels
+ * per CSS pixel, where the page itself at the top of that range would be 186.
+ *
+ * None of this talks to the app. The zoom is plainly visible from inside the page
+ * through visualViewport and is not visible to Kotlin at all, which has no
+ * onScaleChanged and, deliberately, no JavascriptInterface. Keeping the whole of it on
+ * one side of that line costs nothing here and is worth keeping.
+ */
+
+/*
+ * How short of pixels a page bitmap has to be before part of it is worth drawing again.
+ *
+ * A quarter short is about where a shortfall starts to read as blur. Acting on any
+ * shortfall at all would spend a render on a five per cent gain every time somebody
+ * nudged the zoom, and a render is not free: it is a page's worth of drawing on the main
+ * thread, ahead of the pages the reader is scrolling towards.
+ */
+var TILE_GATE = 1.25;
+
+/*
+ * How far past the visible rectangle a tile reaches, as a fraction of what is visible.
+ *
+ * Entirely about how often a pan costs a redraw. A fifth either way absorbs the small
+ * correction that follows a pinch without the tile costing half as much again, and a pan
+ * that outruns it is a deliberate move to somewhere else on the page, which is going to
+ * want its own tile whatever this number says.
+ *
+ * It is also what keeps one rectangle the right answer here rather than a grid of them.
+ * A fifth either way is 1.4 squared, about twice the screen. Okular is the one viewer
+ * that implements both a viewport rectangle and a tile grid and chooses between them at
+ * runtime, and its thresholds are four times the screen area to turn tiling on and three
+ * to turn it back off; at twice, this sits inside the band where it would keep tiling
+ * off. Raise this far enough to pass about three times the screen area and that
+ * calibration is what says to think about a grid instead.
+ *
+ * Measured cost of the single rectangle, on a Nothing Phone 2 at 4.4 device pixels to the
+ * CSS pixel: a 700 px pan takes the sharp area from 26% of the screen down to 5%, and
+ * back to all of it about 350 ms after the pan stops. It never reaches nothing, because
+ * the tile already up is kept until its replacement has finished drawing.
+ */
+var TILE_MARGIN = 0.2;
+
+/*
+ * The most bitmap one tile may hold.
+ *
+ * A net rather than a budget. Tiles cover disjoint parts of one screen, so however many
+ * there are they come to the screen plus their margins, which on a phone is four to six
+ * megapixels between them; this should not be reached there. It is here for the screen
+ * that is much larger than a phone's, where the honest answer is a slightly smaller
+ * margin rather than a canvas the platform will refuse to allocate.
+ */
+var TILE_MAX_PIXELS = 6e6;
+
+/* At most two, which is one for each page that can be on screen at the zooms where any
+   of this switches on. Three pages across a screen means a zoom below the gate. */
+var MAX_TILES = 2;
+
+/*
+ * How long after the last movement a tile is drawn.
+ *
+ * Debounced, where the page counter beside this is coalesced once a frame, and the
+ * difference is not an oversight. The counter has to be right during the gesture. A tile
+ * drawn during a pinch is thrown away by the next frame of that pinch, so this one waits
+ * for the hand to stop.
+ */
+var TILE_SETTLE_MS = 150;
+
+/*
+ * Let go of a tile: the render if one is still running, the element if it reached the
+ * page, and the bitmap either way.
+ *
+ * The order matters. A cancelled render has to be told to stop before the canvas it was
+ * drawing into is worth anything to reclaim, and a canvas that never reached the document
+ * still holds its backing store until something zeroes it.
+ */
+function shed(tile) {
+  if (!tile) return;
+  var task = tile.task;
+  tile.task = null;
+  if (task) task.cancel();
+  if (tile.canvas.parentNode) tile.canvas.parentNode.removeChild(tile.canvas);
+  tile.canvas.width = 0;
+  tile.canvas.height = 0;
+}
+
+/* Both of a page's tiles: the one on screen and the one on its way. */
+function dropTile(slot) {
+  shed(slot.pending);
+  shed(slot.tile);
+  slot.pending = null;
+  slot.tile = null;
+}
+
+/*
+ * Draw one, into a canvas that is not in the document yet.
+ *
+ * That last part is the detail worth keeping. pdf.js paints a canvas white before it
+ * draws anything into it, so a tile attached while it renders is a white block over the
+ * page. Attached on resolve instead, the reader looks at the stretched page bitmap until
+ * the moment there is something better, which is exactly what they would have been
+ * looking at if none of this existed.
+ *
+ * The page bitmap underneath is left alone, and so is the tile already on screen if
+ * there is one, until this one is ready to take its place. Both are what stops a pan
+ * from flashing back to blur on its way to being sharp again.
+ */
+function drawTile(req) {
+  var slot = req.slot;
+  /* pump() drains this queue whenever a render finishes, which is exactly when the
+     bands may have moved, so a page asked for a moment ago can have been let go since. */
+  if (slot.state !== "drawn" || !slot.page || !slot.unscaled) return;
+
+  shed(slot.pending);
+  var canvas = document.createElement("canvas");
+  canvas.className = "tile";
+  canvas.setAttribute("aria-hidden", "true");
+  canvas.width = req.cw;
+  canvas.height = req.ch;
+
+  var tile = {
+    canvas: canvas,
+    x: req.x, y: req.y, w: req.w, h: req.h, k: req.k, task: null
+  };
+  slot.pending = tile;
+
+  var cssScale = PAGE_WIDTH / slot.unscaled.width;
+  tile.task = slot.page.render({
+    canvasContext: canvas.getContext("2d"),
+    viewport: slot.unscaled.clone({ scale: cssScale * req.k }),
+    /*
+     * pdf.js applies this outside the viewport's own transform, in canvas pixels, so a
+     * plain translation is the whole of what turns a full-page render into this corner
+     * of one. Leaving the scale part at 1 is deliberate: the viewport above already
+     * carries it, and pdf.js reads these two numbers only to size an annotation canvas
+     * this viewer never asks for.
+     *
+     * The page's operator list is not parsed again for this. pdf.js caches it against
+     * the rendering intent rather than the scale, and holds more than one render on a
+     * page at a time quite happily, refusing only two onto the same canvas. So a tile
+     * is the display list run a second time, not the page read a second time.
+     *
+     * It is still the whole display list though, operators outside this rectangle
+     * included. 5.7.284 has what is needed to skip those, on the public API:
+     * `recordOperations: true` fills PDFPageProxy.recordedBBoxes, and `operationsFilter`
+     * is consulted per operator. Upstream's own detail view does exactly that, in the
+     * web/ layer this file does not vendor. It is left alone because the recording has to
+     * be paid for on every page drawn, tiled or not, to save time on renders that only
+     * happen while somebody is zoomed in. Worth revisiting if a tile ever takes long
+     * enough to notice; it took about 160 ms on a Nothing Phone 2 when this was written.
+     */
+    transform: [1, 0, 0, 1, -req.x * req.k, -req.y * req.k]
+  });
+  /* Counted only once there is something to count. A render that threw on the way out
+     would otherwise hold a place in MAX_IN_FLIGHT that nothing is ever going to give
+     back, and the queue behind it would stop for good. */
+  inFlight++;
+
+  tile.task.promise.then(function () {
+    /* Cleared here rather than at the end of the chain, so that whatever sheds this tile
+       next is not cancelling a render that has already finished. */
+    tile.task = null;
+    if (slot.pending !== tile) { shed(tile); return; }
+    slot.pending = null;
+    canvas.style.left = String((req.x / req.boxW) * 100) + "%";
+    canvas.style.top = String((req.y / req.boxH) * 100) + "%";
+    canvas.style.width = String((req.w / req.boxW) * 100) + "%";
+    canvas.style.height = String((req.h / req.boxH) * 100) + "%";
+    /* Before the text layer, so the words stay over the picture. */
+    slot.box.insertBefore(canvas, slot.text);
+    shed(slot.tile);
+    slot.tile = tile;
+  }, function () {
+    /* Cancelled, or the page would not draw. Either way the picture underneath is still
+       correct and the reader is no worse off than before this file could do any of it. */
+    tile.task = null;
+    if (slot.pending === tile) slot.pending = null;
+    shed(tile);
+  }).then(function () {
+    inFlight--;
+    pump();
+  });
+}
+
+/*
+ * Work out what, if anything, is worth drawing again, and ask for it.
+ *
+ * Reads the geometry rather than being told it: getBoundingClientRect is in layout
+ * viewport coordinates, which pinching deliberately does not move, and visualViewport's
+ * offset and size are in that same space and say which part of it the reader can see. So
+ * the two intersect directly, with no coordinate space in between to get wrong.
+ *
+ * The binary search is the same one reportPage does, for the same reason. This runs off
+ * a gesture on a document that can be several hundred boxes, and asking every one of
+ * them where it is would be several hundred layout reads a fifth of a second apart.
+ */
+function refine() {
+  if (!doc || !slots.length) return;
+  var vv = window.visualViewport;
+  if (!vv || !(vv.width > 0) || !(vv.height > 0)) return;
+
+  /* Anything asked for before this pass is out of date by definition. */
+  tileQueue.length = 0;
+
+  var k = liveScale();
+  var i;
+  if (!(k > baseScale() * TILE_GATE)) {
+    /* Back at a zoom the page bitmaps cover on their own. A walk of every slot rather
+       than a register of which ones are tiled: it is a property read per page, against
+       the layout read per page that this function exists to avoid. */
+    for (i = 0; i < slots.length; i++) dropTile(slots[i]);
+    return;
+  }
+
+  var top = vv.offsetTop;
+  var bottom = top + vv.height;
+  var left = vv.offsetLeft;
+  var right = left + vv.width;
+  var middle = top + vv.height / 2;
+
+  var lo = 0, hi = slots.length - 1, from = slots.length;
+  while (lo <= hi) {
+    var mid = (lo + hi) >> 1;
+    if (slots[mid].box.getBoundingClientRect().bottom > top) {
+      from = mid; hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+
+  var showing = [];
+  for (i = from; i < slots.length; i++) {
+    var r = slots[i].box.getBoundingClientRect();
+    if (r.top >= bottom) break;
+    showing.push({
+      slot: slots[i], box: r,
+      away: Math.abs(r.top + r.height / 2 - middle)
+    });
+  }
+  /* Nearest the middle of the screen first, so that when only some of what is showing
+     can be tiled it is the part being looked at rather than the part at the edge. */
+  showing.sort(function (a, b) { return a.away - b.away; });
+  var chosen = showing.slice(0, MAX_TILES);
+
+  for (i = 0; i < slots.length; i++) {
+    var keep = false;
+    for (var c = 0; c < chosen.length; c++) if (chosen[c].slot === slots[i]) keep = true;
+    if (!keep) dropTile(slots[i]);
+  }
+
+  for (i = 0; i < chosen.length; i++) {
+    var slot = chosen[i].slot;
+    var box = chosen[i].box;
+    if (slot.state !== "drawn" || !slot.unscaled) { dropTile(slot); continue; }
+
+    /* The visible part of this page, measured from its own top left. */
+    var vx = Math.max(box.left, left) - box.left;
+    var vy = Math.max(box.top, top) - box.top;
+    var vw = Math.min(box.right, right) - box.left - vx;
+    var vh = Math.min(box.bottom, bottom) - box.top - vy;
+    if (!(vw > 0) || !(vh > 0)) { dropTile(slot); continue; }
+
+    /* As much margin as the budget will carry, up to TILE_MARGIN. Shrinking the margin
+       is the right way to come in under the cap; scaling the tile down is not, because
+       the scale is the entire point of drawing it. */
+    var room = Math.sqrt(TILE_MAX_PIXELS / (vw * k * vh * k));
+    var m = Math.max(0, Math.min(TILE_MARGIN, (room - 1) / 2));
+    var x = Math.max(0, vx - vw * m);
+    var y = Math.max(0, vy - vh * m);
+    var w = Math.min(box.width, vx + vw + vw * m) - x;
+    var h = Math.min(box.height, vy + vh + vh * m) - y;
+
+    /* Only if even the bare visible rectangle will not fit, which on a phone it always
+       does. Then a slightly soft tile beats no tile. */
+    var tk = k * within(w * k, h * k, TILE_MAX_PIXELS);
+
+    /*
+     * Snapped so the rectangle begins and ends on whole tile pixels, and the placement
+     * derived back from the snapped figures rather than the other way round. Done the
+     * other way the tile sits a fraction of a device pixel off the bitmap underneath it
+     * and gets resampled, which is precisely the detail this is here to recover.
+     */
+    var px = Math.max(0, Math.floor(x * tk));
+    var py = Math.max(0, Math.floor(y * tk));
+    var cw = Math.min(Math.ceil((x + w) * tk), Math.floor(box.width * tk)) - px;
+    var ch = Math.min(Math.ceil((y + h) * tk), Math.floor(box.height * tk)) - py;
+    if (!(cw > 0) || !(ch > 0)) { dropTile(slot); continue; }
+    x = px / tk; y = py / tk; w = cw / tk; h = ch / tk;
+
+    /* What is already up, or already coming, may well cover this. Redrawing on every
+       small change would have a slow pan rendering continuously and never catching up. */
+    if (covers(slot.tile, vx, vy, vw, vh, tk) ||
+        covers(slot.pending, vx, vy, vw, vh, tk)) continue;
+
+    tileQueue.push({
+      slot: slot, x: x, y: y, w: w, h: h, cw: cw, ch: ch, k: tk,
+      boxW: box.width, boxH: box.height
+    });
+  }
+
+  pump();
+}
+
+/* Whether a tile is close enough in scale and wide enough in reach to stand for what is
+   visible now. The scale tolerance is what stops a pinch that drifts a few per cent from
+   costing a redraw; the half pixel is against the rounding above. */
+function covers(tile, vx, vy, vw, vh, k) {
+  if (!tile) return false;
+  if (Math.abs(tile.k - k) > tile.k * 0.15) return false;
+  return tile.x <= vx + 0.5 && tile.y <= vy + 0.5 &&
+    tile.x + tile.w >= vx + vw - 0.5 && tile.y + tile.h >= vy + vh - 0.5;
+}
+
+/* One pass once the reader stops, however many events they arrive with. */
+var tileTimer = 0;
+function scheduleRefine() {
+  if (tileTimer) clearTimeout(tileTimer);
+  tileTimer = setTimeout(function () { tileTimer = 0; refine(); }, TILE_SETTLE_MS);
 }
 
 /*
@@ -1243,12 +1756,31 @@ function schedulePageReport() {
   pageRaf = requestAnimationFrame(function () { pageRaf = 0; reportPage(); });
 }
 
-window.addEventListener("scroll", schedulePageReport, { passive: true });
+/*
+ * Two things want to hear that the reader has moved, and they want to hear it on
+ * different terms, so one handler tells both rather than each registering its own.
+ *
+ * The counter has to be right during the gesture, so it is measured once a frame. A tile
+ * drawn during a pinch is thrown away by the next frame of that pinch, so it waits for
+ * the hand to stop.
+ *
+ * This is also the only place the tiles are driven from, and it is deliberately beside
+ * reportPage() rather than inside it. That function gives up at once on a document of
+ * one page, and both files reported in issue #20 are single-page maps: put the tile work
+ * behind that guard and the fix does nothing whatever on the documents it was written
+ * for.
+ */
+function moved() {
+  schedulePageReport();
+  scheduleRefine();
+}
+
+window.addEventListener("scroll", moved, { passive: true });
 if (window.visualViewport) {
   /* Both of these and not just the window scroll: moving a WebView while the reader is
      pinched in scrolls the visual viewport, which need not fire a window scroll at all. */
-  window.visualViewport.addEventListener("scroll", schedulePageReport, { passive: true });
-  window.visualViewport.addEventListener("resize", schedulePageReport, { passive: true });
+  window.visualViewport.addEventListener("scroll", moved, { passive: true });
+  window.visualViewport.addEventListener("resize", moved, { passive: true });
 }
 
 window.addEventListener("message", function (e) {
@@ -1309,6 +1841,9 @@ function onCommand(msg) {
     want(target);
     pump();
     reportPage();
+    /* A jump made while pinched in lands somewhere else on a page that is drawn but not
+       yet sharp here, and moves nothing that would fire a scroll to say so. */
+    scheduleRefine();
   }
 }
 
@@ -1612,7 +2147,8 @@ if (!vwPdfBlocked) {
         box.appendChild(tl);
         var slot = {
           n: i, box: box, canvas: c, text: tl,
-          state: "blank", task: null, page: null, layer: null
+          state: "blank", task: null, page: null, layer: null,
+          unscaled: null, tile: null, pending: null
         };
         /* The observers are handed elements and need the slot back. Hanging it on
            the element beats writing a data attribute and parsing it out again on

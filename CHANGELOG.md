@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Zoomed-in PDFs are sharp. A page was drawn once at a fixed size, and pinching in
+  magnified that picture rather than drawing a better one, so anything taken past about
+  twice its fitted size went soft. That is why a tube map or a site plan was unreadable at
+  the magnification it actually needs. The part of the page you are looking at is now drawn
+  again at the zoom you are at, about a third of a second after you stop pinching, however
+  far in you go. Pages are also drawn at the screen's own resolution rather than at twice
+  it, now that they no longer need to hold spare detail for pinching, so each one keeps
+  about a third of the picture it used to.
+
 ## 1.14 (2026-08-30)
 
 - The website asks for something now. A link to it rendered as a bare URL wherever it was
