@@ -8,26 +8,9 @@
 PDF, Word (`.docx`), Excel, PowerPoint (`.pptx`), photos, videos, audio, Markdown, text and code
 in one app, with **zero permissions, no ads, no tracking and no internet access at all**.
 
-> [!IMPORTANT]
-> ## 🪿 Gander needs 12 testers to reach the Play Store
->
-> Google will not let a personal developer account publish until **twelve people
-> have used the app for fourteen continuous days**. That is the only thing left
-> between Gander and everyone who will never install an APK by hand.
->
-> **Two minutes, then forget about it:**
->
-> 1. Join [**the tester group**](https://groups.google.com/g/gander-testers). It must be the same Google account you use on the Play Store, and this is the step that quietly goes wrong.
-> 2. Open the [**opt-in link**](https://play.google.com/apps/testing/com.arjun.gander) and accept.
-> 3. Install it, and **set it as your default for PDFs**.
->
-> Step 3 is the one that counts. Google checks the app was genuinely used, not
-> just installed, so twelve untouched installs fail. Making it your default costs
-> you nothing after the first tap.
->
-> It is the same app, the same signing key and the same zero permissions, and
-> the GitHub releases are not going anywhere.
-> **[Full details and questions →](https://github.com/mokshablr/gander/discussions/14)**
+> [!NOTE]
+> **Gander is coming to Google Play.** [Join the mailing list](https://groups.google.com/g/gander-testers)
+> to hear when it lands. Announcements only.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mokshablr/gander)](../../releases/latest)
