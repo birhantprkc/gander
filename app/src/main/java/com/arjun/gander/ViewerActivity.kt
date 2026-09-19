@@ -250,9 +250,7 @@ class ViewerActivity : AppCompatActivity() {
             return
         }
         // A file inside a zip, from anywhere but Gander's own list. See ENTRY_VIEWER.
-        if (uri.authority == ArchiveProvider.authority(this) &&
-            componentName.className != ENTRY_VIEWER
-        ) {
+        if (ArchiveProvider.isEntry(this, uri) && componentName.className != ENTRY_VIEWER) {
             finish()
             return
         }

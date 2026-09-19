@@ -58,6 +58,16 @@ class ArchiveProvider : ContentProvider() {
 
         fun authority(context: Context) = "${context.packageName}.archive"
 
+        /**
+         * Whether [uri] is one of these: a file inside an archive.
+         *
+         * By host, not authority. Android takes "content://0@<authority>/..." for this same
+         * provider, the 0 being the phone's own user, and strips it before the provider sees
+         * the URI, so a check of the authority as written lets that spelling past.
+         */
+        fun isEntry(context: Context, uri: Uri): Boolean =
+            uri.scheme == ContentResolver.SCHEME_CONTENT && uri.host == authority(context)
+
         internal fun uriFor(context: Context, archive: Uri, entry: ArchiveEntry): Uri {
             val at = entry.location
             return Uri.Builder()

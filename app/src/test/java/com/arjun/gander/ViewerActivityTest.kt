@@ -720,6 +720,24 @@ class ViewerActivityTest {
     }
 
     /**
+     * Android takes "0@" in front of an authority for the same provider, for the phone's own
+     * user, so the gate goes by host. Checked by authority, this spelling got past it, and any
+     * app could have Gander show a file from any zip Gander can read.
+     */
+    @Test
+    fun aFileInsideAZipIsRefusedHoweverItsAuthorityIsSpelled() {
+        val entry = ArchiveProvider.uriFor(
+            context,
+            FixtureProvider.uriFor("archive.zip"),
+            ArchiveEntry("plain.txt", false, 0, EntryLocation(0, 8, 1, 1, 0)),
+        )
+        val spelled = entry.buildUpon().encodedAuthority("0@" + entry.encodedAuthority).build()
+        assertThat(spelled.authority).isNotEqualTo(ArchiveProvider.authority(context))
+        val controller = view(spelled, "text/plain")
+        assertThat(controller.get().isFinishing).isTrue()
+    }
+
+    /**
      * A stored file in a zip is served as a window onto the archive, and a window is what
      * openFileDescriptor refuses outright. A large PDF asks for ranges, so the range server
      * has to take the window's own offset into account, or every piece comes back not found
