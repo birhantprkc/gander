@@ -19,6 +19,7 @@ Usage:  python3 tests/fixtures/make_fixtures.py
 Needs:  reportlab python-docx openpyxl python-pptx pillow
 """
 
+import heapq
 import io
 import os
 import random
@@ -774,11 +775,11 @@ def audio() -> None:
 
 ZIP_DOS_DATE = ((ZIP_DATE[0] - 1980) << 9) | (ZIP_DATE[1] << 5) | ZIP_DATE[2]
 HOST_DOS, HOST_UNIX = 0, 3
-STORED, DEFLATED = 0, 8
+STORED, DEFLATED, DEFLATE64 = 0, 8, 9
 
 
 class Member:
-    """One entry. A method other than stored or deflated writes data as given."""
+    """One entry. A method other than stored, deflated or Deflate64 writes data as given."""
 
     def __init__(self, name: bytes, data: bytes = b"", *, method=DEFLATED, flags=0,
                  host=HOST_UNIX, extra=b"", descriptor=False, directory=False):
@@ -792,6 +793,211 @@ def _extra(field_id: int, data: bytes) -> bytes:
     return struct.pack("<HH", field_id, len(data)) + data
 
 
+# Deflate64, which zlib cannot write. Enough of an encoder to put every part of the format
+# in one stream: a stored block, a fixed one and dynamic ones, matches reaching into the
+# second 32 KB of the window, and lengths past 258, which only Deflate64's last length code
+# can carry. Greedy matching over the whole 64 KB window, nothing cleverer.
+
+_LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83,
+             99, 115, 131, 163, 195, 227, 3]
+_LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5,
+              5, 16]
+_DIST_BASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769,
+              1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577, 32769, 49153]
+_DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
+               11, 12, 12, 13, 13, 14, 14]
+_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+
+
+class _Bits:
+    def __init__(self):
+        self.out, self.acc, self.n = bytearray(), 0, 0
+
+    def put(self, value: int, count: int) -> None:
+        self.acc |= value << self.n
+        self.n += count
+        while self.n >= 8:
+            self.out.append(self.acc & 0xFF)
+            self.acc >>= 8
+            self.n -= 8
+
+    def code(self, code: int, length: int) -> None:
+        self.put(int(format(code, f"0{length}b")[::-1], 2), length)
+
+    def align(self) -> None:
+        if self.n:
+            self.out.append(self.acc & 0xFF)
+        self.acc = self.n = 0
+
+
+def _lengths(freqs, limit):
+    used = [(f, s) for s, f in enumerate(freqs) if f]
+    lengths = [0] * len(freqs)
+    if not used:
+        # A block of nothing but literals has no distance code at all, which is allowed
+        return lengths
+    if len(used) == 1:
+        # One code alone is incomplete; a second, never used, completes it
+        lengths[used[0][1]] = 1
+        lengths[0 if used[0][1] else 1] = 1
+        return lengths
+    while True:
+        heap = [(f, i, (s,)) for i, (f, s) in enumerate(used)]
+        heapq.heapify(heap)
+        depth, tie = {s: 0 for _, s in used}, len(heap)
+        while len(heap) > 1:
+            f1, _, a = heapq.heappop(heap)
+            f2, _, b = heapq.heappop(heap)
+            for s in a + b:
+                depth[s] += 1
+            heapq.heappush(heap, (f1 + f2, tie, a + b))
+            tie += 1
+        if max(depth.values()) <= limit:
+            for s, d in depth.items():
+                lengths[s] = d
+            return lengths
+        used = [((f + 1) // 2, s) for f, s in used]
+
+
+def _canonical(lengths):
+    count = [0] * 16
+    for n in lengths:
+        if n:
+            count[n] += 1
+    code, first = 0, [0] * 16
+    for n in range(1, 16):
+        code = (code + count[n - 1]) << 1
+        first[n] = code
+    codes = []
+    for n in lengths:
+        codes.append(first[n])
+        if n:
+            first[n] += 1
+    return codes
+
+
+def _length_code(n):
+    if n > 258:
+        return 285, n - 3, 16
+    i = max(i for i in range(28) if _LEN_BASE[i] <= n)
+    return 257 + i, n - _LEN_BASE[i], _LEN_EXTRA[i]
+
+
+def _distance_code(d):
+    i = max(i for i in range(32) if _DIST_BASE[i] <= d)
+    return i, d - _DIST_BASE[i], _DIST_EXTRA[i]
+
+
+def _matches(data: bytes, start: int):
+    """Greedy LZ77 over a 64 KB window, from start, reaching back before it."""
+    table, tokens, i = {}, [], 0
+    for j in range(max(0, start - 65536), start):
+        table.setdefault(data[j:j + 3], []).append(j)
+    i = start
+    while i < len(data):
+        best, where = 0, 0
+        for j in reversed(table.get(data[i:i + 3], [])[-32:]):
+            if i - j > 65536:
+                break
+            n = 0
+            while i + n < len(data) and n < 65538 and data[j + n] == data[i + n]:
+                n += 1
+            if n > best:
+                best, where = n, i - j
+        step = best if best >= 3 else 1
+        for j in range(i, min(i + step, len(data) - 2)):
+            table.setdefault(data[j:j + 3], []).append(j)
+        tokens.append((best, where) if best >= 3 else data[i])
+        i += step
+    return tokens
+
+
+def _block(bits: _Bits, tokens, last: bool, dynamic: bool) -> None:
+    if dynamic:
+        lit, dist = [0] * 286, [0] * 32
+        lit[256] = 1
+        for t in tokens:
+            if isinstance(t, int):
+                lit[t] += 1
+            else:
+                lit[_length_code(t[0])[0]] += 1
+                dist[_distance_code(t[1])[0]] += 1
+        lit_lengths, dist_lengths = _lengths(lit, 15), _lengths(dist, 15)
+        hlit = max(257, max(s for s, n in enumerate(lit_lengths) if n) + 1)
+        hdist = max(1, max((s for s, n in enumerate(dist_lengths) if n), default=0) + 1)
+        seq, all_lengths, i = [], lit_lengths[:hlit] + dist_lengths[:hdist], 0
+        while i < len(all_lengths):
+            n = all_lengths[i]
+            run = 1
+            while i + run < len(all_lengths) and all_lengths[i + run] == n:
+                run += 1
+            if n == 0 and run >= 3:
+                r = min(run, 138)
+                seq.append((18, r - 11, 7) if r >= 11 else (17, r - 3, 3))
+                i += r
+            elif n and run >= 4:
+                r = min(run - 1, 6)
+                seq += [(n, 0, 0), (16, r - 3, 2)]
+                i += 1 + r
+            else:
+                seq.append((n, 0, 0))
+                i += 1
+        cl = [0] * 19
+        for sym, _, _ in seq:
+            cl[sym] += 1
+        cl_lengths = _lengths(cl, 7)
+        hclen = 19
+        while hclen > 4 and cl_lengths[_ORDER[hclen - 1]] == 0:
+            hclen -= 1
+        bits.put(1 if last else 0, 1)
+        bits.put(2, 2)
+        bits.put(hlit - 257, 5)
+        bits.put(hdist - 1, 5)
+        bits.put(hclen - 4, 4)
+        for i in range(hclen):
+            bits.put(cl_lengths[_ORDER[i]], 3)
+        cl_codes = _canonical(cl_lengths)
+        for sym, value, extra in seq:
+            bits.code(cl_codes[sym], cl_lengths[sym])
+            if extra:
+                bits.put(value, extra)
+    else:
+        lit_lengths = [8] * 144 + [9] * 112 + [7] * 24 + [8] * 8
+        dist_lengths = [5] * 32
+        bits.put(1 if last else 0, 1)
+        bits.put(1, 2)
+    lit_codes, dist_codes = _canonical(lit_lengths), _canonical(dist_lengths)
+    for t in tokens:
+        if isinstance(t, int):
+            bits.code(lit_codes[t], lit_lengths[t])
+        else:
+            sym, value, extra = _length_code(t[0])
+            bits.code(lit_codes[sym], lit_lengths[sym])
+            bits.put(value, extra)
+            sym, value, extra = _distance_code(t[1])
+            bits.code(dist_codes[sym], dist_lengths[sym])
+            bits.put(value, extra)
+    bits.code(lit_codes[256], lit_lengths[256])
+
+
+def deflate64(data: bytes) -> bytes:
+    """A stored block, then a fixed one, then two dynamic ones."""
+    bits = _Bits()
+    stored = data[:min(len(data), 16 * 1024)]
+    bits.put(0, 1)
+    bits.put(0, 2)
+    bits.align()
+    bits.out += struct.pack("<HH", len(stored), len(stored) ^ 0xFFFF) + stored
+    tokens = _matches(data, len(stored))
+    fixed, rest = tokens[:500], tokens[500:]
+    half = len(rest) // 2
+    _block(bits, fixed, last=False, dynamic=False)
+    _block(bits, rest[:half], last=False, dynamic=True)
+    _block(bits, rest[half:], last=True, dynamic=True)
+    bits.align()
+    return bytes(bits.out)
+
+
 def zip_bytes(members, *, zip64=False, comment=b"") -> bytes:
     out, central = bytearray(), bytearray()
     for m in members:
@@ -799,9 +1005,14 @@ def zip_bytes(members, *, zip64=False, comment=b"") -> bytes:
         if m.method == DEFLATED and not m.flags & 1:
             packer = zlib.compressobj(9, zlib.DEFLATED, -15)
             body = packer.compress(m.data) + packer.flush()
+        elif m.method == DEFLATE64:
+            body = deflate64(m.data)
         else:
             body = m.data
-        needed = 63 if m.method not in (STORED, DEFLATED) else (45 if zip64 else 20)
+        if m.method == DEFLATE64:
+            needed = 21
+        else:
+            needed = 63 if m.method not in (STORED, DEFLATED) else (45 if zip64 else 20)
         made_by = (m.host << 8) | (45 if zip64 else 20)
         if m.host == HOST_UNIX:
             external = ((0o40755 << 16) | 0x10) if m.directory else (0o100644 << 16)
@@ -895,6 +1106,21 @@ def zips() -> None:
     (OUT / "zip64.zip").write_bytes(zip_bytes(
         [Member(b"big/report.pdf", pdf), Member(b"big/notes.txt", plain)], zip64=True))
     written(OUT / "zip64.zip")
+
+    # Deflate64, which Windows writes for anything over 2 GB. Text to compress, then the
+    # three things only Deflate64 has: a match from more than 32 KB back, one from more than
+    # 48 KB back, and matches far longer than 258.
+    rng = random.Random(64)
+    words = [w.encode() for w in (plain + notes).decode().split() if w.isalpha()]
+    prose = b" ".join(rng.choice(words) for _ in range(12000))[:70000]
+    long_text = (prose + prose[30000:33000] + prose[5000:6000] + b"ab" * 3000 +
+                 prose[10000:30000])
+    (OUT / "deflate64.zip").write_bytes(zip_bytes([
+        Member(b"long.txt", long_text, method=DEFLATE64),
+        Member(b"short.txt", plain, method=DEFLATE64),
+        Member(b"empty.txt", b"", method=DEFLATE64),
+    ]))
+    written(OUT / "deflate64.zip")
 
     # Names as Windows writes them in each code page, flag clear, and as macOS
     # writes them, UTF-8 with the flag clear too.

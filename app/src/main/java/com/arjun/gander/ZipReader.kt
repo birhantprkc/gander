@@ -28,7 +28,7 @@ import java.util.zip.ZipException
  * turn every name not written as UTF-8 into U+FFFD, which is what ZipNames is for. And
  * ZipFile refuses a whole archive if any one entry in it is encrypted. What is used from it
  * is Inflater, which is sound, and is the platform's own: no library, nothing added to the
- * download.
+ * download. What Inflater cannot read, Deflate64, is Gander's own too, in Deflate64.kt.
  */
 
 /** Where one file's bytes are and how they are packed, as the index describes them. */
@@ -55,12 +55,12 @@ internal class ArchiveEntry(
     val size: Long get() = location.size
 
     /**
-     * Whether a viewer can be given it. Stored and deflated are what nearly every zip uses;
-     * anything else here is Deflate64, bzip2, LZMA, zstd or AES, and is listed and refused.
+     * Whether a viewer can be given it. Stored and deflated are what nearly every zip uses, and
+     * Deflate64 is what Windows uses for a file over 2 GB. Anything else here is bzip2, LZMA,
+     * zstd, AES or rarer, and is listed and refused.
      */
     val readable: Boolean
-        get() = !encrypted &&
-            (location.method == ZipReader.METHOD_STORED || location.method == ZipReader.METHOD_DEFLATED)
+        get() = !encrypted && location.method in ZipReader.READABLE_METHODS
 }
 
 /**
@@ -139,6 +139,9 @@ internal object ZipReader {
 
     const val METHOD_STORED = 0
     const val METHOD_DEFLATED = 8
+    const val METHOD_DEFLATE64 = 9
+
+    val READABLE_METHODS = setOf(METHOD_STORED, METHOD_DEFLATED, METHOD_DEFLATE64)
 
     private const val FLAG_ENCRYPTED = 1
     private const val FLAG_DESCRIPTOR = 8
@@ -360,6 +363,7 @@ internal object ZipReader {
         val body = when (at.method) {
             METHOD_STORED -> raw
             METHOD_DEFLATED -> Inflating(raw)
+            METHOD_DEFLATE64 -> Deflate64(raw)
             else -> throw ZipException("method ${at.method} is not supported")
         }
         return Checked(body, at.size, at.crc)

@@ -204,6 +204,16 @@ class ArchiveDeviceTest {
         }
     }
 
+    /** Deflate64, which zlib and so Android cannot read, read by Gander's own inflater on ART. */
+    @Test
+    fun aDeflate64FileOpens() {
+        openEntry("deflate64.zip", "short.txt").use {
+            onWebView()
+                .withElement(findElement(Locator.CSS_SELECTOR, "#content"))
+                .check(webMatches(getText(), containsString("Plain text, opened by the text viewer")))
+        }
+    }
+
     /** Only Gander's own list can open one of these. See ViewerActivity.ENTRY_VIEWER. */
     @Test
     fun aFileInsideAZipIsRefusedFromOutsideTheList() {

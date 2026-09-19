@@ -61,6 +61,7 @@ should stay obviously so.
 | `zip64.zip` | The same two files behind ZIP64 records, which every archive over 4 GB or 65,535 files has. |
 | `names-gbk.zip`, `names-cp866.zip`, `names-sjis.zip` | Names as Windows writes them in Chinese, Russian and Japanese: in the machine's code page, with the UTF-8 flag clear. |
 | `names-korean.zip` | Korean in code page 949, every byte of which is also everyday Chinese in GBK. It read as Chinese on any phone not set to Korean until `CommonCharacters` settled it. |
+| `deflate64.zip` | Deflate64, method 9, from the generator's own encoder, since zlib has none: a stored block, a fixed and two dynamic ones, matches from past 32 KB and past 48 KB back, and lengths far past 258. 7-Zip reads it back. |
 | `names-mac.zip` | UTF-8 names with the flag clear, which is what macOS writes. |
 
 The zips are written byte by byte rather than with `zipfile`, which sets the UTF-8 flag

@@ -37,6 +37,11 @@ class ZipReaderTest {
 
     private fun List<ArchiveEntry>.named(path: String) = single { it.path == path }
 
+    /** Where [path]'s data begins in the archive [bytes]. */
+    private fun dataOf(bytes: ByteArray, path: String): Int = source(bytes).use { zip ->
+        ZipReader.dataStart(zip, ZipReader.entries(zip, Locale.US).named(path).location).toInt()
+    }
+
     // ---------------------------------------------------------------
     // The index
     // ---------------------------------------------------------------
@@ -357,6 +362,61 @@ class ZipReaderTest {
             // The folder entry is stored with no data at all
             val folder = ZipReader.entries(zip, Locale.US).named("reports")
             assertThat(zip.read(folder)).isEmpty()
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Deflate64
+    // ---------------------------------------------------------------
+
+    /**
+     * Written by the generator's own Deflate64 encoder, which 7-Zip reads back: a stored
+     * block, a fixed one and two dynamic ones, matches from past 32 KB and past 48 KB back,
+     * and lengths far past 258. The checksum at the end is what says every byte came out right.
+     */
+    @Test
+    fun deflate64ReadsBack() {
+        source("deflate64.zip").use { zip ->
+            val all = ZipReader.entries(zip, Locale.US)
+            all.forEach { assertThat(it.location.method).isEqualTo(ZipReader.METHOD_DEFLATE64) }
+            assertThat(zip.read(all.named("short.txt"))).isEqualTo(Fixtures.bytes("plain.txt"))
+            assertThat(zip.read(all.named("empty.txt"))).isEmpty()
+            val long = zip.read(all.named("long.txt"))
+            assertThat(long.size.toLong()).isEqualTo(all.named("long.txt").size)
+            assertThat(long.size).isGreaterThan(64 * 1024)
+        }
+    }
+
+    /** Read a byte at a time too, since a match can be cut off by the reader and resumed. */
+    @Test
+    fun deflate64ReadsBackAByteAtATime() {
+        source("deflate64.zip").use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("long.txt")
+            val whole = zip.read(entry)
+            val bytewise = ZipReader.open(zip, entry.location).use { input ->
+                java.io.ByteArrayOutputStream().also { out ->
+                    while (true) {
+                        val b = input.read()
+                        if (b < 0) break
+                        out.write(b)
+                    }
+                }.toByteArray()
+            }
+            assertThat(bytewise).isEqualTo(whole)
+        }
+    }
+
+    @Test
+    fun damagedDeflate64IsAnError() {
+        val bytes = Fixtures.bytes("deflate64.zip")
+        // Into the dynamic blocks, well past the stored one at the start
+        val at = dataOf(bytes, "long.txt") + 16 * 1024 + 800
+        bytes[at] = (bytes[at].toInt() xor 0x5A).toByte()
+        source(bytes).use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("long.txt")
+            // Damage shows as a code that means nothing, data that ends early, or a checksum
+            // that does not match, depending on where it lands; every one is an error
+            assertThrows(java.io.IOException::class.java) { zip.read(entry) }
         }
     }
 
