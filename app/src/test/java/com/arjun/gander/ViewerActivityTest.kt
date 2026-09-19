@@ -468,6 +468,18 @@ class ViewerActivityTest {
         assertThat(ArchiveProvider.parse(started.data!!)?.name).isEqualTo("plain.txt")
     }
 
+    /**
+     * The list keeps its span indexes, as the home screen's does. Without them a tablet's two
+     * columns lay a long folder out in time that grows with the square of its length.
+     */
+    @Test
+    fun aZipsListCachesItsSpanIndexes() {
+        val list = zip().container().children().filterIsInstance<RecyclerView>().single()
+        val spans = (list.layoutManager as androidx.recyclerview.widget.GridLayoutManager).spanSizeLookup
+        assertThat(spans.isSpanIndexCacheEnabled).isTrue()
+        assertThat(spans.isSpanGroupIndexCacheEnabled).isTrue()
+    }
+
     @Test
     fun aFileThatCannotBeOpenedSaysWhyAndOpensNothing() {
         val controller = zip()

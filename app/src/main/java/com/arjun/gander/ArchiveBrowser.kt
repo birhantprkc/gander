@@ -177,6 +177,12 @@ internal class ArchiveBrowser(
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int) =
                     if (adapter.isFullSpan(position)) columns else 1
+            }.apply {
+                // Cached, as the home screen's are and for its reason: uncached, laying out a
+                // folder on a tablet takes time in the square of its length, and a folder in
+                // a zip can be a hundred thousand files long
+                isSpanIndexCacheEnabled = true
+                isSpanGroupIndexCacheEnabled = true
             }
         }
         list.adapter = adapter
