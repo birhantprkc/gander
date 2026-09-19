@@ -1,6 +1,7 @@
 package com.arjun.gander
 
 import android.annotation.SuppressLint
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -377,9 +378,14 @@ class ViewerActivity : AppCompatActivity() {
             .setType(mime ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*")
             .putExtra(Intent.EXTRA_STREAM, shareUri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // Not to Gander itself, as the home screen's share is not: a file from a zip
+        // would be turned away at the door (see ENTRY_VIEWER), which looks like a
+        // crash, and any other file is already open right here.
+        val chooser = Intent.createChooser(send, getString(R.string.share_file))
+            .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(ComponentName(this, ViewerActivity::class.java)))
         // Some Android versions refuse to delegate a tree-derived grant and
         // throw here rather than at read time
-        runCatching { startActivity(Intent.createChooser(send, getString(R.string.share_file))) }
+        runCatching { startActivity(chooser) }
             .onFailure { Toast.makeText(this, R.string.share_failed, Toast.LENGTH_SHORT).show() }
     }
 

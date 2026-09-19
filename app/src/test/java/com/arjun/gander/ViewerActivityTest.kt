@@ -738,6 +738,30 @@ class ViewerActivityTest {
     }
 
     /**
+     * Share from a file in a zip leaves Gander out of the list, as the home screen's share does.
+     * Picked, Gander would turn the file away at the gate above without a word.
+     */
+    @Test
+    fun shareLeavesGanderOutOfTheList() {
+        val entry = ArchiveProvider.uriFor(
+            context,
+            FixtureProvider.uriFor("archive.zip"),
+            ArchiveEntry("plain.txt", false, 0, EntryLocation(0, 8, 1, 1, 0)),
+        )
+        val intent = Intent()
+            .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+            .setData(entry)
+        val activity = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup().get()
+        activity.findViewById<MaterialToolbar>(R.id.toolbar).menu
+            .performIdentifierAction(R.id.action_share, 0)
+        val chooser = shadowOf(activity).nextStartedActivity
+        assertThat(chooser.action).isEqualTo(Intent.ACTION_CHOOSER)
+        @Suppress("DEPRECATION")
+        val excluded = chooser.getParcelableArrayExtra(Intent.EXTRA_EXCLUDE_COMPONENTS).orEmpty()
+        assertThat(excluded.toList()).contains(ComponentName(context, ViewerActivity::class.java))
+    }
+
+    /**
      * A stored file in a zip is served as a window onto the archive, and a window is what
      * openFileDescriptor refuses outright. A large PDF asks for ranges, so the range server
      * has to take the window's own offset into account, or every piece comes back not found
