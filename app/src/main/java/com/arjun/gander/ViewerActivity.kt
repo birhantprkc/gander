@@ -261,8 +261,10 @@ class ViewerActivity : AppCompatActivity() {
         val mime = runCatching { contentResolver.getType(uri) }.getOrNull() ?: intent.type
 
         // Picker selections carry a persistable grant; keep those in Recents.
-        // Open-with and folder-browsed URIs throw here and are simply skipped.
-        if (uri.scheme == "content") {
+        // Open-with and folder-browsed URIs throw here and are simply skipped. A file
+        // inside a zip would too, but is kept out by name rather than by that: nothing
+        // in a zip is written to the phone, and Recents is on the phone.
+        if (uri.scheme == "content" && !ArchiveProvider.isEntry(this, uri)) {
             runCatching {
                 contentResolver.takePersistableUriPermission(
                     uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -1453,9 +1455,16 @@ class ViewerActivity : AppCompatActivity() {
         loadedNight = night == 1
         // The page a PDF was left at goes the same way, for the same two reasons and one
         // more: a document that opened at the top and then jumped would spend its opening
-        // drawing a page nobody asked to see. Issue #25.
+        // drawing a page nobody asked to see. Issue #25. Never for a file inside a zip:
+        // the position is filed on the phone under a fingerprint of the file, nothing in a
+        // zip is written to the phone, and one under a password would leave a fingerprint
+        // of what the password was keeping.
         positionKey =
-            if (kind == FileKind.PDF) Positions.keyFor(contentResolver, uri, total) else null
+            if (kind == FileKind.PDF && !ArchiveProvider.isEntry(this, uri)) {
+                Positions.keyFor(contentResolver, uri, total)
+            } else {
+                null
+            }
         val resumeAt = positionKey?.let { Positions.page(this, it) } ?: 0
         web.loadUrl(
             "https://$ASSET_HOST/assets/viewer/${kind.page}" +

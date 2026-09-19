@@ -68,7 +68,7 @@ object Thumbs {
         }
         val appCtx = context.applicationContext
         val kind = FileKind.detect(ext, null)
-        val onDisk = uri.authority != ArchiveProvider.authority(appCtx)
+        val onDisk = !ArchiveProvider.isEntry(appCtx, uri)
         executor.execute {
             val bmp = (if (onDisk) fromDisk(appCtx, key) else null)
                 ?: generate(appCtx, uri, kind, ext)?.also { if (onDisk) toDisk(appCtx, key, it) }

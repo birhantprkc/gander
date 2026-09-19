@@ -781,6 +781,45 @@ class ViewerActivityTest {
         assertThat(response.data.readBytes()).isEqualTo(body.copyOfRange(100, 200))
     }
 
+    /**
+     * A PDF inside a zip keeps no reading position. Positions are filed on the phone under a
+     * fingerprint of the file, and nothing in a zip is written to the phone, so the fingerprint
+     * is never taken. Seeded with a page under exactly the one the viewer would take, which a
+     * viewer that still looked would open on.
+     */
+    @Test
+    fun aPdfInsideAZipKeepsNoReadingPosition() {
+        val pdf = Fixtures.bytes("six-pages.pdf")
+        val file = File.createTempFile("positions", ".zip").apply { deleteOnExit() }
+        java.util.zip.ZipOutputStream(file.outputStream()).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("six-pages.pdf").apply {
+                method = java.util.zip.ZipEntry.STORED
+                this.size = pdf.size.toLong()
+                compressedSize = pdf.size.toLong()
+                crc = java.util.zip.CRC32().apply { update(pdf) }.value
+            })
+            z.write(pdf)
+            z.closeEntry()
+        }
+        val archive = FixtureProvider.install().add("positions.zip", file)
+        Robolectric.buildContentProvider(ArchiveProvider::class.java)
+            .create(ArchiveProvider.authority(context))
+        val raf = java.io.RandomAccessFile(file, "r")
+        val entry = ZipSource(raf.channel, 0, raf.length(), raf).use {
+            ZipReader.entries(it, java.util.Locale.US).single()
+        }
+        val uri = ArchiveProvider.uriFor(context, archive, entry)
+        val length = context.contentResolver.openAssetFileDescriptor(uri, "r")!!.use { it.length }
+        Positions.save(context, Positions.keyFor(context.contentResolver, uri, length)!!, 4, 6)
+
+        val intent = Intent()
+            .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+            .setData(uri)
+        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        assertThat(controller.loadedUrl()).contains("viewer/pdf.html")
+        assertThat(controller.loadedUrl()).doesNotContain("resume=")
+    }
+
     @Test
     fun theEntryAliasIsLetThrough() {
         val entry = ArchiveProvider.uriFor(
