@@ -159,6 +159,56 @@ class ZipNamesTest {
     }
 
     // ---------------------------------------------------------------
+    // Chosen by hand
+    // ---------------------------------------------------------------
+
+    /** When the guess is wrong, the reader's choice is used for every name that did not say. */
+    @Test
+    fun aCodePageChosenByHandIsUsedInPlaceOfTheGuess() {
+        val raw = legacy(listOf("季度报告/会议记录.txt"), "GBK")
+        val big5 = Charset.forName("Big5")
+        val read = ZipNames.read(raw, chinese, chosen = big5)
+        assertThat(read.codePage).isEqualTo(big5)
+        assertThat(read.names).containsExactly(String(raw[0].bytes, big5))
+        assertThat(read.names).doesNotContain("季度报告/会议记录.txt")
+    }
+
+    /** A name that says it is UTF-8 is read as UTF-8 whatever is chosen. The writer knew. */
+    @Test
+    fun aChoiceNeverRereadsANameThatSaidWhatItWas() {
+        val flagged = RawName("季度报告.txt".toByteArray(Charsets.UTF_8), utf8 = true)
+        val read = ZipNames.read(listOf(flagged), english, chosen = Charset.forName("IBM866"))
+        assertThat(read.names).containsExactly("季度报告.txt")
+    }
+
+    /**
+     * The code page is only reported where a name needed one, which is what decides whether
+     * the reader is offered the choice at all.
+     */
+    @Test
+    fun theCodePageIsReportedOnlyWhereANameNeededOne() {
+        assertThat(ZipNames.read(legacy(listOf("notes.txt"), "US-ASCII"), english).codePage).isNull()
+        val flagged = RawName("Отчёт.txt".toByteArray(Charsets.UTF_8), utf8 = true)
+        assertThat(ZipNames.read(listOf(flagged), english).codePage).isNull()
+        assertThat(ZipNames.read(legacy(listOf("季度报告.txt"), "GBK"), english).codePage)
+            .isEqualTo(Charset.forName("GBK"))
+        assertThat(ZipNames.read(legacy(listOf("Отчёт.txt"), "UTF-8"), english).codePage)
+            .isEqualTo(Charsets.UTF_8)
+    }
+
+    /** Every choice the menu offers is one the runtime has, under a key of its own. */
+    @Test
+    fun everyChoiceIsARealCodePage() {
+        val keys = ZipNames.CHOICES.map { it.first }
+        assertThat(keys).containsNoDuplicates()
+        assertThat(keys.first()).isEqualTo("utf8")
+        assertThat(keys).containsAtLeast("gbk", "big5", "sjis", "korean", "cp866", "cp437")
+        ZipNames.CHOICES.forEach { (key, charset) ->
+            assertThat(ZipNames.keyOf(charset)).isEqualTo(key)
+        }
+    }
+
+    // ---------------------------------------------------------------
     // What the archive does say
     // ---------------------------------------------------------------
 

@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
+import androidx.test.espresso.Espresso.onData
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.pressImeActionButton
@@ -32,6 +33,7 @@ import java.io.RandomAccessFile
 import java.util.Locale
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.hasToString
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -348,6 +350,36 @@ class ArchiveDeviceTest {
             rows(it)
             assertThat(showsAPicture(it, "aes256.png")).isTrue()
             assertThat(showsAPicture(it, "zipcrypto.png")).isTrue()
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // The code page names are read in
+    // ---------------------------------------------------------------
+
+    /**
+     * Chosen by hand from the menu, on the device's own code pages: GBK names read as Big5
+     * come out as other characters, and choosing Automatic again brings them back.
+     */
+    @Test
+    fun choosingACodePageRereadsTheNames() {
+        ActivityScenario.launch<ViewerActivity>(DeviceFixtures.viewIntent("names-gbk.zip")).use { scenario ->
+            assertThat(rows(scenario)).containsExactly("季度报告", "照片").inOrder()
+            fun choose(label: String) {
+                scenario.onActivity { activity ->
+                    activity.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+                        .menu.performIdentifierAction(R.id.action_name_encoding, 0)
+                }
+                // By the adapter rather than the view: the list opens scrolled to the choice
+                // already made, which leaves the ones above it out of the hierarchy
+                onData(hasToString(label)).inRoot(isDialog()).perform(click())
+            }
+            choose(target.getString(R.string.encoding_big5))
+            val big5 = String("季度报告".toByteArray(charset("GBK")), charset("Big5"))
+            assertThat(waitFor("names read as Big5") { rows(scenario).takeIf { big5 in it } }).contains(big5)
+            choose(target.getString(R.string.name_encoding_automatic_as, target.getString(R.string.encoding_gbk)))
+            assertThat(waitFor("names read as GBK again") { rows(scenario).takeIf { "季度报告" in it } })
+                .containsExactly("季度报告", "照片").inOrder()
         }
     }
 

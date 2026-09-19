@@ -24,6 +24,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import java.nio.charset.Charset
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -120,6 +121,8 @@ internal class ArchiveBrowser(
     private val archiveName: String,
     /** Where the reader was before a configuration change, or null for the top. */
     restoredFolder: String?,
+    /** The code page the reader chose for the names before a configuration change, if they did. */
+    restoredCodePage: String?,
     /**
      * Where the index is read and a password tried. Its own thread, ended with the screen;
      * tests run it inline.
@@ -130,6 +133,17 @@ internal class ArchiveBrowser(
     /** The folder on screen, "" for the top of the archive. Saved across a recreation. */
     var folder: String = restoredFolder.orEmpty()
         private set
+
+    /**
+     * The code page the reader chose for the names, as a key of [ZipNames.CHOICES], or null
+     * for Gander's own guess. Saved across a recreation, and kept nowhere else: a zip opened
+     * again starts from the guess.
+     */
+    var codePage: String? = restoredCodePage
+        private set
+
+    /** What Gander guessed for the names, which the menu offers as its automatic choice. */
+    private var guessed: Charset? = null
 
     private var tree: ArchiveTree? = null
     private val adapter = RowAdapter()
@@ -148,7 +162,7 @@ internal class ArchiveBrowser(
 
     /** What reading the index came to: the archive's folders, or what to say instead. */
     private sealed interface Listing {
-        class Ready(val tree: ArchiveTree) : Listing
+        class Ready(val tree: ArchiveTree, val codePage: Charset?) : Listing
         class Failed(val message: Int) : Listing
     }
 
@@ -175,6 +189,10 @@ internal class ArchiveBrowser(
         )
         activity.onBackPressedDispatcher.addCallback(activity, back)
         toolbar.setNavigationOnClickListener { activity.onBackPressedDispatcher.onBackPressed() }
+        toolbar.menu.findItem(R.id.action_name_encoding)?.setOnMenuItemClickListener {
+            chooseCodePage()
+            true
+        }
         activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onDestroy(owner: LifecycleOwner) {
                 dialog?.dismiss()
@@ -194,8 +212,9 @@ internal class ArchiveBrowser(
      */
     private fun load() {
         val announce = announceAfterADelay()
+        val chosen = ZipNames.CHOICES.firstOrNull { it.first == codePage }?.second
         loader.execute {
-            val result = read()
+            val result = read(chosen)
             main.post {
                 main.removeCallbacks(announce)
                 if (activity.isDestroyed) return@post
@@ -203,6 +222,10 @@ internal class ArchiveBrowser(
                 when (result) {
                     is Listing.Ready -> {
                         tree = result.tree
+                        if (chosen == null) guessed = result.codePage
+                        // Offered only where the names needed a code page, since everywhere
+                        // else it would change nothing: they said what they were
+                        toolbar.menu.findItem(R.id.action_name_encoding)?.isVisible = result.codePage != null
                         show(folder.takeIf(result.tree::has).orEmpty())
                     }
                     is Listing.Failed -> {
@@ -226,7 +249,7 @@ internal class ArchiveBrowser(
         return announce
     }
 
-    private fun read(): Listing = try {
+    private fun read(chosen: Charset?): Listing = try {
         val afd = activity.contentResolver.openAssetFileDescriptor(archive, "r")
         val source = afd?.let(ZipSource::open)
         when {
@@ -235,7 +258,10 @@ internal class ArchiveBrowser(
                 afd.close()
                 Listing.Failed(R.string.archive_not_seekable)
             }
-            else -> source.use { Listing.Ready(ArchiveTree(ZipReader.entries(it))) }
+            else -> source.use {
+                val index = ZipReader.index(it, codePage = chosen)
+                Listing.Ready(ArchiveTree(index.entries), index.codePage)
+            }
         }
     } catch (_: ZipReader.TooLarge) {
         Listing.Failed(R.string.archive_too_large)
@@ -430,8 +456,58 @@ internal class ArchiveBrowser(
         }
     }
 
+    /**
+     * The code pages a reader can choose for the names, when Gander's guess is wrong: its
+     * guess first, then every one there is. Choosing reads the index again, which is what a
+     * zip of any size lists in, and goes back to the top, since the folder on screen was named
+     * in the old reading and may have another name in the new one.
+     */
+    private fun chooseCodePage() {
+        val choices = ZipNames.CHOICES
+        val automatic = ZipNames.keyOf(guessed)?.let { LABELS[it] }
+            ?.let { activity.getString(R.string.name_encoding_automatic_as, activity.getString(it)) }
+            ?: activity.getString(R.string.name_encoding_automatic)
+        val labels = (listOf(automatic) + choices.map { activity.getString(LABELS.getValue(it.first)) })
+            .toTypedArray()
+        val checked = choices.indexOfFirst { it.first == codePage } + 1
+        dialog = MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.name_encoding)
+            .setSingleChoiceItems(labels, checked) { box, which ->
+                box.dismiss()
+                val chosen = if (which == 0) null else choices[which - 1].first
+                if (chosen == codePage) return@setSingleChoiceItems
+                codePage = chosen
+                folder = ""
+                scrolled.clear()
+                load()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private companion object {
         /** The same wait the home screen gives a folder before saying anything about it. */
         const val PROGRESS_DELAY_MS = 150L
+
+        /** What the menu calls each of [ZipNames.CHOICES]. */
+        val LABELS = mapOf(
+            "utf8" to R.string.encoding_utf8,
+            "gbk" to R.string.encoding_gbk,
+            "big5" to R.string.encoding_big5,
+            "sjis" to R.string.encoding_sjis,
+            "korean" to R.string.encoding_korean,
+            "cp866" to R.string.encoding_cp866,
+            "cp1251" to R.string.encoding_cp1251,
+            "cp850" to R.string.encoding_cp850,
+            "cp437" to R.string.encoding_cp437,
+            "cp852" to R.string.encoding_cp852,
+            "cp737" to R.string.encoding_cp737,
+            "cp857" to R.string.encoding_cp857,
+            "cp862" to R.string.encoding_cp862,
+            "cp720" to R.string.encoding_cp720,
+            "cp874" to R.string.encoding_cp874,
+            "cp775" to R.string.encoding_cp775,
+            "cp1258" to R.string.encoding_cp1258,
+        )
     }
 }

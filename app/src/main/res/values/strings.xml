@@ -41,6 +41,29 @@
     <string name="password">Password</string>
     <string name="password_open">Open</string>
     <string name="password_wrong">That password did not work.</string>
+    <!-- Choosing how a zip's names are read, when Gander's guess is wrong. Named by language
+         first, since that is what a reader recognises, and by code page after it, which is
+         what anyone who knows the term is looking for. -->
+    <string name="name_encoding">File name encoding</string>
+    <string name="name_encoding_automatic">Automatic</string>
+    <string name="name_encoding_automatic_as">Automatic: %1$s</string>
+    <string name="encoding_utf8">Unicode (UTF-8)</string>
+    <string name="encoding_gbk">Chinese, Simplified (GBK)</string>
+    <string name="encoding_big5">Chinese, Traditional (Big5)</string>
+    <string name="encoding_sjis">Japanese (Shift_JIS)</string>
+    <string name="encoding_korean">Korean (EUC-KR)</string>
+    <string name="encoding_cp866">Cyrillic (DOS 866)</string>
+    <string name="encoding_cp1251">Cyrillic (Windows 1251)</string>
+    <string name="encoding_cp850">Western European (DOS 850)</string>
+    <string name="encoding_cp437">English (DOS 437)</string>
+    <string name="encoding_cp852">Central European (DOS 852)</string>
+    <string name="encoding_cp737">Greek (DOS 737)</string>
+    <string name="encoding_cp857">Turkish (DOS 857)</string>
+    <string name="encoding_cp862">Hebrew (DOS 862)</string>
+    <string name="encoding_cp720">Arabic (DOS 720)</string>
+    <string name="encoding_cp874">Thai (874)</string>
+    <string name="encoding_cp775">Baltic (DOS 775)</string>
+    <string name="encoding_cp1258">Vietnamese (1258)</string>
     <string name="removed">Removed</string>
     <!-- Releasing a folder grant is the one thing on this screen that cannot be undone:
          Android has no way to re-take a released permission, so the reader would have to

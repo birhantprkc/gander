@@ -74,6 +74,7 @@ class ViewerActivity : AppCompatActivity() {
         const val EXTRA_PATH = "path"
         private const val STATE_COPY_SOURCE = "copy_source"
         private const val STATE_ARCHIVE_FOLDER = "archive_folder"
+        private const val STATE_ARCHIVE_CODE_PAGE = "archive_code_page"
         private const val ASSET_HOST = "appassets.androidplatform.net"
 
         /**
@@ -222,6 +223,7 @@ class ViewerActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         outState.putString(STATE_COPY_SOURCE, copySource?.toString())
         outState.putString(STATE_ARCHIVE_FOLDER, archiveBrowser?.folder)
+        outState.putString(STATE_ARCHIVE_CODE_PAGE, archiveBrowser?.codePage)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1313,6 +1315,7 @@ class ViewerActivity : AppCompatActivity() {
             archive = uri,
             archiveName = name,
             restoredFolder = state?.getString(STATE_ARCHIVE_FOLDER),
+            restoredCodePage = state?.getString(STATE_ARCHIVE_CODE_PAGE),
             loader = archiveLoader ?: java.util.concurrent.Executors.newSingleThreadExecutor(),
         )
         archiveBrowser = browser

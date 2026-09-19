@@ -178,6 +178,21 @@ class AccessibilityTest {
         }
     }
 
+    /** And the list of code pages a zip's names can be read in, which is long enough to scroll. */
+    @Test
+    fun theNameEncodingListPassesTheAccessibilityChecks() {
+        ActivityScenario.launch<ViewerActivity>(
+            DeviceFixtures.viewIntent("names-gbk.zip")
+        ).use { scenario ->
+            awaitRows(scenario)
+            scenario.onActivity { activity ->
+                activity.findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+                    .menu.performIdentifierAction(R.id.action_name_encoding, 0)
+            }
+            checkFrom(onView(withText(R.string.name_encoding)).inRoot(isDialog()))
+        }
+    }
+
     /** Waits for the list to be drawn: the index is read off the main thread. */
     private fun awaitRows(scenario: ActivityScenario<ViewerActivity>) {
         val deadline = SystemClock.uptimeMillis() + 15_000

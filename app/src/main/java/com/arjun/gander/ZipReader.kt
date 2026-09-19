@@ -7,6 +7,7 @@ import java.io.FileInputStream
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.charset.Charset
 import java.util.Calendar
 import java.util.Locale
 import java.util.zip.CRC32
@@ -106,6 +107,14 @@ internal class ArchiveEntry(
     val readable: Boolean
         get() = location.lock != Lock.UNSUPPORTED && location.method in ZipReader.READABLE_METHODS
 }
+
+/** What reading a zip's index came to. */
+internal class ArchiveIndex(
+    /** Everything in the archive, in the order the index lists it. */
+    val entries: List<ArchiveEntry>,
+    /** What the names that did not say were read as, see [DecodedNames.codePage]. */
+    val codePage: Charset?,
+)
 
 /**
  * A zip that can be read at any position, which is what a zip needs: its index is at the end
@@ -234,7 +243,14 @@ internal object ZipReader {
     class WrongPassword : ZipException("wrong password")
 
     /** Everything in the archive, in the order the index lists it. */
-    fun entries(source: ZipSource, locale: Locale = Locale.getDefault()): List<ArchiveEntry> {
+    fun entries(source: ZipSource, locale: Locale = Locale.getDefault()): List<ArchiveEntry> =
+        index(source, locale).entries
+
+    /**
+     * Everything in the archive, and the code page the names that did not say were read in.
+     * [codePage] is one the reader chose by hand, which takes the place of a guess.
+     */
+    fun index(source: ZipSource, locale: Locale = Locale.getDefault(), codePage: Charset? = null): ArchiveIndex {
         val end = findEnd(source)
         val index = source.read(end.indexStart, end.indexSize.toInt())
 
@@ -328,10 +344,10 @@ internal object ZipReader {
             p = next
         }
 
-        val names = ZipNames.decode(raw, locale)
-        return parsed.indices.mapNotNull { i ->
+        val decoded = ZipNames.read(raw, locale, codePage)
+        val entries = parsed.indices.mapNotNull { i ->
             val e = parsed[i]
-            val path = normalise(names[i], e.dos)
+            val path = normalise(decoded.names[i], e.dos)
             if (path.isEmpty()) return@mapNotNull null
             ArchiveEntry(
                 path = path,
@@ -340,6 +356,7 @@ internal object ZipReader {
                 location = EntryLocation(e.offset, e.method, e.compressed, e.size, e.crc, e.lock),
             )
         }
+        return ArchiveIndex(entries, decoded.codePage)
     }
 
     /** What the index says about one entry, held until its name can be decoded. */

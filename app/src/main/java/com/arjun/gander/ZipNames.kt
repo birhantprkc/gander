@@ -18,6 +18,18 @@ internal class RawName(
     val unicodePath: ByteArray? = null,
 )
 
+/** Every name in one archive, decoded, and what the ones that did not say were read as. */
+internal class DecodedNames(
+    /** Same order and count as the names given. */
+    val names: List<String>,
+    /**
+     * The code page the names that did not say what they were written in were read in, or
+     * null when every name did say: flagged UTF-8, a Unicode Path field, or plain ASCII. Null
+     * is also when there is nothing for a reader to correct by hand.
+     */
+    val codePage: Charset?,
+)
+
 /**
  * The names inside a .zip, decoded. Issue #30.
  *
@@ -46,6 +58,9 @@ internal class RawName(
  * every phone not set to Korean. What does split them is which everyday characters: read as
  * Korean, the bytes are the syllables Korean is mostly written in, and read as Chinese, the
  * same bytes are characters Chinese rarely uses. See [COMMON_BONUS].
+ *
+ * A guess can still be wrong, most of all for an archive of one short name, so the reader
+ * can also say which code page it is: [CHOICES].
  */
 internal object ZipNames {
 
@@ -54,9 +69,7 @@ internal object ZipNames {
 
     /** One code page, under each name a runtime might know it by, preferred first. */
     private class Candidate(val script: Script, vararg names: String) {
-        val charset: Charset? = names.firstNotNullOfOrNull {
-            runCatching { Charset.forName(it) }.getOrNull()
-        }
+        val charset: Charset? = charset(*names)
     }
 
     // The Windows code pages for each, where Java knows them separately. They are supersets
@@ -108,27 +121,80 @@ internal object ZipNames {
     private fun everyday(cp: Int, common: Set<Char>): Double =
         if (cp <= 0xFFFF && cp.toChar() in common) 1.0 + COMMON_BONUS else 1.0
 
+    /**
+     * Every code page a reader can choose by hand, under the key the menu names it by, in the
+     * order the menu lists them: UTF-8 for a zip whose names only look like it, then every one
+     * ZipNames guesses among, then five it never guesses. Hebrew, Arabic, Thai, Baltic and
+     * Vietnamese Windows machines write their names in these, and each reads as some other
+     * language's letters with nothing in a name to say which. Any a phone lacks is left out.
+     */
+    val CHOICES: List<Pair<String, Charset>> by lazy {
+        listOf(
+            "utf8" to Charsets.UTF_8,
+            "gbk" to GBK.charset,
+            "big5" to BIG5.charset,
+            "sjis" to SJIS.charset,
+            "korean" to UHC.charset,
+            "cp866" to DOS_CYRILLIC.charset,
+            "cp1251" to WIN_CYRILLIC.charset,
+            "cp850" to DOS_WESTERN.charset,
+            "cp437" to DOS_US.charset,
+            "cp852" to DOS_CENTRAL.charset,
+            "cp737" to DOS_GREEK.charset,
+            "cp857" to DOS_TURKISH.charset,
+            "cp862" to charset("IBM862"),
+            "cp720" to charset("x-IBM720", "IBM720"),
+            "cp874" to charset("x-IBM874", "TIS-620"),
+            "cp775" to charset("IBM775"),
+            "cp1258" to charset("windows-1258"),
+        ).mapNotNull { (key, charset) -> charset?.let { key to it } }
+    }
+
+    private fun charset(vararg names: String): Charset? =
+        names.firstNotNullOfOrNull { runCatching { Charset.forName(it) }.getOrNull() }
+
+    /**
+     * Which of the [CHOICES] keys [charset] is, or null. By name, since a runtime can hand back
+     * the same code page from two lookups as two objects, or under an alias: Android answers
+     * x-windows-949 with its EUC-KR, which reads Windows' extra syllables all the same.
+     */
+    fun keyOf(charset: Charset?): String? =
+        charset?.let { c -> CHOICES.firstOrNull { it.second.name() == c.name() }?.first }
+
     /** Every name in one archive, decoded. Same order, same count. */
-    fun decode(names: List<RawName>, locale: Locale = Locale.getDefault()): List<String> {
+    fun decode(names: List<RawName>, locale: Locale = Locale.getDefault()): List<String> =
+        read(names, locale).names
+
+    /**
+     * Every name in one archive, decoded, and the code page it took. [chosen] is one the reader
+     * picked, which is used for every name that does not say otherwise, in place of a guess.
+     * Names that do say, by the flag or a Unicode Path field, are never read any other way:
+     * the writer knew, and a choice made for the rest of them is not about those.
+     */
+    fun read(names: List<RawName>, locale: Locale = Locale.getDefault(), chosen: Charset? = null): DecodedNames {
         val unicode = names.map(::unicodePath)
         // The names nothing else speaks for, which are the ones a code page has to be found for
         val legacy = names.filterIndexed { i, n -> !n.utf8 && unicode[i] == null && !isAscii(n.bytes) }
         val charset = when {
             legacy.isEmpty() -> null
+            chosen != null -> chosen
             // macOS: UTF-8 without the flag. Checked over every such name at once, since
             // one short legacy name can be valid UTF-8 by accident and a whole archive of
             // them is not.
             legacy.all { strict(Charsets.UTF_8, it.bytes) != null } -> Charsets.UTF_8
             else -> guess(legacy.map { it.bytes }, locale)
         }
-        return names.mapIndexed { i, n ->
-            when {
-                n.utf8 -> String(n.bytes, Charsets.UTF_8)
-                unicode[i] != null -> unicode[i]!!
-                isAscii(n.bytes) -> String(n.bytes, Charsets.US_ASCII)
-                else -> String(n.bytes, charset ?: Charsets.UTF_8)
-            }
-        }
+        return DecodedNames(
+            names.mapIndexed { i, n ->
+                when {
+                    n.utf8 -> String(n.bytes, Charsets.UTF_8)
+                    unicode[i] != null -> unicode[i]!!
+                    isAscii(n.bytes) -> String(n.bytes, Charsets.US_ASCII)
+                    else -> String(n.bytes, charset ?: Charsets.UTF_8)
+                }
+            },
+            charset,
+        )
     }
 
     /**

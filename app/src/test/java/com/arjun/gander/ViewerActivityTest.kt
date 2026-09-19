@@ -611,6 +611,61 @@ class ViewerActivityTest {
         assertThat(controller.asksForAPicture("aes256.png")).isTrue()
     }
 
+    // ---------------------------------------------------------------
+    // The code page names are read in
+    // ---------------------------------------------------------------
+
+    private fun ActivityController<ViewerActivity>.encodingItem(): android.view.MenuItem =
+        get().findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_name_encoding)
+
+    /** Offered only where names needed a guess, since everywhere else it would change nothing. */
+    @Test
+    fun theNameEncodingIsOfferedOnlyWhereNamesNeededAGuess() {
+        assertThat(zip().encodingItem().isVisible).isFalse()
+        assertThat(zip(FixtureProvider.uriFor("names-gbk.zip")).encodingItem().isVisible).isTrue()
+    }
+
+    /** Choosing a code page by hand reads every name again in it, and says what the guess was. */
+    @Test
+    fun choosingACodePageReadsTheNamesAgain() {
+        val controller = zip(FixtureProvider.uriFor("names-gbk.zip"))
+        assertThat(controller.titles()).containsExactly("季度报告", "照片").inOrder()
+        controller.encodingItem().let {
+            controller.get().findViewById<MaterialToolbar>(R.id.toolbar).menu.performIdentifierAction(it.itemId, 0)
+        }
+        val box = ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        val choices = box.listView.adapter
+        assertThat(choices.getItem(0).toString()).isEqualTo(
+            context.getString(R.string.name_encoding_automatic_as, context.getString(R.string.encoding_gbk))
+        )
+        val big5 = (0 until choices.count).single { choices.getItem(it).toString() == context.getString(R.string.encoding_big5) }
+        box.listView.performItemClick(null, big5, big5.toLong())
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val raw = "季度报告".toByteArray(charset("GBK"))
+        assertThat(controller.titles()).contains(String(raw, charset("Big5")))
+    }
+
+    /** And the choice survives a recreation, which reads the index again. */
+    @Test
+    fun aChosenCodePageSurvivesARecreation() {
+        val first = zip(FixtureProvider.uriFor("names-gbk.zip"))
+        first.encodingItem().let {
+            first.get().findViewById<MaterialToolbar>(R.id.toolbar).menu.performIdentifierAction(it.itemId, 0)
+        }
+        val box = ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        val big5 = (0 until box.listView.adapter.count)
+            .single { box.listView.adapter.getItem(it).toString() == context.getString(R.string.encoding_big5) }
+        box.listView.performItemClick(null, big5, big5.toLong())
+        shadowOf(Looper.getMainLooper()).idle()
+        val titles = first.titles()
+        val state = Bundle()
+        first.saveInstanceState(state)
+
+        val second = zip(FixtureProvider.uriFor("names-gbk.zip"), state)
+        assertThat(second.titles()).isEqualTo(titles)
+    }
+
     /** A change of theme recreates the viewer, and the reader stays in the folder they were in. */
     @Test
     fun theFolderOnScreenSurvivesARecreation() {
