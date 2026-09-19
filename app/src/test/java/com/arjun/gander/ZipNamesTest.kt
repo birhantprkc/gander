@@ -97,6 +97,42 @@ class ZipNamesTest {
     }
 
     /**
+     * Every byte of a Korean Windows name is also an everyday Chinese character in GBK, so
+     * this used to read as Chinese on every phone not set to Korean. What gives it away is
+     * that read as Korean it is the syllables Korean is mostly written in, and read as Chinese
+     * it is characters Chinese rarely uses.
+     */
+    @Test
+    fun koreanNamesFromWindowsReadAsKoreanWhateverThePhoneIsSetTo() {
+        listOf(korean, english, chinese, taiwan, japanese, russian).forEach { locale ->
+            assertThat(paths("names-korean.zip", locale))
+                .containsExactly("문서/분기 보고서.pdf", "사진/제주도 여행.jpg").inOrder()
+        }
+    }
+
+    /** One short name is the hardest case, since there is least to go on. */
+    @Test
+    fun aSingleKoreanNameReadsAsKoreanOnAnEnglishPhone() {
+        listOf("보고서.pdf", "사진", "회의록.txt", "새 폴더").forEach { name ->
+            assertThat(decode(listOf(name), "x-windows-949", english)).containsExactly(name)
+        }
+    }
+
+    /**
+     * And the change that fixed Korean must not have cost Chinese anything: a single short
+     * Chinese name on a Korean phone, where Korean is tried first, and on a Russian one, where
+     * GBK read as Windows Cyrillic scores as well as Chinese does.
+     */
+    @Test
+    fun aSingleChineseNameStillReadsAsChineseOnKoreanAndRussianPhones() {
+        listOf("报告.pdf", "照片", "会议记录.txt", "新建文件夹").forEach { name ->
+            listOf(korean, russian, english).forEach { locale ->
+                assertThat(decode(listOf(name), "GBK", locale)).containsExactly(name)
+            }
+        }
+    }
+
+    /**
      * Code page 437 read as CP866 is every bit as valid, and every accented letter becomes a
      * Cyrillic one. What gives it away is where they sit: inside words of plain Latin letters,
      * where Cyrillic never is. So a Russian phone still reads a French name as French.

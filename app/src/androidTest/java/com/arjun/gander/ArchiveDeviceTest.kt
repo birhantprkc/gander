@@ -195,6 +195,7 @@ class ArchiveDeviceTest {
             "names-gbk.zip" to listOf("季度报告", "照片"),
             "names-cp866.zip" to listOf("Документы", "Фото"),
             "names-sjis.zip" to listOf("資料"),
+            "names-korean.zip" to listOf("문서", "사진"),
             "names-mac.zip" to listOf("Отчёт"),
         ).forEach { (fixture, folders) ->
             ActivityScenario.launch<ViewerActivity>(DeviceFixtures.viewIntent(fixture)).use {

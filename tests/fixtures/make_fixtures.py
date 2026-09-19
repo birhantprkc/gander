@@ -903,6 +903,7 @@ def zips() -> None:
         ("names-gbk.zip", "gbk", ["季度报告/会议记录.txt", "照片/北京旅行.txt"]),
         ("names-cp866.zip", "cp866", ["Документы/Отчёт за квартал.txt", "Фото/Москва.txt"]),
         ("names-sjis.zip", "shift_jis", ["資料/報告書.txt", "資料/議事録.txt"]),
+        ("names-korean.zip", "cp949", ["문서/분기 보고서.pdf", "사진/제주도 여행.jpg"]),
         ("names-mac.zip", "utf-8", ["Отчёт/报告 résumé.txt"]),
     ]:
         members = [Member(n.encode(encoding), text) for n in names]

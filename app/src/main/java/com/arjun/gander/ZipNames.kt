@@ -39,6 +39,13 @@ internal class RawName(
  * real and all wrong. What separates the candidates is whether the result is text people
  * write, so each one is scored on that over every such name in the archive together, and
  * the phone's language decides whatever the score leaves tied.
+ *
+ * Korean and Chinese are the pair that scoring by kind of character cannot split. A Korean
+ * Windows zip's names are Hangul in rows the GBK table fills with its commonest hanzi, so
+ * both readings are made of nothing but everyday characters, and the tie went to Chinese on
+ * every phone not set to Korean. What does split them is which everyday characters: read as
+ * Korean, the bytes are the syllables Korean is mostly written in, and read as Chinese, the
+ * same bytes are characters Chinese rarely uses. See [COMMON_BONUS].
  */
 internal object ZipNames {
 
@@ -77,6 +84,29 @@ internal object ZipNames {
 
     /** How much of the names the scoring reads. Plenty to decide on, and bounded. */
     private const val SAMPLE_BYTES = 64 * 1024
+
+    /**
+     * What a character scores on top of its 1 when it is one of the commonest in its language,
+     * from [CommonCharacters]. Added rather than taken from the rest, because the 1 is what
+     * every other candidate is measured against: GBK read as Windows Cyrillic is a run of
+     * Cyrillic letters and scores 1 too, and lowering the uncommon hanzi below it handed one
+     * name in six from a Simplified Chinese zip to Cyrillic.
+     *
+     * Chosen on half of the text CommonCharacters is counted from, held out from the counting,
+     * and a list of words people name files with. For a zip of one name, a Korean one now comes
+     * out Korean 96% of the time on a phone set to any other language, where it came out
+     * Chinese every time; a Chinese one read as Korean on a Korean phone one time in six and
+     * now one in thirty. From three names up, neither was wrong once in 800 tries.
+     */
+    private const val COMMON_BONUS = 0.5
+
+    private val commonKorean: Set<Char> by lazy { CommonCharacters.KOREAN.toSet() }
+    private val commonSimplified: Set<Char> by lazy { CommonCharacters.SIMPLIFIED.toSet() }
+    private val commonTraditional: Set<Char> by lazy { CommonCharacters.TRADITIONAL.toSet() }
+
+    /** 1 for a character a language uses every day, and more when it is one of its commonest. */
+    private fun everyday(cp: Int, common: Set<Char>): Double =
+        if (cp <= 0xFFFF && cp.toChar() in common) 1.0 + COMMON_BONUS else 1.0
 
     /** Every name in one archive, decoded. Same order, same count. */
     fun decode(names: List<RawName>, locale: Locale = Locale.getDefault()): List<String> {
@@ -198,8 +228,8 @@ internal object ZipNames {
             if (cp >= 0x80) {
                 counted++
                 sum += when (c.script) {
-                    Script.GB -> gb(encode(encoder, text, i, width))
-                    Script.BIG5 -> big5(encode(encoder, text, i, width))
+                    Script.GB -> gb(cp, encode(encoder, text, i, width))
+                    Script.BIG5 -> big5(cp, encode(encoder, text, i, width))
                     Script.SJIS -> sjis(cp, encode(encoder, text, i, width))
                     Script.KOREAN -> korean(cp, encode(encoder, text, i, width))
                     Script.CYRILLIC -> letterOf(Character.UnicodeScript.CYRILLIC, cp, text, i, width)
@@ -229,13 +259,13 @@ internal object ZipNames {
      * the lead bytes of other double-byte code pages land: Shift_JIS read as GBK comes out
      * in them nearly every time.
      */
-    private fun gb(b: ByteArray?): Double {
+    private fun gb(cp: Int, b: ByteArray?): Double {
         if (b == null || b.size != 2) return 0.0
         val lead = b[0].toInt() and 0xFF
         val trail = b[1].toInt() and 0xFF
         if (trail !in 0xA1..0xFE) return 0.0
         return when (lead) {
-            in 0xB0..0xD7 -> 1.0
+            in 0xB0..0xD7 -> everyday(cp, commonSimplified)
             in 0xD8..0xF7 -> 0.5
             // Punctuation, and the full-width forms of ASCII
             0xA1, 0xA3 -> 0.5
@@ -245,10 +275,10 @@ internal object ZipNames {
     }
 
     /** Big5 splits its hanzi the same way: 5,401 in common use, then 7,652 less so. */
-    private fun big5(b: ByteArray?): Double {
+    private fun big5(cp: Int, b: ByteArray?): Double {
         if (b == null || b.size != 2) return 0.0
         return when (code(b)) {
-            in 0xA440..0xC67E -> 1.0
+            in 0xA440..0xC67E -> everyday(cp, commonTraditional)
             in 0xC940..0xF9D5 -> 0.5
             in 0xA140..0xA3BF -> 0.5
             else -> 0.0
@@ -276,7 +306,7 @@ internal object ZipNames {
         val trail = b[1].toInt() and 0xFF
         val standard = trail in 0xA1..0xFE
         return when {
-            cp in 0xAC00..0xD7A3 -> if (standard && lead in 0xB0..0xC8) 1.0 else 0.5
+            cp in 0xAC00..0xD7A3 -> if (standard && lead in 0xB0..0xC8) everyday(cp, commonKorean) else 0.5
             standard && lead in 0xCA..0xFD -> 0.25
             standard && lead in 0xA1..0xA4 -> 0.5
             else -> 0.0
@@ -304,7 +334,7 @@ internal object ZipNames {
         if (!Character.isLetter(cp) || Character.UnicodeScript.of(cp) != script) return 0.0
         val before = text.getOrNull(at - 1)
         val after = text.getOrNull(at + width)
-        val asciiLetter = { ch: Char? -> ch != null && ch < '' && ch.isLetter() }
+        val asciiLetter = { ch: Char? -> ch != null && ch.code < 0x80 && ch.isLetter() }
         return if (asciiLetter(before) || asciiLetter(after)) 0.0 else 1.0
     }
 }

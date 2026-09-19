@@ -5,7 +5,7 @@
 - Gander opens .zip files (thanks @DEWE-ex, who asked in #30). A zip opens as a list laid out
   like a folder, and each file in it opens in its usual viewer, read straight out of the archive:
   nothing is unzipped or written to the phone. Names from zips made on Windows in Chinese,
-  Japanese, Russian and other languages come out as names rather than question marks. A
+  Japanese, Korean, Russian and other languages come out as names rather than question marks. A
   password-protected file is listed and says why it will not open.
 
 - The welcome screen's last tile says ETC where it said TXT. It stands for text files, zips and
