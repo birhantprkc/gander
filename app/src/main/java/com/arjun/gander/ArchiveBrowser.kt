@@ -39,16 +39,35 @@ internal class ArchiveTree(private val entries: List<ArchiveEntry>) {
     init {
         folders[""] = LinkedHashSet()
         entries.forEachIndexed { i, entry ->
-            val parts = entry.path.split('/')
-            if (parts.first() == MACOS_FORKS) return@forEachIndexed
-            var parent = ""
-            val depth = if (entry.isDirectory) parts.size else parts.size - 1
-            for (d in 0 until depth) {
-                folders.getValue(parent).add(parts[d])
-                parent = if (parent.isEmpty()) parts[d] else "$parent/${parts[d]}"
-                folders.getOrPut(parent) { LinkedHashSet() }
+            val path = entry.path
+            if (path == MACOS_FORKS || path.startsWith("$MACOS_FORKS/")) return@forEachIndexed
+            if (entry.isDirectory) {
+                addFolder(path)
+            } else {
+                val parent = path.substringBeforeLast('/', "")
+                addFolder(parent)
+                files.getOrPut(parent) { ArrayList() }.add(i)
             }
-            if (!entry.isDirectory) files.getOrPut(parent) { ArrayList() }.add(i)
+        }
+    }
+
+    /**
+     * [path] and every folder above it that is not there yet. Most files share a folder with the
+     * one before, so this is usually a single lookup; building every parent path for every file
+     * was a third of the time a 100,000 entry archive took to list. A loop and not recursion,
+     * since a name can be tens of thousands of folders deep.
+     */
+    private fun addFolder(path: String) {
+        if (path in folders) return
+        val missing = ArrayList<String>()
+        var at = path
+        while (at !in folders) {
+            missing += at
+            at = at.substringBeforeLast('/', "")
+        }
+        for (folder in missing.asReversed()) {
+            folders.getValue(folder.substringBeforeLast('/', "")).add(folder.substringAfterLast('/'))
+            folders[folder] = LinkedHashSet()
         }
     }
 
