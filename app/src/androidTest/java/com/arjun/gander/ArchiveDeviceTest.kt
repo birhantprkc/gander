@@ -3,6 +3,8 @@ package com.arjun.gander
 import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
+import android.os.Binder
+import android.os.Process
 import android.os.SystemClock
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -195,6 +197,38 @@ class ArchiveDeviceTest {
             assertThat(rows(it))
                 .containsExactly(target.getString(R.string.archive_not_seekable))
         }
+    }
+
+    /**
+     * A file from a zip inside a zip, read by the app it was shared with. That app's call runs
+     * on a Gander binder thread under the app's uid, and the outer zip is one of Gander's own
+     * URIs again, asked of the same provider on the same thread, which the app holds no grant
+     * for. So the provider reads its archive as Gander, or Android refuses the app outright.
+     *
+     * The app is imitated by taking on another uid for the call, which is all its binder thread
+     * would carry here; the framework's check of the one URI the app was given is left out, as
+     * a real grant would pass it.
+     */
+    @Test
+    fun aFileFromAZipInsideAZipCanBeReadByTheAppItWasSharedWith() {
+        val outer = entryUri("archive.zip", "nested/stored.zip")
+        val inner = target.contentResolver.openAssetFileDescriptor(outer, "r")!!.let { afd ->
+            ZipSource.open(afd)!!.use { zip ->
+                ZipReader.entries(zip, Locale.US).single { it.path == "inside.txt" }
+            }
+        }
+        val shared = ArchiveProvider.uriFor(target, outer, inner)
+        val text = target.contentResolver.acquireContentProviderClient(shared)!!.use { client ->
+            val provider = client.localContentProvider as ArchiveProvider
+            val gander = Binder.clearCallingIdentity()
+            try {
+                Binder.restoreCallingIdentity(((Process.myUid() + 1).toLong() shl 32) or Process.myPid().toLong())
+                provider.openAssetFile(shared, "r").createInputStream().use { String(it.readBytes()) }
+            } finally {
+                Binder.restoreCallingIdentity(gander)
+            }
+        }
+        assertThat(text).contains("A file inside a zip inside a zip")
     }
 
     /**

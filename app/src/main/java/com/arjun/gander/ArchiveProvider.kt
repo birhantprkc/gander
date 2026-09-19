@@ -141,8 +141,17 @@ class ArchiveProvider : ContentProvider() {
             throw FileNotFoundException("the file needs its password")
         }
         val resolver = requireNotNull(context).contentResolver
-        val archive = resolver.openAssetFileDescriptor(ref.archive, "r")
-            ?: throw FileNotFoundException("the archive could not be opened")
+        // As Gander, whoever is asking: the archive is Gander's to read, and an app a file was
+        // shared with holds a grant for that one file and nothing else. The archive of a file
+        // in a zip inside a zip is one of these URIs again, asked of this same provider on this
+        // same thread, and under that app's identity Android would check its grants and refuse.
+        // Who is asking is back in place for everything after, the window decided below included.
+        val identity = Binder.clearCallingIdentity()
+        val archive = try {
+            resolver.openAssetFileDescriptor(ref.archive, "r")
+        } finally {
+            Binder.restoreCallingIdentity(identity)
+        } ?: throw FileNotFoundException("the archive could not be opened")
         var handedOver = false
         try {
             val source = ZipSource.open(archive)
