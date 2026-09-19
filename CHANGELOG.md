@@ -8,6 +8,11 @@
   Japanese, Russian and other languages come out as names rather than question marks. A
   password-protected file is listed and says why it will not open.
 
+- The search bar's buttons and box are a little larger, 48dp each way, the smallest Android
+  recommends for anything you tap. They were 44dp and the box 45dp, and the device test meant to
+  catch that had never run its checks: it looked at each screen without ever acting on it,
+  which is what those checks wait for.
+
 - A PDF reopens at the page it was left on (thanks @Rochey, who asked for this in #25). The
   page is kept against what the file contains rather than its name or where it came from,
   so it is the same page whether the file is opened from Recents, a folder, a file manager
