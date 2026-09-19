@@ -402,23 +402,31 @@ internal object ZipReader {
         var indexOffset = u32(tail, at + 16)
         var indexEnd = endStart
 
-        if (count == 0xFFFFL || indexSize == 0xFFFFFFFFL || indexOffset == 0xFFFFFFFFL) {
-            // ZIP64. The record sits right before its locator, so look there first: where the
-            // locator says it is would be wrong for a zip with something in front of it.
-            val locatorStart = endStart - ZIP64_LOCATOR_SIZE
-            val locator = if (locatorStart >= 0) source.read(locatorStart, ZIP64_LOCATOR_SIZE) else null
-            if (locator == null || u32(locator, 0) != SIG_ZIP64_LOCATOR) {
-                throw ZipException("zip64 locator missing")
+        // ZIP64, looked for whether or not the end record asks for it. Info-ZIP writes the ZIP64
+        // records for a file it reads from a pipe and leaves the end record's own fields as they
+        // are, and the index then ends where the ZIP64 record starts: taken for the end record,
+        // the 76 bytes between read as something in front of the zip. The record sits right
+        // before its locator, so look there first: where the locator says it is would be wrong
+        // for a zip with something in front of it.
+        val marked = count == 0xFFFFL || indexSize == 0xFFFFFFFFL || indexOffset == 0xFFFFFFFFL
+        val locatorStart = endStart - ZIP64_LOCATOR_SIZE
+        val locator = if (locatorStart >= 0) source.read(locatorStart, ZIP64_LOCATOR_SIZE) else null
+        val recordStart = if (locator != null && u32(locator, 0) == SIG_ZIP64_LOCATOR) {
+            listOf(locatorStart - ZIP64_END_SIZE, u64(locator, 8)).firstOrNull {
+                it >= 0 && it <= source.length - ZIP64_END_SIZE && u32(source.read(it, 4), 0) == SIG_ZIP64_END
             }
-            val candidates = listOf(locatorStart - ZIP64_END_SIZE, u64(locator, 8))
-            val recordStart = candidates.firstOrNull { it >= 0 && it <= source.length - ZIP64_END_SIZE &&
-                u32(source.read(it, 4), 0) == SIG_ZIP64_END } ?: throw ZipException("zip64 record missing")
+        } else {
+            null
+        }
+        if (recordStart != null) {
             val record = source.read(recordStart, ZIP64_END_SIZE)
             disk = u32(record, 16)
             count = u64(record, 32)
             indexSize = u64(record, 40)
             indexOffset = u64(record, 48)
             indexEnd = recordStart
+        } else if (marked) {
+            throw ZipException("zip64 record missing")
         }
 
         if (disk != 0L && disk != 0xFFFFL) throw ZipException("split across disks")

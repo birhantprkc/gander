@@ -3,6 +3,8 @@ package com.arjun.gander
 import com.google.common.truth.Truth.assertThat
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.Calendar
 import java.util.Locale
 import java.util.zip.ZipException
@@ -128,6 +130,34 @@ class ZipReaderTest {
             assertThat(all.map { it.path }).containsExactly("big/report.pdf", "big/notes.txt")
             assertThat(zip.read(all.named("big/report.pdf")))
                 .isEqualTo(Fixtures.bytes("six-pages.pdf"))
+        }
+    }
+
+    /**
+     * What Info-ZIP writes for a file it reads from a pipe, `... | zip out.zip -`: ZIP64 records
+     * in front of an end record whose own fields are left as they are rather than marked. Made
+     * here by putting the two records into archive.zip where Info-ZIP puts them, since the rest
+     * of the archive is the same either way.
+     */
+    @Test
+    fun aZip64RecordTheEndRecordDoesNotMarkIsStillFollowed() {
+        val plain = Fixtures.bytes("archive.zip")
+        val end = endRecord(plain)
+        val fields = ByteBuffer.wrap(plain).order(ByteOrder.LITTLE_ENDIAN)
+        val count = fields.getShort(end + 10).toLong() and 0xFFFF
+        val indexSize = fields.getInt(end + 12).toLong() and 0xFFFFFFFFL
+        val indexOffset = fields.getInt(end + 16).toLong() and 0xFFFFFFFFL
+        val record = ByteBuffer.allocate(56).order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(0x06064b50).putLong(44).putShort(45).putShort(45).putInt(0).putInt(0)
+            .putLong(count).putLong(count).putLong(indexSize).putLong(indexOffset)
+        val locator = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(0x07064b50).putInt(0).putLong(end.toLong()).putInt(1)
+        val streamed = plain.copyOfRange(0, end) + record.array() + locator.array() +
+            plain.copyOfRange(end, plain.size)
+        source(streamed).use { zip ->
+            val all = ZipReader.entries(zip, Locale.US)
+            assertThat(all.map { it.path }).isEqualTo(entries("archive.zip").map { it.path })
+            assertThat(zip.read(all.named("photos/tiny.png"))).isEqualTo(Fixtures.bytes("tiny.png"))
         }
     }
 
