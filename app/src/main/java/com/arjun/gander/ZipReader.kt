@@ -28,25 +28,66 @@ import java.util.zip.ZipException
  * turn every name not written as UTF-8 into U+FFFD, which is what ZipNames is for. And
  * ZipFile refuses a whole archive if any one entry in it is encrypted. What is used from it
  * is Inflater, which is sound, and is the platform's own: no library, nothing added to the
- * download. What Inflater cannot read, Deflate64, is Gander's own too, in Deflate64.kt.
+ * download. What Inflater cannot read, Deflate64 and a file under a password, is Gander's own
+ * too, in Deflate64.kt and ZipEncryption.kt.
  */
 
 /** Where one file's bytes are and how they are packed, as the index describes them. */
 internal class EntryLocation(
     /** Where its local header starts, counted from the start of the zip. */
     val headerOffset: Long,
+    /**
+     * How it is compressed. For a file under AES this is the method inside the encryption, from
+     * the field AES adds to the index, whose own method field says 99 for every one of them.
+     */
     val method: Int,
     val compressedSize: Long,
     val size: Long,
     val crc: Long,
+    val lock: Lock = Lock.NONE,
 )
+
+/**
+ * How a file inside a zip is encrypted, if it is.
+ *
+ * Two schemes are in real use, and Gander reads both. PKWARE's original, which every archiver
+ * can write and plenty still do by default, is weak by any standard since the nineties: it
+ * keeps a file from someone who does not try very hard. WinZip's AES, which WinZip, 7-Zip and
+ * WinRAR all write when asked for AES, is not weak. PKWARE's later Strong Encryption is
+ * patented and next to nothing writes it; it is listed and refused, as is an AES entry of a
+ * strength the scheme does not define.
+ */
+internal enum class Lock(
+    /** How ArchiveProvider's URIs spell it. */
+    val token: String,
+    /** The AES key's length in bytes, and 0 for the rest. */
+    val keySize: Int,
+) {
+    NONE("none", 0),
+    ZIPCRYPTO("zipcrypto", 0),
+    AES128("aes128", 16),
+    AES192("aes192", 24),
+    AES256("aes256", 32),
+    UNSUPPORTED("unsupported", 0);
+
+    val isAes: Boolean get() = keySize > 0
+
+    /** What a password opens: a file with no password needs none, and one Gander cannot read opens with none. */
+    val opensWithPassword: Boolean get() = this != NONE && this != UNSUPPORTED
+
+    /** WinZip's salt is half the key. */
+    val saltSize: Int get() = keySize / 2
+
+    companion object {
+        fun of(token: String): Lock? = entries.firstOrNull { it.token == token }
+    }
+}
 
 /** One file or folder in an archive. */
 internal class ArchiveEntry(
     /** Where it sits: decoded, separated by "/", with nothing that climbs out or starts at a root. */
     val path: String,
     val isDirectory: Boolean,
-    val encrypted: Boolean,
     /** Last modified, in milliseconds, or 0 when the archive does not say. */
     val modified: Long,
     val location: EntryLocation,
@@ -54,13 +95,16 @@ internal class ArchiveEntry(
     val name: String get() = path.substringAfterLast('/')
     val size: Long get() = location.size
 
+    /** Under a password, whether or not Gander can read how. */
+    val encrypted: Boolean get() = location.lock != Lock.NONE
+
     /**
-     * Whether a viewer can be given it. Stored and deflated are what nearly every zip uses, and
-     * Deflate64 is what Windows uses for a file over 2 GB. Anything else here is bzip2, LZMA,
-     * zstd, AES or rarer, and is listed and refused.
+     * Whether a viewer can be given it, with its password if it has one. Stored and deflated
+     * are what nearly every zip uses, and Deflate64 is what Windows uses for a file over 2 GB.
+     * Anything else here is bzip2, LZMA, zstd or rarer, and is listed and refused.
      */
     val readable: Boolean
-        get() = !encrypted && location.method in ZipReader.READABLE_METHODS
+        get() = location.lock != Lock.UNSUPPORTED && location.method in ZipReader.READABLE_METHODS
 }
 
 /**
@@ -141,10 +185,19 @@ internal object ZipReader {
     const val METHOD_DEFLATED = 8
     const val METHOD_DEFLATE64 = 9
 
+    /** What the index says of every file under AES; the method inside is in the AES field. */
+    private const val METHOD_AES = 99
+
     val READABLE_METHODS = setOf(METHOD_STORED, METHOD_DEFLATED, METHOD_DEFLATE64)
 
     private const val FLAG_ENCRYPTED = 1
     private const val FLAG_DESCRIPTOR = 8
+
+    /** PKWARE's Strong Encryption, which Gander does not read. */
+    private const val FLAG_STRONG = 0x40
+
+    /** The field WinZip's AES adds: its version, "AE", the key's strength, and the method inside. */
+    private const val FIELD_AES = 0x9901
 
     private const val SIG_LOCAL = 0x04034b50L
     private const val SIG_CENTRAL = 0x02014b50L
@@ -168,8 +221,17 @@ internal object ZipReader {
 
     private const val BUFFER = 64 * 1024
 
+    /** How much of a compressed file is read to see a password really opened it. */
+    private const val PROBE_BYTES = 256
+
     /** The archive is real and lists more than Gander will hold at once. */
     class TooLarge : ZipException("too many entries to list")
+
+    /** A file under a password, asked for without one. */
+    class PasswordNeeded : ZipException("password needed")
+
+    /** A password that is not this file's, in any of the ways it could have been written. */
+    class WrongPassword : ZipException("wrong password")
 
     /** Everything in the archive, in the order the index lists it. */
     fun entries(source: ZipSource, locale: Locale = Locale.getDefault()): List<ArchiveEntry> {
@@ -203,6 +265,8 @@ internal object ZipReader {
 
             var unicodePath: ByteArray? = null
             var modified = 0L
+            var aesStrength = 0
+            var aesMethod = -1
             var q = extraAt
             while (q + 4 <= extraAt + extraLength) {
                 val id = u16(index, q)
@@ -225,6 +289,11 @@ internal object ZipReader {
                         if (fieldSize >= 5 && index[data].toInt() and 1 != 0) {
                             modified = u32(index, data + 1) * 1000
                         }
+                    FIELD_AES ->
+                        if (fieldSize >= 7) {
+                            aesStrength = index[data + 4].toInt() and 0xFF
+                            aesMethod = u16(index, data + 5)
+                        }
                 }
                 q = data + fieldSize
             }
@@ -239,9 +308,21 @@ internal object ZipReader {
                 (dos && lastByte == '\\'.code) ||
                 (host == 3 && ((external ushr 16) and 0xF000) == 0x4000L) ||
                 (dos && external and 0x10 != 0L && size == 0L)
+            val lock = when {
+                flags and FLAG_ENCRYPTED == 0 -> if (method == METHOD_AES) Lock.UNSUPPORTED else Lock.NONE
+                flags and FLAG_STRONG != 0 -> Lock.UNSUPPORTED
+                method != METHOD_AES -> Lock.ZIPCRYPTO
+                else -> when (aesStrength) {
+                    1 -> Lock.AES128
+                    2 -> Lock.AES192
+                    3 -> Lock.AES256
+                    else -> Lock.UNSUPPORTED
+                }
+            }
             raw += RawName(nameBytes, flags and 0x800 != 0, unicodePath)
             parsed += Parsed(
-                dos, directory, flags, method, crc, compressed, size,
+                dos, directory, lock, if (method == METHOD_AES && aesMethod >= 0) aesMethod else method,
+                crc, compressed, size,
                 offset + end.shift, if (modified != 0L) modified else dosTime(date, time)
             )
             p = next
@@ -255,9 +336,8 @@ internal object ZipReader {
             ArchiveEntry(
                 path = path,
                 isDirectory = e.directory,
-                encrypted = e.flags and FLAG_ENCRYPTED != 0,
                 modified = e.modified,
-                location = EntryLocation(e.offset, e.method, e.compressed, e.size, e.crc),
+                location = EntryLocation(e.offset, e.method, e.compressed, e.size, e.crc, e.lock),
             )
         }
     }
@@ -266,7 +346,7 @@ internal object ZipReader {
     private class Parsed(
         val dos: Boolean,
         val directory: Boolean,
-        val flags: Int,
+        val lock: Lock,
         val method: Int,
         val crc: Long,
         val compressed: Long,
@@ -338,35 +418,130 @@ internal object ZipReader {
     }
 
     /**
-     * Where [at]'s bytes start, having checked its local header is where the index says.
+     * What a file's local header says that the index does not need to: where its bytes start,
+     * and the two fields the older encryption checks a password against.
+     */
+    internal class Local(val dataStart: Long, val flags: Int, val time: Int)
+
+    /**
+     * [at]'s local header, having checked it is where the index says.
      *
      * The URI a viewer holds carries this location, so a file that has since been rewritten
      * would otherwise be read at the old place. The signature and method catch most of that,
      * and so does the checksum, where the header records one rather than trailing it.
      */
-    fun dataStart(source: ZipSource, at: EntryLocation): Long {
+    fun local(source: ZipSource, at: EntryLocation): Local {
         val header = source.read(at.headerOffset, LOCAL_SIZE)
         if (u32(header, 0) != SIG_LOCAL) throw ZipException("no entry at ${at.headerOffset}")
-        if (u16(header, 8) != at.method) throw ZipException("entry has changed")
+        if (u16(header, 8) != (if (at.lock.isAes) METHOD_AES else at.method)) {
+            throw ZipException("entry has changed")
+        }
+        val flags = u16(header, 6)
         val localCrc = u32(header, 14)
-        if (u16(header, 6) and FLAG_DESCRIPTOR == 0 && localCrc != 0L && localCrc != at.crc) {
+        if (flags and FLAG_DESCRIPTOR == 0 && localCrc != 0L && localCrc != at.crc) {
             throw ZipException("entry has changed")
         }
         val start = at.headerOffset + LOCAL_SIZE + u16(header, 26) + u16(header, 28)
         if (start > source.length - at.compressedSize) throw ZipException("entry runs past the end")
-        return start
+        return Local(start, flags, u16(header, 10))
     }
 
-    /** One file's contents, inflated if they need it, and held to what the index says. */
-    fun open(source: ZipSource, at: EntryLocation): InputStream {
-        val raw = source.stream(dataStart(source, at), at.compressedSize)
-        val body = when (at.method) {
-            METHOD_STORED -> raw
-            METHOD_DEFLATED -> Inflating(raw)
-            METHOD_DEFLATE64 -> Deflate64(raw)
-            else -> throw ZipException("method ${at.method} is not supported")
+    /** Where [at]'s bytes start. See [local]. */
+    fun dataStart(source: ZipSource, at: EntryLocation): Long = local(source, at).dataStart
+
+    /**
+     * One file's contents, decrypted and inflated if they need it, and held to what the index
+     * says. A file under a password needs [password], which is tried in every way it could
+     * have been written as bytes; none of them opening it is [WrongPassword].
+     */
+    fun open(source: ZipSource, at: EntryLocation, password: String? = null): InputStream {
+        if (at.lock == Lock.UNSUPPORTED) throw ZipException("encrypted in a way Gander does not read")
+        if (at.method !in READABLE_METHODS) throw ZipException("method ${at.method} is not supported")
+        val local = local(source, at)
+        return when {
+            at.lock == Lock.NONE ->
+                Checked(unpacked(source.stream(local.dataStart, at.compressedSize), at.method), at.size, at.crc)
+            password == null -> throw PasswordNeeded()
+            at.lock == Lock.ZIPCRYPTO -> openZipCrypto(source, at, local, password)
+            else -> openAes(source, at, local, password)
         }
-        return Checked(body, at.size, at.crc)
+    }
+
+    private fun unpacked(raw: InputStream, method: Int): InputStream = when (method) {
+        METHOD_STORED -> raw
+        METHOD_DEFLATED -> Inflating(raw)
+        METHOD_DEFLATE64 -> Deflate64(raw)
+        else -> throw ZipException("method $method is not supported")
+    }
+
+    /**
+     * PKWARE's original encryption. Twelve bytes go in front of the file, and the last of
+     * them, once decrypted, is the top byte of its checksum, or of its time when the checksum
+     * trails the data and was not known yet. That is the whole of the check, so one wrong
+     * password in 256 passes it. A compressed file goes on to show whether it really opened
+     * within its first bytes, which a wrong key turns into data no inflater accepts, so it is
+     * read that far before being handed over; a stored one has only its checksum at the end.
+     */
+    private fun openZipCrypto(source: ZipSource, at: EntryLocation, local: Local, password: String): InputStream {
+        if (at.compressedSize < ZipCrypto.HEADER_SIZE) throw ZipException("damaged encryption header")
+        val header = source.read(local.dataStart, ZipCrypto.HEADER_SIZE)
+        val check = if (local.flags and FLAG_DESCRIPTOR != 0) (local.time ushr 8) and 0xFF
+        else (at.crc ushr 24).toInt() and 0xFF
+        val bodyStart = local.dataStart + ZipCrypto.HEADER_SIZE
+        val bodySize = at.compressedSize - ZipCrypto.HEADER_SIZE
+        for (bytes in ZipEncryption.passwordBytes(password)) {
+            val keys = ZipCrypto.keyed(bytes)
+            if (!keys.checks(header, check)) continue
+            val open = {
+                Checked(unpacked(ZipCryptoInput(source.stream(bodyStart, bodySize), keys.copy()), at.method), at.size, at.crc)
+            }
+            if (at.method == METHOD_STORED || opens(open)) return open()
+        }
+        throw WrongPassword()
+    }
+
+    /** Whether [open] gives a stream whose first bytes read without an error. */
+    private fun opens(open: () -> InputStream): Boolean = try {
+        open().use { input ->
+            val probe = ByteArray(PROBE_BYTES)
+            var read = 0
+            while (read < probe.size) {
+                val n = input.read(probe, read, probe.size - read)
+                if (n < 0) break
+                read += n
+            }
+        }
+        true
+    } catch (_: Exception) {
+        // Anything at all: a wrong key makes garbage, and garbage is what this is here to catch
+        false
+    }
+
+    /**
+     * WinZip's AES. A salt and a two byte verifier go in front of the file, and a ten byte
+     * code that authenticates it after. The verifier comes out of the same key derivation as
+     * the key, so a wrong password is caught up front all but once in 65,536 times, and the
+     * code catches that one and any damage at the end. Version 2 of the scheme leaves the
+     * checksum at nought, since the code does its job.
+     */
+    private fun openAes(source: ZipSource, at: EntryLocation, local: Local, password: String): InputStream {
+        val lock = at.lock
+        val overhead = lock.saltSize + WinZipAes.VERIFIER_SIZE + WinZipAes.CODE_SIZE
+        if (at.compressedSize < overhead) throw ZipException("damaged encryption header")
+        val head = source.read(local.dataStart, lock.saltSize + WinZipAes.VERIFIER_SIZE)
+        val salt = head.copyOf(lock.saltSize)
+        val verifier = head.copyOfRange(lock.saltSize, head.size)
+        val cipherStart = local.dataStart + head.size
+        val cipherSize = at.compressedSize - overhead
+        for (bytes in ZipEncryption.passwordBytes(password)) {
+            val keys = WinZipAes.derive(bytes, salt, lock.keySize) ?: continue
+            if (!keys.verifier.contentEquals(verifier)) continue
+            val decrypting = WinZipAes.Decrypting(
+                source.stream(cipherStart, cipherSize + WinZipAes.CODE_SIZE), cipherSize, keys
+            )
+            return Checked(unpacked(decrypting, at.method), at.size, at.crc.takeIf { it != 0L }, decrypting::finish)
+        }
+        throw WrongPassword()
     }
 
     /**
@@ -410,7 +585,10 @@ internal object ZipReader {
     private class Checked(
         private val input: InputStream,
         private val size: Long,
-        private val crc: Long,
+        /** Null for a file whose encryption authenticates it instead. */
+        private val crc: Long?,
+        /** Whatever else has to hold once the last byte is out. */
+        private val atEnd: () -> Unit = {},
     ) : InputStream() {
         private val sum = CRC32()
         private var count = 0L
@@ -429,7 +607,8 @@ internal object ZipReader {
             val n = input.read(b, off, minOf(len.toLong(), size - count + 1).toInt())
             if (n < 0) {
                 if (count != size) throw ZipException("entry is shorter than its index says")
-                if (sum.value != crc) throw ZipException("entry is damaged")
+                if (crc != null && sum.value != crc) throw ZipException("entry is damaged")
+                atEnd()
                 ended = true
                 return -1
             }

@@ -32,8 +32,8 @@ class ZipReaderTest {
 
     private fun entries(fixture: String) = source(fixture).use { ZipReader.entries(it, Locale.US) }
 
-    private fun ZipSource.read(entry: ArchiveEntry): ByteArray =
-        ZipReader.open(this, entry.location).use { it.readBytes() }
+    private fun ZipSource.read(entry: ArchiveEntry, password: String? = null): ByteArray =
+        ZipReader.open(this, entry.location, password).use { it.readBytes() }
 
     private fun List<ArchiveEntry>.named(path: String) = single { it.path == path }
 
@@ -80,12 +80,15 @@ class ZipReaderTest {
         assertThat(all.named("reports/notes.md").size).isEqualTo(Fixtures.file("notes.md").length())
     }
 
-    /** Listed so they can say why they will not open, which is better than vanishing. */
+    /**
+     * An unknown method is listed so it can say why it will not open, which is better than
+     * vanishing. A password-protected file is readable, given its password.
+     */
     @Test
-    fun encryptedFilesAndUnknownMethodsAreListedAndNotReadable() {
+    fun encryptedFilesAreReadableAndUnknownMethodsAreNot() {
         val all = entries("archive.zip")
         assertThat(all.named("private/locked.txt").encrypted).isTrue()
-        assertThat(all.named("private/locked.txt").readable).isFalse()
+        assertThat(all.named("private/locked.txt").readable).isTrue()
         assertThat(all.named("private/table.dat").encrypted).isFalse()
         assertThat(all.named("private/table.dat").readable).isFalse()
         assertThat(all.named("plain.txt").readable).isTrue()
@@ -362,6 +365,157 @@ class ZipReaderTest {
             // The folder entry is stored with no data at all
             val folder = ZipReader.entries(zip, Locale.US).named("reports")
             assertThat(zip.read(folder)).isEmpty()
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Under a password
+    // ---------------------------------------------------------------
+
+    /** What each file in locked.zip is, going by the generator, and what it holds. */
+    private val lockedFiles = mapOf(
+        "open.txt" to "plain.txt",
+        "zipcrypto.txt" to "plain.txt",
+        "zipcrypto-trailing.md" to "notes.md",
+        "zipcrypto.png" to "tiny.png",
+        "aes128.txt" to "plain.txt",
+        "aes192.pdf" to "six-pages.pdf",
+        "aes256.png" to "tiny.png",
+        "aes256-deflate64.md" to "notes.md",
+    )
+
+    @Test
+    fun eachFileSaysHowItIsLocked() {
+        val all = entries("locked.zip").associateBy { it.path }
+        assertThat(all.mapValues { it.value.location.lock }).containsExactly(
+            "open.txt", Lock.NONE,
+            "zipcrypto.txt", Lock.ZIPCRYPTO,
+            "zipcrypto-trailing.md", Lock.ZIPCRYPTO,
+            "zipcrypto.png", Lock.ZIPCRYPTO,
+            "aes128.txt", Lock.AES128,
+            "aes192.pdf", Lock.AES192,
+            "aes256.png", Lock.AES256,
+            "aes256-deflate64.md", Lock.AES256,
+            "strong.bin", Lock.UNSUPPORTED,
+        )
+    }
+
+    /** AES puts 99 in the method field and the real method in a field of its own. */
+    @Test
+    fun anAesFileHasTheMethodInsideTheEncryption() {
+        val all = entries("locked.zip")
+        assertThat(all.named("aes128.txt").location.method).isEqualTo(ZipReader.METHOD_DEFLATED)
+        assertThat(all.named("aes256.png").location.method).isEqualTo(ZipReader.METHOD_STORED)
+        assertThat(all.named("aes256-deflate64.md").location.method).isEqualTo(ZipReader.METHOD_DEFLATE64)
+    }
+
+    /**
+     * Every scheme and version, stored and compressed, read with the right password. The
+     * fixture's encryption is the generator's own, and 7-Zip and Info-ZIP both read it back
+     * as well, so this is not only Gander agreeing with itself.
+     */
+    @Test
+    fun everyLockedFileReadsBackWithItsPassword() {
+        source("locked.zip").use { zip ->
+            val all = ZipReader.entries(zip, Locale.US)
+            lockedFiles.forEach { (path, original) ->
+                assertThat(zip.read(all.named(path), "gander")).isEqualTo(Fixtures.bytes(original))
+            }
+        }
+    }
+
+    @Test
+    fun aWrongPasswordIsSaidToBeWrong() {
+        source("locked.zip").use { zip ->
+            val all = ZipReader.entries(zip, Locale.US)
+            lockedFiles.keys.filter { all.named(it).encrypted }.forEach { path ->
+                assertThrows(ZipReader.WrongPassword::class.java) {
+                    ZipReader.open(zip, all.named(path).location, "goose")
+                }
+            }
+        }
+    }
+
+    /**
+     * The older encryption's check is one byte, so one wrong password in 256 passes it. For a
+     * compressed file that is not the end of it: its first bytes decrypt to nothing an inflater
+     * accepts, and that is caught before the file is handed over.
+     */
+    @Test
+    fun aWrongPasswordThatPassesTheOneByteCheckIsStillCaught() {
+        source("locked.zip").use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("zipcrypto.txt")
+            val local = ZipReader.local(zip, entry.location)
+            val header = zip.read(local.dataStart, ZipCrypto.HEADER_SIZE)
+            val check = (entry.location.crc ushr 24).toInt() and 0xFF
+            val lucky = generateSequence(0) { it + 1 }.map { "wrong$it" }
+                .first { ZipCrypto.keyed(it.toByteArray()).checks(header, check) }
+            assertThrows(ZipReader.WrongPassword::class.java) { ZipReader.open(zip, entry.location, lucky) }
+        }
+    }
+
+    @Test
+    fun noPasswordAtAllIsAskedFor() {
+        source("locked.zip").use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("aes256.png")
+            assertThrows(ZipReader.PasswordNeeded::class.java) { ZipReader.open(zip, entry.location) }
+        }
+    }
+
+    /** PKWARE's Strong Encryption, which nothing Gander reads, is listed and refused. */
+    @Test
+    fun strongEncryptionIsListedAndNotReadable() {
+        source("locked.zip").use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("strong.bin")
+            assertThat(entry.encrypted).isTrue()
+            assertThat(entry.readable).isFalse()
+            assertThrows(ZipException::class.java) { ZipReader.open(zip, entry.location, "gander") }
+        }
+    }
+
+    /**
+     * A password is not always ASCII, and the older encryption took one in the code page of
+     * the machine that made the zip: here a Russian Windows machine's. AES took UTF-8.
+     */
+    @Test
+    fun aPasswordThatIsNotAsciiOpensInWhateverCodePageItWasWrittenIn() {
+        source("locked-cyrillic.zip").use { zip ->
+            val all = ZipReader.entries(zip, Locale.US)
+            assertThat(zip.read(all.named("zipcrypto.txt"), "пароль")).isEqualTo(Fixtures.bytes("plain.txt"))
+            assertThat(zip.read(all.named("aes.txt"), "пароль")).isEqualTo(Fixtures.bytes("plain.txt"))
+        }
+    }
+
+    /**
+     * AE-2 leaves the checksum at nought, so a damaged byte in the encrypted data is caught
+     * only by the authentication code at the end. It has to be checked, or a damaged photo
+     * would open as a damaged photo.
+     */
+    @Test
+    fun aDamagedAesFileFailsItsAuthenticationCode() {
+        val bytes = Fixtures.bytes("locked.zip")
+        // Past the 16 byte salt and 2 byte verifier, into the encrypted photo itself
+        val at = dataOf(bytes, "aes256.png") + 18 + 40
+        bytes[at] = (bytes[at].toInt() xor 0x01).toByte()
+        source(bytes).use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("aes256.png")
+            val e = assertThrows(ZipException::class.java) { zip.read(entry, "gander") }
+            assertThat(e).hasMessageThat().contains("damaged")
+        }
+    }
+
+    /** And when a decompressor stops reading short of the code, the code is still read and checked. */
+    @Test
+    fun theCodeIsCheckedEvenWhenTheDecompressorStopsShort() {
+        val bytes = Fixtures.bytes("locked.zip")
+        source(bytes).use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("aes192.pdf")
+            val codeStart = ZipReader.dataStart(zip, entry.location).toInt() + entry.location.compressedSize.toInt() - 10
+            bytes[codeStart] = (bytes[codeStart].toInt() xor 0x01).toByte()
+        }
+        source(bytes).use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("aes192.pdf")
+            assertThrows(ZipException::class.java) { zip.read(entry, "gander") }
         }
     }
 

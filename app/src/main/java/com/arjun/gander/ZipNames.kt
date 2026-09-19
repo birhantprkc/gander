@@ -162,6 +162,12 @@ internal object ZipNames {
         null
     }
 
+    /**
+     * The code pages names are guessed among, the phone's language first: also the ones a
+     * password under the older encryption may have been written in, see ZipEncryption.
+     */
+    fun codePages(locale: Locale): List<Charset> = ordered(locale).mapNotNull { it.charset }
+
     /** The phone's language first, then everything else. */
     private fun ordered(locale: Locale): List<Candidate> {
         val first = when (locale.language) {

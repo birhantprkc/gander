@@ -16,10 +16,12 @@ PDFs get ReportLab's invariant flag; the OOXML formats are zips, so their
 entry timestamps and core properties are normalised by hand afterwards.
 
 Usage:  python3 tests/fixtures/make_fixtures.py
-Needs:  reportlab python-docx openpyxl python-pptx pillow
+Needs:  reportlab python-docx openpyxl python-pptx pillow cryptography
 """
 
+import hashlib
 import heapq
+import hmac
 import io
 import os
 import random
@@ -776,21 +778,81 @@ def audio() -> None:
 ZIP_DOS_DATE = ((ZIP_DATE[0] - 1980) << 9) | (ZIP_DATE[1] << 5) | ZIP_DATE[2]
 HOST_DOS, HOST_UNIX = 0, 3
 STORED, DEFLATED, DEFLATE64 = 0, 8, 9
+AES = 99
 
 
 class Member:
-    """One entry. A method other than stored, deflated or Deflate64 writes data as given."""
+    """One entry. A method other than stored, deflated or Deflate64 writes data as given.
+
+    zipcrypto or aes, a password, encrypts it: aes as (strength, version), strength 1 to 3
+    for 128 to 256 bit keys and version 1 or 2 for AE-1 or AE-2.
+    """
 
     def __init__(self, name: bytes, data: bytes = b"", *, method=DEFLATED, flags=0,
-                 host=HOST_UNIX, extra=b"", descriptor=False, directory=False):
+                 host=HOST_UNIX, extra=b"", descriptor=False, directory=False, time=0,
+                 zipcrypto: bytes = None, aes=None, password: bytes = None):
         self.name, self.data, self.method = name, data, method
-        self.flags = flags | (0x08 if descriptor else 0)
+        self.flags = flags | (0x08 if descriptor else 0) | (0x01 if zipcrypto or aes else 0)
         self.host, self.extra = host, extra
-        self.descriptor, self.directory = descriptor, directory
+        self.descriptor, self.directory, self.time = descriptor, directory, time
+        self.zipcrypto, self.aes, self.password = zipcrypto, aes, password
 
 
 def _extra(field_id: int, data: bytes) -> bytes:
     return struct.pack("<HH", field_id, len(data)) + data
+
+
+# PKWARE's original encryption, APPNOTE 6.1. Twelve bytes in front, the last of them the
+# top byte of the CRC, or of the time when the CRC trails the data; the eleven before it
+# would be random, and are a hash of the name here so the output never changes.
+
+def _crc_byte(crc: int, b: int) -> int:
+    return zlib.crc32(bytes([b]), crc ^ 0xFFFFFFFF) ^ 0xFFFFFFFF
+
+
+class _ZipCrypto:
+    def __init__(self, password: bytes):
+        self.k = [0x12345678, 0x23456789, 0x34567890]
+        for b in password:
+            self._update(b)
+
+    def _update(self, b: int) -> None:
+        k0 = _crc_byte(self.k[0], b)
+        k1 = ((self.k[1] + (k0 & 0xFF)) * 134775813 + 1) & 0xFFFFFFFF
+        self.k = [k0, k1, _crc_byte(self.k[2], k1 >> 24)]
+
+    def encrypt(self, data: bytes) -> bytes:
+        out = bytearray()
+        for b in data:
+            t = (self.k[2] | 2) & 0xFFFF
+            out.append(b ^ (((t * (t ^ 1)) >> 8) & 0xFF))
+            self._update(b)
+        return bytes(out)
+
+
+def zipcrypto(body: bytes, password: bytes, check: int, name: bytes) -> bytes:
+    keys = _ZipCrypto(password)
+    header = hashlib.sha256(b"header" + name).digest()[:11] + bytes([check])
+    return keys.encrypt(header) + keys.encrypt(body)
+
+
+# WinZip's AES, from its published specification: PBKDF2-HMAC-SHA1 over the password and a
+# salt, a thousand rounds, into the AES key, an HMAC key and a two byte verifier; AES in
+# counter mode counting up from one little-endian; the first ten bytes of HMAC-SHA1 over what
+# was encrypted, after it. The salt is a hash of the name, again so nothing changes.
+
+def winzip_aes(body: bytes, password: bytes, strength: int, name: bytes) -> bytes:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    size = {1: 16, 2: 24, 3: 32}[strength]
+    salt = hashlib.sha256(b"salt" + name).digest()[:size // 2]
+    keys = hashlib.pbkdf2_hmac("sha1", password, salt, 1000, 2 * size + 2)
+    aes = Cipher(algorithms.AES(keys[:size]), modes.ECB()).encryptor()
+    out = bytearray()
+    for n, at in enumerate(range(0, len(body), 16), start=1):
+        stream = aes.update(n.to_bytes(16, "little"))
+        out += bytes(a ^ b for a, b in zip(body[at:at + 16], stream))
+    code = hmac.new(keys[size:2 * size], bytes(out), hashlib.sha1).digest()[:10]
+    return salt + keys[2 * size:] + bytes(out) + code
 
 
 # Deflate64, which zlib cannot write. Enough of an encoder to put every part of the format
@@ -1002,17 +1064,30 @@ def zip_bytes(members, *, zip64=False, comment=b"") -> bytes:
     out, central = bytearray(), bytearray()
     for m in members:
         crc = zlib.crc32(m.data) & 0xFFFFFFFF
-        if m.method == DEFLATED and not m.flags & 1:
+        if m.method == DEFLATED:
             packer = zlib.compressobj(9, zlib.DEFLATED, -15)
             body = packer.compress(m.data) + packer.flush()
         elif m.method == DEFLATE64:
             body = deflate64(m.data)
         else:
             body = m.data
-        if m.method == DEFLATE64:
+        method, aes_extra = m.method, b""
+        if m.zipcrypto:
+            check = (m.time >> 8) if m.descriptor else (crc >> 24)
+            body = zipcrypto(body, m.zipcrypto, check, m.name)
+        elif m.aes:
+            strength, version = m.aes
+            body = winzip_aes(body, m.password, strength, m.name)
+            aes_extra = _extra(0x9901, struct.pack("<H2sBH", version, b"AE", strength, m.method))
+            method = AES
+            if version == 2:
+                crc = 0
+        if method == AES:
+            needed = 51
+        elif method == DEFLATE64:
             needed = 21
         else:
-            needed = 63 if m.method not in (STORED, DEFLATED) else (45 if zip64 else 20)
+            needed = 63 if method not in (STORED, DEFLATED) else (45 if zip64 else 20)
         made_by = (m.host << 8) | (45 if zip64 else 20)
         if m.host == HOST_UNIX:
             external = ((0o40755 << 16) | 0x10) if m.directory else (0o100644 << 16)
@@ -1021,24 +1096,24 @@ def zip_bytes(members, *, zip64=False, comment=b"") -> bytes:
         offset = len(out)
 
         local_crc, local_c, local_u = (0, 0, 0) if m.descriptor else (crc, len(body), len(m.data))
-        local_extra = b""
+        local_extra = aes_extra
         if zip64:
-            local_extra = _extra(1, struct.pack("<QQ", len(m.data), len(body)))
+            local_extra = _extra(1, struct.pack("<QQ", len(m.data), len(body))) + local_extra
             local_c = local_u = 0xFFFFFFFF
-        out += struct.pack("<IHHHHHIIIHH", 0x04034B50, needed, m.flags, m.method, 0,
+        out += struct.pack("<IHHHHHIIIHH", 0x04034B50, needed, m.flags, method, m.time,
                            ZIP_DOS_DATE, local_crc, local_c, local_u, len(m.name),
                            len(local_extra))
         out += m.name + local_extra + body
         if m.descriptor:
             out += struct.pack("<IIII", 0x08074B50, crc, len(body), len(m.data))
 
-        central_extra = m.extra
+        central_extra = m.extra + aes_extra
         c_size, u_size, c_offset = len(body), len(m.data), offset
         if zip64:
             central_extra = _extra(1, struct.pack("<QQQ", len(m.data), len(body), offset)) + central_extra
             c_size = u_size = c_offset = 0xFFFFFFFF
         central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, made_by, needed, m.flags,
-                               m.method, 0, ZIP_DOS_DATE, crc, c_size, u_size, len(m.name),
+                               method, m.time, ZIP_DOS_DATE, crc, c_size, u_size, len(m.name),
                                len(central_extra), 0, 0, 0, external, c_offset)
         central += m.name + central_extra
 
@@ -1082,7 +1157,7 @@ def zips() -> None:
         Member(b"plain.txt", plain),
         Member(b"nested/stored.zip", inner, method=STORED),
         Member(b"nested/packed.zip", inner),
-        Member(b"private/locked.txt", bytes(range(40)), flags=0x01),
+        Member(b"private/locked.txt", b"The password was gander.\n", zipcrypto=b"gander"),
         Member(b"private/table.dat", bytes(range(40)), method=14),
     ]
     (OUT / "archive.zip").write_bytes(zip_bytes(archive, comment=b"Gander test archive"))
@@ -1106,6 +1181,32 @@ def zips() -> None:
     (OUT / "zip64.zip").write_bytes(zip_bytes(
         [Member(b"big/report.pdf", pdf), Member(b"big/notes.txt", plain)], zip64=True))
     written(OUT / "zip64.zip")
+
+    # Every way a file can be under a password that Gander reads, and the one it does not,
+    # all with the password gander, beside a file with none. A half past two in the
+    # afternoon on the file whose CRC trails it, since that is what its check byte is.
+    half_past_two = (14 << 11) | (30 << 5)
+    (OUT / "locked.zip").write_bytes(zip_bytes([
+        Member(b"open.txt", plain),
+        Member(b"zipcrypto.txt", plain, zipcrypto=b"gander"),
+        Member(b"zipcrypto-trailing.md", notes, zipcrypto=b"gander", descriptor=True,
+               time=half_past_two),
+        Member(b"zipcrypto.png", png, method=STORED, zipcrypto=b"gander"),
+        Member(b"aes128.txt", plain, aes=(1, 1), password=b"gander"),
+        Member(b"aes192.pdf", pdf, aes=(2, 2), password=b"gander"),
+        Member(b"aes256.png", png, method=STORED, aes=(3, 2), password=b"gander"),
+        Member(b"aes256-deflate64.md", notes, method=DEFLATE64, aes=(3, 2), password=b"gander"),
+        Member(b"strong.bin", bytes(range(64)), method=STORED, flags=0x41),
+    ]))
+    written(OUT / "locked.zip")
+
+    # A password that is not ASCII, as each encryption takes it: WinZip's AES as UTF-8, and
+    # the older one as a Russian Windows machine's own code page.
+    (OUT / "locked-cyrillic.zip").write_bytes(zip_bytes([
+        Member(b"zipcrypto.txt", plain, zipcrypto="пароль".encode("cp866")),
+        Member(b"aes.txt", plain, aes=(3, 2), password="пароль".encode("utf-8")),
+    ]))
+    written(OUT / "locked-cyrillic.zip")
 
     # Deflate64, which Windows writes for anything over 2 GB. Text to compress, then the
     # three things only Deflate64 has: a match from more than 32 KB back, one from more than

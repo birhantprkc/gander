@@ -11,6 +11,10 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.pressImeActionButton
+import androidx.test.espresso.action.ViewActions.typeText
+import androidx.test.espresso.matcher.RootMatchers.isDialog
+import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.web.assertion.WebViewAssertions.webMatches
@@ -28,6 +32,7 @@ import java.io.RandomAccessFile
 import java.util.Locale
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.containsString
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -53,6 +58,11 @@ class ArchiveDeviceTest {
     @Before
     fun setUp() {
         DeviceFixtures.clear()
+    }
+
+    @After
+    fun tearDown() {
+        ArchivePasswords.forgetAll()
     }
 
     /** The URI Gander's own list would open [path] under. */
@@ -211,6 +221,89 @@ class ArchiveDeviceTest {
             onWebView()
                 .withElement(findElement(Locator.CSS_SELECTOR, "#content"))
                 .check(webMatches(getText(), containsString("Plain text, opened by the text viewer")))
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Under a password
+    // ---------------------------------------------------------------
+
+    /**
+     * The password typed into the box and sent with the keyboard's own key, as a reader would.
+     * Not Open: the keyboard comes up with the box, and the box moves above it while Espresso
+     * is already tapping where it used to be. Open itself is pressed in ViewerActivityTest.
+     */
+    private fun unlockWith(password: String) {
+        onView(isAssignableFrom(android.widget.EditText::class.java)).inRoot(isDialog())
+            .perform(typeText(password), pressImeActionButton())
+    }
+
+    /**
+     * The whole of it on a device: the box, the password tried against the file, and the file
+     * decrypted into the pipe on its way to the text viewer.
+     */
+    @Test
+    fun aFileUnderAPasswordOpensOnceItIsTyped() {
+        ActivityScenario.launch<ViewerActivity>(DeviceFixtures.viewIntent("locked.zip")).use {
+            rows(it)
+            onView(allOf(withId(R.id.title), withText("zipcrypto.txt"))).perform(click())
+            unlockWith("gander")
+            onWebView()
+                .withElement(findElement(Locator.CSS_SELECTOR, "#content"))
+                .check(webMatches(getText(), containsString("Plain text, opened by the text viewer")))
+        }
+    }
+
+    /** A wrong one leaves the box up, saying so, and opens nothing. */
+    @Test
+    fun aWrongPasswordIsSaidToBeWrong() {
+        ActivityScenario.launch<ViewerActivity>(DeviceFixtures.viewIntent("locked.zip")).use { scenario ->
+            rows(scenario)
+            onView(allOf(withId(R.id.title), withText("aes128.txt"))).perform(click())
+            unlockWith("goose")
+            val said = waitFor("the error") {
+                var error: CharSequence? = null
+                onView(isAssignableFrom(android.widget.EditText::class.java)).inRoot(isDialog())
+                    .check { view, _ -> error = (view as android.widget.EditText).error }
+                error?.toString()
+            }
+            assertThat(said).isEqualTo(target.getString(R.string.password_wrong))
+            assertThat(scenario.state).isEqualTo(Lifecycle.State.RESUMED)
+        }
+    }
+
+    /**
+     * A photo under AES is still encrypted where it lies, so it can never be a window: it
+     * reaches the tiling view through the pipe, decrypted on the way.
+     */
+    @Test
+    fun anEncryptedPhotoOpensInTheTilingView() {
+        ArchivePasswords.remember(DeviceFixtures.uriFor("locked.zip"), "gander")
+        openEntry("locked.zip", "aes256.png").use { scenario ->
+            val ready = waitFor("the photo") {
+                var ready: Boolean? = null
+                scenario.onActivity { activity ->
+                    val container = activity.findViewById<FrameLayout>(R.id.container)
+                    val view = (0 until container.childCount).map { container.getChildAt(it) }
+                        .filterIsInstance<SubsamplingScaleImageView>().firstOrNull()
+                    ready = view?.isReady?.takeIf { it }
+                }
+                ready
+            }
+            assertThat(ready).isTrue()
+        }
+    }
+
+    /** pdf.js reading a PDF decrypted from AES-192 out of the pipe, every page of it. */
+    @Test
+    fun anEncryptedPdfRendersEveryPage() {
+        ArchivePasswords.remember(DeviceFixtures.uriFor("locked.zip"), "gander")
+        openEntry("locked.zip", "aes192.pdf").use { scenario ->
+            val pages = waitFor("six pages") {
+                WebViewProbe.text(scenario, "document.querySelectorAll('#pages .pg').length")
+                    .takeIf { it == "6" }
+            }
+            assertThat(pages).isEqualTo("6")
         }
     }
 

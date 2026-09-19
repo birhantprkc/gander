@@ -4,17 +4,25 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
@@ -112,7 +120,10 @@ internal class ArchiveBrowser(
     private val archiveName: String,
     /** Where the reader was before a configuration change, or null for the top. */
     restoredFolder: String?,
-    /** Where the index is read. Its own thread, which ends with the read; tests run it inline. */
+    /**
+     * Where the index is read and a password tried. Its own thread, ended with the screen;
+     * tests run it inline.
+     */
     private val loader: Executor = Executors.newSingleThreadExecutor(),
 ) {
 
@@ -128,6 +139,9 @@ internal class ArchiveBrowser(
     /** Where each folder was scrolled to, so coming back up lands where the reader went in. */
     private val scrolled = HashMap<String, Int>()
 
+    /** The dialog on screen, if one is, so it goes with the screen rather than leaking it. */
+    private var dialog: AlertDialog? = null
+
     private val back = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() = show(folder.substringBeforeLast('/', ""))
     }
@@ -137,6 +151,9 @@ internal class ArchiveBrowser(
         class Ready(val tree: ArchiveTree) : Listing
         class Failed(val message: Int) : Listing
     }
+
+    /** What trying a password on a file came to. */
+    private enum class Unlock { OPENS, WRONG, FAILED }
 
     fun attach(container: FrameLayout) {
         // One column on a phone and two on a tablet, the same as the home screen, and for the
@@ -158,6 +175,15 @@ internal class ArchiveBrowser(
         )
         activity.onBackPressedDispatcher.addCallback(activity, back)
         toolbar.setNavigationOnClickListener { activity.onBackPressedDispatcher.onBackPressed() }
+        activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                dialog?.dismiss()
+                (loader as? ExecutorService)?.shutdown()
+                // Not on a rotation or a change of theme, which brings the same list straight
+                // back: only when the reader has left it
+                if (activity.isFinishing) ArchivePasswords.forget(archive)
+            }
+        })
         load()
     }
 
@@ -167,13 +193,7 @@ internal class ArchiveBrowser(
      * first, so the bar comes up if it is taking long enough to notice.
      */
     private fun load() {
-        // Indeterminate, set before it shows: the bar is the one a save reports on, and it is
-        // left determinate at nought, which would draw as an empty track that never moves
-        val announce = Runnable {
-            progress.isIndeterminate = true
-            progress.visibility = View.VISIBLE
-        }
-        main.postDelayed(announce, PROGRESS_DELAY_MS)
+        val announce = announceAfterADelay()
         loader.execute {
             val result = read()
             main.post {
@@ -192,7 +212,18 @@ internal class ArchiveBrowser(
                 }
             }
         }
-        (loader as? ExecutorService)?.shutdown()
+    }
+
+    /** The bar under the toolbar, if what is about to happen takes long enough to notice. */
+    private fun announceAfterADelay(): Runnable {
+        // Indeterminate, set before it shows: the bar is the one a save reports on, and it is
+        // left determinate at nought, which would draw as an empty track that never moves
+        val announce = Runnable {
+            progress.isIndeterminate = true
+            progress.visibility = View.VISIBLE
+        }
+        main.postDelayed(announce, PROGRESS_DELAY_MS)
+        return announce
     }
 
     private fun read(): Listing = try {
@@ -240,29 +271,151 @@ internal class ArchiveBrowser(
 
     private fun fileRow(entry: ArchiveEntry): Row.Item {
         val (badge, color) = badgeFor(entry.name, null)
+        val details = listOfNotNull(
+            Formatter.formatShortFileSize(activity, entry.size).takeIf { entry.size > 0 },
+            DateUtils.getRelativeTimeSpanString(entry.modified).toString()
+                .takeIf { entry.modified > 0 }
+        )
         val subtitle = when {
-            entry.encrypted -> activity.getString(R.string.entry_locked)
+            entry.encrypted -> (listOf(activity.getString(R.string.entry_locked)) + details).joinToString(" · ")
             !entry.readable -> activity.getString(R.string.entry_unsupported)
-            else -> listOfNotNull(
-                Formatter.formatShortFileSize(activity, entry.size).takeIf { entry.size > 0 },
-                DateUtils.getRelativeTimeSpanString(entry.modified).toString()
-                    .takeIf { entry.modified > 0 }
-            ).joinToString(" · ").ifEmpty { null }
+            else -> details.joinToString(" · ").ifEmpty { null }
         }
         return Row.Item(badge, color, entry.name, subtitle, onClick = { open(entry) })
     }
 
     private fun open(entry: ArchiveEntry) {
         if (!entry.readable) {
-            val why = if (entry.encrypted) R.string.entry_locked_open else R.string.entry_unsupported_open
+            val why = if (entry.encrypted) R.string.entry_locked_unsupported else R.string.entry_unsupported_open
             Toast.makeText(activity, why, Toast.LENGTH_SHORT).show()
             return
         }
+        if (!entry.encrypted) {
+            view(entry)
+            return
+        }
+        // The password that opened another file here nearly always opens this one
+        val known = ArchivePasswords.get(archive)
+        if (known == null) askForPassword(entry) else unlock(entry, known) { result ->
+            when (result) {
+                Unlock.OPENS -> view(entry)
+                // Not an error: this one file has a password of its own
+                Unlock.WRONG -> askForPassword(entry)
+                Unlock.FAILED -> Unit
+            }
+        }
+    }
+
+    private fun view(entry: ArchiveEntry) {
         activity.startActivity(
             Intent()
                 .setClassName(activity, ViewerActivity.ENTRY_VIEWER)
                 .setData(ArchiveProvider.uriFor(activity, archive, entry))
         )
+    }
+
+    /** Tries [password] on [entry] off the main thread, and says what came of it on it. */
+    private fun unlock(entry: ArchiveEntry, password: String, then: (Unlock) -> Unit) {
+        val announce = announceAfterADelay()
+        loader.execute {
+            val result = try {
+                val afd = activity.contentResolver.openAssetFileDescriptor(archive, "r")
+                val source = afd?.let(ZipSource::open)
+                if (source == null) {
+                    afd?.close()
+                    Unlock.FAILED
+                } else {
+                    source.use { ZipReader.open(it, entry.location, password).close() }
+                    Unlock.OPENS
+                }
+            } catch (_: ZipReader.WrongPassword) {
+                Unlock.WRONG
+            } catch (_: Exception) {
+                Unlock.FAILED
+            }
+            main.post {
+                main.removeCallbacks(announce)
+                if (activity.isDestroyed) return@post
+                progress.visibility = View.GONE
+                if (result == Unlock.OPENS) ArchivePasswords.remember(archive, password)
+                if (result == Unlock.FAILED) {
+                    Toast.makeText(activity, R.string.archive_unreadable, Toast.LENGTH_SHORT).show()
+                }
+                then(result)
+            }
+        }
+    }
+
+    /**
+     * Asks for the password [entry] is under, in the words the PDF viewer uses for the same
+     * question. The box stays up while the password is tried, so a wrong one says so where it
+     * was typed rather than closing and opening again.
+     *
+     * Not a password a keyboard or an autofill service should offer to keep, any more than a
+     * PDF's: it opens one file, not an account. And never written anywhere, see ArchivePasswords.
+     */
+    private fun askForPassword(entry: ArchiveEntry) {
+        val field = EditText(activity).apply {
+            // Single line already, and masked. Setting isSingleLine as well, after this, puts
+            // back the transformation that shows the text, and the password was on screen
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            imeOptions = EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            hint = activity.getString(R.string.password)
+            // A plain field comes out at 43dp, under the 48 Android asks of anything tapped
+            minHeight = (48 * activity.resources.displayMetrics.density).toInt()
+            requestFocus()
+        }
+        val gutter = (24 * activity.resources.displayMetrics.density).toInt()
+        val holder = FrameLayout(activity).apply {
+            setPadding(gutter, gutter / 3, gutter, 0)
+            addView(
+                field,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            )
+        }
+        // Material keeps 80dp clear above and below a dialog, which with the keyboard up leaves a
+        // phone of ordinary height no room for this one, and the field was squeezed to 43dp to
+        // fit: under the 48 anything tapped needs. The same inset as its sides is room enough.
+        val inset = activity.resources.getDimensionPixelSize(R.dimen.password_box_inset)
+        val box = MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.password_title)
+            .setMessage(R.string.password_message)
+            .setView(holder)
+            .setBackgroundInsetTop(inset)
+            .setBackgroundInsetBottom(inset)
+            .setPositiveButton(R.string.password_open, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        box.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        dialog = box
+        box.show()
+
+        val open = box.getButton(AlertDialog.BUTTON_POSITIVE)
+        val submit = submit@{
+            val password = field.text.toString()
+            if (password.isEmpty() || !open.isEnabled) return@submit
+            open.isEnabled = false
+            unlock(entry, password) { result ->
+                open.isEnabled = true
+                when (result) {
+                    Unlock.OPENS -> {
+                        box.dismiss()
+                        view(entry)
+                    }
+                    Unlock.WRONG -> {
+                        field.text.clear()
+                        field.error = activity.getString(R.string.password_wrong)
+                    }
+                    Unlock.FAILED -> box.dismiss()
+                }
+            }
+        }
+        open.setOnClickListener { submit() }
+        field.setOnEditorActionListener { _, _, _ ->
+            submit()
+            true
+        }
     }
 
     private companion object {

@@ -45,16 +45,21 @@ class ArchiveProviderTest {
     @After
     fun tearDown() {
         ShadowBinder.reset()
+        ArchivePasswords.forgetAll()
     }
 
-    private fun entry(path: String): ArchiveEntry {
-        val raf = RandomAccessFile(Fixtures.file("archive.zip"), "r")
+    private fun entry(path: String, fixture: String = "archive.zip"): ArchiveEntry {
+        val raf = RandomAccessFile(Fixtures.file(fixture), "r")
         return ZipSource(raf.channel, 0, raf.length(), raf).use {
             ZipReader.entries(it, Locale.US).single { e -> e.path == path }
         }
     }
 
     private fun uriOf(path: String): Uri = ArchiveProvider.uriFor(context, archive, entry(path))
+
+    private val locked = FixtureProvider.uriFor("locked.zip")
+
+    private fun lockedUri(path: String): Uri = ArchiveProvider.uriFor(context, locked, entry(path, "locked.zip"))
 
     // ---------------------------------------------------------------
     // The URI
@@ -71,6 +76,7 @@ class ArchiveProviderTest {
         assertThat(ref.location.compressedSize).isEqualTo(entry.location.compressedSize)
         assertThat(ref.location.size).isEqualTo(entry.location.size)
         assertThat(ref.location.crc).isEqualTo(entry.location.crc)
+        assertThat(ref.location.lock).isEqualTo(Lock.NONE)
     }
 
     /** A name in any script, with spaces, and an archive URI with a query of its own. */
@@ -79,26 +85,30 @@ class ArchiveProviderTest {
         val entry = ArchiveEntry(
             path = "季度报告/会议 记录 (final).pdf",
             isDirectory = false,
-            encrypted = false,
             modified = 0,
-            location = EntryLocation(12, 8, 34, 56, 0xFFFFFFFFL),
+            location = EntryLocation(12, 8, 34, 56, 0xFFFFFFFFL, Lock.AES256),
         )
         val odd = Uri.parse("content://test.fixtures/archive.zip?name=Q3%20pack.zip")
         val ref = ArchiveProvider.parse(ArchiveProvider.uriFor(context, odd, entry))!!
         assertThat(ref.name).isEqualTo("会议 记录 (final).pdf")
         assertThat(ref.archive).isEqualTo(odd)
         assertThat(ref.location.crc).isEqualTo(0xFFFFFFFFL)
+        assertThat(ref.location.lock).isEqualTo(Lock.AES256)
     }
 
     @Test
     fun anythingElseIsNotOneOfItsUris() {
         val base = "content://${ArchiveProvider.authority(context)}"
+        val archive = "archive=content%3A%2F%2Fa%2Fb"
+        // The one that is, so each of the others fails for its own reason and not for its shape
+        assertThat(ArchiveProvider.parse(Uri.parse("$base/1/8/2/3/ff/none/x.pdf?$archive"))).isNotNull()
         listOf(
-            "$base/1/8/2/3/ff?archive=content%3A%2F%2Fa%2Fb",
-            "$base/1/8/2/3/ff/x.pdf",
-            "$base/one/8/2/3/ff/x.pdf?archive=content%3A%2F%2Fa%2Fb",
-            "$base/-1/8/2/3/ff/x.pdf?archive=content%3A%2F%2Fa%2Fb",
-            "$base/1/8/2/3/not-hex/x.pdf?archive=content%3A%2F%2Fa%2Fb",
+            "$base/1/8/2/3/ff/none?$archive",
+            "$base/1/8/2/3/ff/none/x.pdf",
+            "$base/one/8/2/3/ff/none/x.pdf?$archive",
+            "$base/-1/8/2/3/ff/none/x.pdf?$archive",
+            "$base/1/8/2/3/not-hex/none/x.pdf?$archive",
+            "$base/1/8/2/3/ff/rot13/x.pdf?$archive",
         ).forEach { assertThat(ArchiveProvider.parse(Uri.parse(it))).isNull() }
     }
 
@@ -174,12 +184,52 @@ class ArchiveProviderTest {
     fun aFileThatHasMovedIsNotFound() {
         val real = entry("photos/tiny.png")
         val stale = ArchiveEntry(
-            real.path, false, false, 0,
+            real.path, false, 0,
             EntryLocation(real.location.headerOffset + 7, 0, real.size, real.size, real.location.crc),
         )
         val uri = ArchiveProvider.uriFor(context, archive, stale)
         assertThrows(FileNotFoundException::class.java) {
             context.contentResolver.openAssetFileDescriptor(uri, "r")
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Under a password
+    // ---------------------------------------------------------------
+
+    /** The password is never in the URI, so without the one the list was given, nothing. */
+    @Test
+    fun aFileUnderAPasswordIsNotServedWithoutIt() {
+        assertThrows(FileNotFoundException::class.java) {
+            context.contentResolver.openAssetFileDescriptor(lockedUri("zipcrypto.txt"), "r")
+        }
+    }
+
+    /**
+     * A stored file under a password is still encrypted where it lies, so even Gander's own
+     * viewers get it through the pipe, decrypted, and never a window onto the encrypted bytes.
+     * What comes down the pipe is read on a device, in ArchiveDeviceTest: Robolectric's pipes
+     * read back empty.
+     */
+    @Test
+    fun aStoredFileUnderAPasswordIsNeverAWindow() {
+        ArchivePasswords.remember(locked, "gander")
+        context.contentResolver.openAssetFileDescriptor(lockedUri("aes256.png"), "r")!!.use { afd ->
+            assertThat(afd.startOffset).isEqualTo(0L)
+            assertThat(afd.declaredLength).isEqualTo(AssetFileDescriptor.UNKNOWN_LENGTH)
+        }
+        // Encryption adds bytes, so its sizes alone already rule a window out. The lock is
+        // what rules it out even for a location whose sizes would not
+        val real = entry("aes256.png", "locked.zip").location
+        val even = ArchiveEntry(
+            "aes256.png", false, 0,
+            EntryLocation(real.headerOffset, real.method, real.size, real.size, real.crc, real.lock),
+        )
+        context.contentResolver.openAssetFileDescriptor(ArchiveProvider.uriFor(context, locked, even), "r")!!
+            .use { afd -> assertThat(afd.declaredLength).isEqualTo(AssetFileDescriptor.UNKNOWN_LENGTH) }
+        // The same file in the clear is a window, so this is the lock deciding and not the method
+        context.contentResolver.openAssetFileDescriptor(uriOf("photos/tiny.png"), "r")!!.use { afd ->
+            assertThat(afd.declaredLength).isEqualTo(Fixtures.file("tiny.png").length())
         }
     }
 

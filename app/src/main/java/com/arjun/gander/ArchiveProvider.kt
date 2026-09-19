@@ -28,9 +28,11 @@ internal class EntryRef(val archive: Uri, val name: String, val location: EntryL
  * inside a zip gets one, and none of them needs to know where it came from.
  *
  * The URI carries all there is to know about the file: the archive's own URI, and where in
- * it the file is and how it is packed, as the index said when the list was drawn. Nothing is
- * kept here between requests, so a viewer that Android brings back after reclaiming the
- * process asks again with the same URI and gets the same file.
+ * it the file is and how it is packed and locked, as the index said when the list was drawn.
+ * Nothing is kept here between requests, so a viewer that Android brings back after
+ * reclaiming the process asks again with the same URI and gets the same file. Unless it is
+ * under a password: that is kept only as long as the process, and the viewer says it cannot
+ * open the file, which going back to the list and tapping it again puts right.
  *
  * Nothing is extracted. A file stored as it is, which some archivers do with photos and video
  * since those do not compress, is handed over as a window onto the archive itself, so a
@@ -38,7 +40,8 @@ internal class EntryRef(val archive: Uri, val name: String, val location: EntryL
  * compressed one is inflated on a thread into a pipe as the viewer reads it, and never
  * reaches storage. The price of the pipe is that it runs from the start: a large compressed
  * PDF loads whole, and seeking in a long compressed video inflates it again up to the new
- * place.
+ * place. A file under a password always goes through the pipe, decrypted on the way, with
+ * the password [ArchivePasswords] holds for its archive; the URI never carries it.
  *
  * Not exported. Share passes one file's URI on with a one-off read grant, the way the
  * FileProvider does, and ViewerActivity turns these URIs away from anything but Gander's own
@@ -65,6 +68,7 @@ class ArchiveProvider : ContentProvider() {
                 .appendPath(at.compressedSize.toString())
                 .appendPath(at.size.toString())
                 .appendPath(java.lang.Long.toHexString(at.crc))
+                .appendPath(at.lock.token)
                 // Last, and the file's own name, for anything that names a file after the end
                 // of its URI rather than asking, as some share targets do
                 .appendPath(entry.name)
@@ -75,16 +79,17 @@ class ArchiveProvider : ContentProvider() {
         /** What [uri] names, or null if it is not one of these. */
         internal fun parse(uri: Uri): EntryRef? {
             val parts = uri.pathSegments
-            if (parts.size != 6) return null
+            if (parts.size != 7) return null
             val offset = parts[0].toLongOrNull() ?: return null
             val method = parts[1].toIntOrNull() ?: return null
             val compressed = parts[2].toLongOrNull() ?: return null
             val size = parts[3].toLongOrNull() ?: return null
             val crc = parts[4].toLongOrNull(16) ?: return null
-            val name = parts[5]
+            val lock = Lock.of(parts[5]) ?: return null
+            val name = parts[6]
             val archive = uri.getQueryParameter(ARCHIVE)?.let(Uri::parse) ?: return null
             if (offset < 0 || compressed < 0 || size < 0 || name.isEmpty()) return null
-            return EntryRef(archive, name, EntryLocation(offset, method, compressed, size, crc))
+            return EntryRef(archive, name, EntryLocation(offset, method, compressed, size, crc, lock))
         }
     }
 
@@ -121,6 +126,10 @@ class ArchiveProvider : ContentProvider() {
     override fun openAssetFile(uri: Uri, mode: String): AssetFileDescriptor {
         if (mode != "r") throw FileNotFoundException("read only")
         val ref = parse(uri) ?: throw FileNotFoundException("not a file in an archive")
+        val password = ArchivePasswords.get(ref.archive)
+        if (ref.location.lock.opensWithPassword && password == null) {
+            throw FileNotFoundException("the file needs its password")
+        }
         val resolver = requireNotNull(context).contentResolver
         val archive = resolver.openAssetFileDescriptor(ref.archive, "r")
             ?: throw FileNotFoundException("the archive could not be opened")
@@ -139,8 +148,10 @@ class ArchiveProvider : ContentProvider() {
             // offset attached, and nothing stops its holder reading outside it. Gander's viewers
             // may, since the archive is open to Gander already; an app that one file was shared
             // with would be handed every other file in the zip along with it. Anyone else gets
-            // the pipe, which carries the one file and nothing more.
+            // the pipe, which carries the one file and nothing more. So does a file under a
+            // password, whose bytes in the archive are not the file's.
             if (Binder.getCallingUid() == Process.myUid() &&
+                at.lock == Lock.NONE &&
                 at.method == ZipReader.METHOD_STORED &&
                 at.compressedSize == at.size && at.size <= Int.MAX_VALUE
             ) {
@@ -152,7 +163,7 @@ class ArchiveProvider : ContentProvider() {
 
             val (read, write) = ParcelFileDescriptor.createReliablePipe()
             handedOver = true
-            writers.execute { pump(source, at, write) }
+            writers.execute { pump(source, at, password, write) }
             return AssetFileDescriptor(read, 0, AssetFileDescriptor.UNKNOWN_LENGTH)
         } catch (e: IOException) {
             throw e as? FileNotFoundException ?: FileNotFoundException(e.message)
@@ -167,9 +178,9 @@ class ArchiveProvider : ContentProvider() {
      * short read for the end of the file. A reader that closes early is not an error worth
      * reporting to anybody: the write fails, and the thread ends.
      */
-    private fun pump(source: ZipSource, at: EntryLocation, write: ParcelFileDescriptor) {
+    private fun pump(source: ZipSource, at: EntryLocation, password: String?, write: ParcelFileDescriptor) {
         try {
-            ZipReader.open(source, at).use { input ->
+            ZipReader.open(source, at, password).use { input ->
                 input.copyTo(FileOutputStream(write.fileDescriptor), BUFFER)
             }
             write.close()

@@ -19,12 +19,14 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.common.truth.Truth.assertThat
 import java.io.File
 import java.util.concurrent.Executor
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import org.robolectric.shadows.ShadowDialog
 import org.robolectric.shadows.ShadowToast
 
 /**
@@ -46,6 +48,11 @@ class ViewerActivityTest {
         context = ApplicationProvider.getApplicationContext()
         FixtureProvider.install()
         Thumbs.resetForTests()
+    }
+
+    @After
+    fun tearDown() {
+        ArchivePasswords.forgetAll()
     }
 
     // ---------------------------------------------------------------
@@ -465,13 +472,13 @@ class ViewerActivityTest {
     fun aFileThatCannotBeOpenedSaysWhyAndOpensNothing() {
         val controller = zip()
         controller.tap("private")
-        controller.tap("locked.txt")
+        controller.tap("table.dat")
         assertThat(shadowOf(controller.get()).nextStartedActivity).isNull()
         assertThat(ShadowToast.getTextOfLatestToast())
-            .isEqualTo(context.getString(R.string.entry_locked_open))
+            .isEqualTo(context.getString(R.string.entry_unsupported_open))
     }
 
-    /** It says so in the row as well, before anybody taps it. */
+    /** It says so in the row as well, before anybody taps it, and so does a file under a password. */
     @Test
     fun aFileThatCannotBeOpenedIsMarkedInTheList() {
         val controller = zip()
@@ -480,8 +487,99 @@ class ViewerActivityTest {
             it.findViewById<TextView>(R.id.title).text.toString() to
                 it.findViewById<TextView>(R.id.subtitle).text.toString()
         }
-        assertThat(subtitles["locked.txt"]).isEqualTo(context.getString(R.string.entry_locked))
+        assertThat(subtitles["locked.txt"]).startsWith(context.getString(R.string.entry_locked))
         assertThat(subtitles["table.dat"]).isEqualTo(context.getString(R.string.entry_unsupported))
+    }
+
+    // ---------------------------------------------------------------
+    // Under a password
+    // ---------------------------------------------------------------
+
+    private fun locked() = zip(FixtureProvider.uriFor("locked.zip"))
+
+    /** The password box on screen, and the field in it. */
+    private fun passwordBox(): Pair<androidx.appcompat.app.AlertDialog, android.widget.EditText> {
+        val box = ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        fun find(v: android.view.View): android.widget.EditText? = when (v) {
+            is android.widget.EditText -> v
+            is android.view.ViewGroup -> (0 until v.childCount).firstNotNullOfOrNull { find(v.getChildAt(it)) }
+            else -> null
+        }
+        return box to find(box.window!!.decorView)!!
+    }
+
+    private fun androidx.appcompat.app.AlertDialog.type(password: String) {
+        passwordBox().second.setText(password)
+        getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    @Test
+    fun aFileUnderAPasswordAsksForIt() {
+        val controller = zip()
+        controller.tap("private")
+        controller.tap("locked.txt")
+        assertThat(shadowOf(controller.get()).nextStartedActivity).isNull()
+        val (box, field) = passwordBox()
+        assertThat(box.isShowing).isTrue()
+        assertThat(field.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD).isNotEqualTo(0)
+        // What is typed shows as dots. The input type alone does not make it so: calling
+        // setSingleLine after it swaps the dots back out, which is how this was found
+        assertThat(field.transformationMethod)
+            .isInstanceOf(android.text.method.PasswordTransformationMethod::class.java)
+    }
+
+    /** A wrong one says so where it was typed, and the box stays for another try. */
+    @Test
+    fun aWrongPasswordSaysSoAndOpensNothing() {
+        val controller = locked()
+        controller.tap("zipcrypto.txt")
+        val (box, field) = passwordBox()
+        box.type("goose")
+        assertThat(box.isShowing).isTrue()
+        assertThat(field.error?.toString()).isEqualTo(context.getString(R.string.password_wrong))
+        assertThat(field.text.toString()).isEmpty()
+        assertThat(shadowOf(controller.get()).nextStartedActivity).isNull()
+    }
+
+    /** The right one opens the file, and every other file under it without asking again. */
+    @Test
+    fun theRightPasswordOpensTheFileAndIsNotAskedForAgain() {
+        val controller = locked()
+        controller.tap("zipcrypto.txt")
+        val (box, _) = passwordBox()
+        box.type("gander")
+        assertThat(box.isShowing).isFalse()
+        val first = shadowOf(controller.get()).nextStartedActivity
+        assertThat(first.component?.className).isEqualTo(ViewerActivity.ENTRY_VIEWER)
+        assertThat(ArchiveProvider.parse(first.data!!)?.name).isEqualTo("zipcrypto.txt")
+
+        controller.tap("aes256-deflate64.md")
+        val second = shadowOf(controller.get()).nextStartedActivity
+        assertThat(ArchiveProvider.parse(second.data!!)?.name).isEqualTo("aes256-deflate64.md")
+        assertThat(ShadowDialog.getLatestDialog()).isSameInstanceAs(box)
+    }
+
+    /** Kept while the list is open, so a rotation keeps it, and forgotten once it is left. */
+    @Test
+    fun thePasswordIsForgottenWhenTheListIsLeft() {
+        val uri = FixtureProvider.uriFor("locked.zip")
+        val controller = locked()
+        controller.tap("zipcrypto.txt")
+        passwordBox().first.type("gander")
+        assertThat(ArchivePasswords.get(uri)).isEqualTo("gander")
+        controller.get().finish()
+        controller.pause().stop().destroy()
+        assertThat(ArchivePasswords.get(uri)).isNull()
+    }
+
+    @Test
+    fun aFileLockedInAWayGanderCannotReadSaysWhy() {
+        val controller = locked()
+        controller.tap("strong.bin")
+        assertThat(ShadowToast.getTextOfLatestToast())
+            .isEqualTo(context.getString(R.string.entry_locked_unsupported))
+        assertThat(ShadowDialog.getLatestDialog()).isNull()
     }
 
     /** A change of theme recreates the viewer, and the reader stays in the folder they were in. */
@@ -531,7 +629,7 @@ class ViewerActivityTest {
         val entry = ArchiveProvider.uriFor(
             context,
             FixtureProvider.uriFor("archive.zip"),
-            ArchiveEntry("plain.txt", false, false, 0, EntryLocation(0, 8, 1, 1, 0)),
+            ArchiveEntry("plain.txt", false, 0, EntryLocation(0, 8, 1, 1, 0)),
         )
         val controller = view(entry, "text/plain")
         assertThat(controller.get().isFinishing).isTrue()
@@ -586,7 +684,7 @@ class ViewerActivityTest {
         val entry = ArchiveProvider.uriFor(
             context,
             FixtureProvider.uriFor("archive.zip"),
-            ArchiveEntry("plain.txt", false, false, 0, EntryLocation(0, 8, 1, 1, 0)),
+            ArchiveEntry("plain.txt", false, 0, EntryLocation(0, 8, 1, 1, 0)),
         )
         val intent = Intent()
             .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))

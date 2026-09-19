@@ -166,6 +166,18 @@ class AccessibilityTest {
         }
     }
 
+    /** The box that asks for the password of a file in a zip, a dialog of Gander's own. */
+    @Test
+    fun theZipPasswordBoxPassesTheAccessibilityChecks() {
+        ActivityScenario.launch<ViewerActivity>(
+            DeviceFixtures.viewIntent("locked.zip")
+        ).use { scenario ->
+            awaitRows(scenario)
+            onView(allOf(withId(R.id.title), withText("zipcrypto.txt"))).perform(click())
+            checkFrom(onView(withText(R.string.password_title)).inRoot(isDialog()))
+        }
+    }
+
     /** Waits for the list to be drawn: the index is read off the main thread. */
     private fun awaitRows(scenario: ActivityScenario<ViewerActivity>) {
         val deadline = SystemClock.uptimeMillis() + 15_000

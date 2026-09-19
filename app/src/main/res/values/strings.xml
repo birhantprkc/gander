@@ -28,11 +28,19 @@
     <string name="archive_unreadable">Gander can\'t read this zip. It may be damaged, or not a zip at all.</string>
     <string name="archive_not_seekable">Gander can\'t look inside this zip from where it is. Save a copy from the menu and open that instead.</string>
     <string name="archive_too_large">This zip holds more files than Gander can list.</string>
-    <!-- Beside a file in a zip that is listed and cannot be opened, and what tapping it says -->
+    <!-- Beside a file in a zip that is listed and cannot be opened, and what tapping it says.
+         A password-protected file opens with its password, and says why when it cannot: it is
+         locked with PKWARE's Strong Encryption, which next to nothing writes. -->
     <string name="entry_locked">Password protected</string>
-    <string name="entry_locked_open">Gander can\'t open password-protected files</string>
+    <string name="entry_locked_unsupported">This file is locked in a way Gander can\'t unlock</string>
     <string name="entry_unsupported">Packed in a format Gander can\'t unpack</string>
     <string name="entry_unsupported_open">This file is packed in a way Gander can\'t read</string>
+    <!-- Asking for a file's password, in the words the PDF viewer asks for a PDF's -->
+    <string name="password_title">This file is password protected</string>
+    <string name="password_message">Enter its password to open it.</string>
+    <string name="password">Password</string>
+    <string name="password_open">Open</string>
+    <string name="password_wrong">That password did not work.</string>
     <string name="removed">Removed</string>
     <!-- Releasing a folder grant is the one thing on this screen that cannot be undone:
          Android has no way to re-take a released permission, so the reader would have to
