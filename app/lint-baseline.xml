@@ -136,12 +136,12 @@
     <issue
         id="NotifyDataSetChanged"
         message="It will always be more efficient to use more specific change events if you can. Rely on `notifyDataSetChanged` as a last resort."
-        errorLine1="            notifyDataSetChanged()"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="        notifyDataSetChanged()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/arjun/gander/MainActivity.kt"
-            line="687"
-            column="13"/>
+            file="src/main/java/com/arjun/gander/Rows.kt"
+            line="40"
+            column="9"/>
     </issue>
 
     <issue

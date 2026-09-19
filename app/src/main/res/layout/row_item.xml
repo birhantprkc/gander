@@ -11,7 +11,7 @@
     android:paddingBottom="6dp"
     android:background="?attr/selectableItemBackground">
 
-    <!-- The row itself carries the description (set in MainActivity), so the badge,
+    <!-- The row itself carries the description (set in RowAdapter), so the badge,
          thumbnail, title and subtitle are one TalkBack stop rather than four -->
     <FrameLayout
         android:layout_width="48dp"
