@@ -582,6 +582,35 @@ class ViewerActivityTest {
         assertThat(ShadowDialog.getLatestDialog()).isNull()
     }
 
+    // ---------------------------------------------------------------
+    // Pictures in the list
+    // ---------------------------------------------------------------
+
+    /** Whether the row for [title] asked for a thumbnail. Thumbs tags the view when it is asked. */
+    private fun ActivityController<ViewerActivity>.asksForAPicture(title: String): Boolean =
+        rows().single { it.findViewById<TextView>(R.id.title)?.text == title }
+            .findViewById<android.widget.ImageView>(R.id.thumb).tag != null
+
+    @Test
+    fun aPhotoInAZipGetsAPictureAndAPdfKeepsItsBadge() {
+        val controller = zip()
+        controller.tap("photos")
+        assertThat(controller.asksForAPicture("tiny.png")).isTrue()
+        controller.get().onBackPressedDispatcher.onBackPressed()
+        controller.tap("reports")
+        assertThat(controller.asksForAPicture("six-pages.pdf")).isFalse()
+    }
+
+    /** A photo under a password gets its picture once the password is known, and not before. */
+    @Test
+    fun aPhotoUnderAPasswordGetsAPictureOnceItIsUnlocked() {
+        val controller = locked()
+        assertThat(controller.asksForAPicture("aes256.png")).isFalse()
+        controller.tap("zipcrypto.txt")
+        passwordBox().first.type("gander")
+        assertThat(controller.asksForAPicture("aes256.png")).isTrue()
+    }
+
     /** A change of theme recreates the viewer, and the reader stays in the folder they were in. */
     @Test
     fun theFolderOnScreenSurvivesARecreation() {

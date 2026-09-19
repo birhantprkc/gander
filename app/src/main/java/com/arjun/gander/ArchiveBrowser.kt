@@ -281,7 +281,17 @@ internal class ArchiveBrowser(
             !entry.readable -> activity.getString(R.string.entry_unsupported)
             else -> details.joinToString(" · ").ifEmpty { null }
         }
-        return Row.Item(badge, color, entry.name, subtitle, onClick = { open(entry) })
+        val ext = entry.name.substringAfterLast('.', "").lowercase()
+        // A file under a password gets its picture once the password is known, and not before
+        val previewable = entry.readable &&
+            Thumbs.supportedInArchive(FileKind.detect(ext, null), ext, entry.location) &&
+            (!entry.encrypted || ArchivePasswords.get(archive) != null)
+        return Row.Item(
+            badge, color, entry.name, subtitle,
+            onClick = { open(entry) },
+            thumbUri = if (previewable) ArchiveProvider.uriFor(activity, archive, entry) else null,
+            thumbExt = ext,
+        )
     }
 
     private fun open(entry: ArchiveEntry) {
@@ -402,6 +412,8 @@ internal class ArchiveBrowser(
                     Unlock.OPENS -> {
                         box.dismiss()
                         view(entry)
+                        // The pictures of the other files under it can be drawn now
+                        show(folder)
                     }
                     Unlock.WRONG -> {
                         field.text.clear()

@@ -307,6 +307,50 @@ class ArchiveDeviceTest {
         }
     }
 
+    // ---------------------------------------------------------------
+    // Pictures in the list
+    // ---------------------------------------------------------------
+
+    /** Whether [title]'s row is showing a picture rather than its badge, once there is one. */
+    private fun showsAPicture(scenario: ActivityScenario<ViewerActivity>, title: String): Boolean =
+        waitFor("a picture for $title") {
+            var shown: Boolean? = null
+            scenario.onActivity { activity ->
+                val container = activity.findViewById<FrameLayout>(R.id.container)
+                val rv = (0 until container.childCount).map { container.getChildAt(it) }
+                    .filterIsInstance<RecyclerView>().firstOrNull() ?: return@onActivity
+                val row = (0 until rv.childCount).map { rv.getChildAt(it) }
+                    .firstOrNull { it.findViewById<TextView>(R.id.title)?.text == title } ?: return@onActivity
+                shown = (row.findViewById<android.widget.ImageView>(R.id.thumb).visibility == android.view.View.VISIBLE)
+                    .takeIf { it }
+            }
+            shown
+        }
+
+    /** A stored photo's picture comes through a window onto the archive. */
+    @Test
+    fun aPhotoInAZipShowsItsPicture() {
+        ActivityScenario.launch<ViewerActivity>(DeviceFixtures.viewIntent("archive.zip")).use {
+            rows(it)
+            onView(allOf(withId(R.id.title), withText("photos"))).perform(click())
+            assertThat(showsAPicture(it, "tiny.png")).isTrue()
+        }
+    }
+
+    /**
+     * And a photo under a password gets its picture once the password is known, decrypted
+     * through the pipe, under either scheme.
+     */
+    @Test
+    fun anEncryptedPhotoShowsItsPictureOnceUnlocked() {
+        ArchivePasswords.remember(DeviceFixtures.uriFor("locked.zip"), "gander")
+        ActivityScenario.launch<ViewerActivity>(DeviceFixtures.viewIntent("locked.zip")).use {
+            rows(it)
+            assertThat(showsAPicture(it, "aes256.png")).isTrue()
+            assertThat(showsAPicture(it, "zipcrypto.png")).isTrue()
+        }
+    }
+
     /** Only Gander's own list can open one of these. See ViewerActivity.ENTRY_VIEWER. */
     @Test
     fun aFileInsideAZipIsRefusedFromOutsideTheList() {

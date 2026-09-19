@@ -24,6 +24,10 @@ import java.util.concurrent.Executors
  * Small preview thumbnails for images, videos and PDFs.
  * Memory LRU + PNG disk cache under cacheDir/thumbs, generated off the
  * main thread. Kinds without a cheap visual preview simply keep their badge.
+ *
+ * A file inside a zip gets the memory cache and never the disk. Nothing in a zip is written
+ * to the phone, which is what Gander says about opening one, and a thumbnail on disk is a
+ * copy of a photo, only smaller.
  */
 object Thumbs {
 
@@ -39,6 +43,19 @@ object Thumbs {
         else -> false
     }
 
+    /**
+     * Which files inside a zip get one. A photo, however it is packed, since decoding one from
+     * the start is what decoding a photo is. A video only when it is stored as it is and not
+     * encrypted, which makes it a window onto the archive the retriever can seek in; through
+     * the pipe, finding one frame would mean inflating the video up to it. Never a PDF, which
+     * PdfRenderer will only take as a whole file, and a window onto a zip is not one.
+     */
+    internal fun supportedInArchive(kind: FileKind, ext: String, at: EntryLocation): Boolean = when (kind) {
+        FileKind.IMAGE, FileKind.IMAGE_WEB -> true
+        FileKind.PLAYER -> !FileKind.isAudioExt(ext) && at.method == ZipReader.METHOD_STORED && at.lock == Lock.NONE
+        else -> false
+    }
+
     /** Shows the thumbnail in [into] and hides [badge] once ready. */
     fun load(context: Context, uri: Uri, ext: String, into: ImageView, badge: View) {
         val key = md5(uri.toString())
@@ -51,9 +68,10 @@ object Thumbs {
         }
         val appCtx = context.applicationContext
         val kind = FileKind.detect(ext, null)
+        val onDisk = uri.authority != ArchiveProvider.authority(appCtx)
         executor.execute {
-            val bmp = fromDisk(appCtx, key)
-                ?: generate(appCtx, uri, kind, ext)?.also { toDisk(appCtx, key, it) }
+            val bmp = (if (onDisk) fromDisk(appCtx, key) else null)
+                ?: generate(appCtx, uri, kind, ext)?.also { if (onDisk) toDisk(appCtx, key, it) }
                 ?: return@execute
             mem.put(key, bmp)
             main.post {
