@@ -8,7 +8,9 @@ import android.content.res.AssetFileDescriptor
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Binder
 import android.os.ParcelFileDescriptor
+import android.os.Process
 import android.provider.OpenableColumns
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
@@ -132,7 +134,14 @@ class ArchiveProvider : ContentProvider() {
             // A stored file is already the bytes a viewer wants, in one run: hand over that
             // run of the archive. Only below 2 GB, because before Android 14 the stream made
             // from a window keeps its length in an int.
-            if (at.method == ZipReader.METHOD_STORED &&
+            //
+            // And only to Gander itself. A window is a descriptor onto the whole archive with an
+            // offset attached, and nothing stops its holder reading outside it. Gander's viewers
+            // may, since the archive is open to Gander already; an app that one file was shared
+            // with would be handed every other file in the zip along with it. Anyone else gets
+            // the pipe, which carries the one file and nothing more.
+            if (Binder.getCallingUid() == Process.myUid() &&
+                at.method == ZipReader.METHOD_STORED &&
                 at.compressedSize == at.size && at.size <= Int.MAX_VALUE
             ) {
                 handedOver = true
@@ -164,7 +173,9 @@ class ArchiveProvider : ContentProvider() {
                 input.copyTo(FileOutputStream(write.fileDescriptor), BUFFER)
             }
             write.close()
-        } catch (e: IOException) {
+        } catch (e: Exception) {
+            // Anything, not only IO: this is a pool thread, and an exception left to escape
+            // one takes the whole app down, viewer and all, where this ends one read
             runCatching { write.closeWithError(e.message ?: "the file could not be read") }
         } finally {
             runCatching { source.close() }

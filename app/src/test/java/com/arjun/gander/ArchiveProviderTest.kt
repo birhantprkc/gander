@@ -1,7 +1,9 @@
 package com.arjun.gander
 
 import android.content.Context
+import android.content.res.AssetFileDescriptor
 import android.net.Uri
+import android.os.Process
 import android.provider.OpenableColumns
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,10 +12,12 @@ import java.io.FileNotFoundException
 import java.io.RandomAccessFile
 import java.util.Locale
 import org.junit.Assert.assertThrows
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
+import org.robolectric.shadows.ShadowBinder
 
 /**
  * The provider that hands a file inside a zip to a viewer. Issue #30.
@@ -36,6 +40,11 @@ class ArchiveProviderTest {
         FixtureProvider.install()
         Robolectric.buildContentProvider(ArchiveProvider::class.java)
             .create(ArchiveProvider.authority(context))
+    }
+
+    @After
+    fun tearDown() {
+        ShadowBinder.reset()
     }
 
     private fun entry(path: String): ArchiveEntry {
@@ -144,6 +153,20 @@ class ArchiveProviderTest {
         }
         val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
         assertThat(bytes).isEqualTo(Fixtures.bytes("tiny.png"))
+    }
+
+    /**
+     * A window is a descriptor onto the whole archive, and its holder can read outside it. So
+     * an app a stored file was shared with gets the file through a pipe, and never a window
+     * that would carry every other file in the zip with it.
+     */
+    @Test
+    fun anotherAppIsNeverHandedAWindowOntoTheArchive() {
+        ShadowBinder.setCallingUid(Process.myUid() + 1)
+        context.contentResolver.openAssetFileDescriptor(uriOf("photos/tiny.png"), "r")!!.use { afd ->
+            assertThat(afd.startOffset).isEqualTo(0L)
+            assertThat(afd.declaredLength).isEqualTo(AssetFileDescriptor.UNKNOWN_LENGTH)
+        }
     }
 
     /** A file in the archive that has since changed is not served from where it used to be. */
