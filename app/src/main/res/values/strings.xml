@@ -21,6 +21,17 @@
     <string name="no_recents_hint">Files you open appear here for quick access.</string>
     <string name="no_folders_hint">Grant a folder to browse its files right here. Gander needs no storage permission to do it.</string>
     <string name="empty_folder">Nothing to show in this folder.</string>
+    <!-- What the list of a .zip says in place of its contents. The second is a zip handed
+         over as a stream rather than a file, which has to be read from the start and so
+         cannot be looked inside; a saved copy is a file. -->
+    <string name="archive_unreadable">Gander can\'t read this zip. It may be damaged, or not a zip at all.</string>
+    <string name="archive_not_seekable">Gander can\'t look inside this zip from where it is. Save a copy from the menu and open that instead.</string>
+    <string name="archive_too_large">This zip holds more files than Gander can list.</string>
+    <!-- Beside a file in a zip that is listed and cannot be opened, and what tapping it says -->
+    <string name="entry_locked">Password protected</string>
+    <string name="entry_locked_open">Gander can\'t open password-protected files</string>
+    <string name="entry_unsupported">Packed in a format Gander can\'t unpack</string>
+    <string name="entry_unsupported_open">This file is packed in a way Gander can\'t read</string>
     <string name="removed">Removed</string>
     <!-- Releasing a folder grant is the one thing on this screen that cannot be undone:
          Android has no way to re-take a released permission, so the reader would have to

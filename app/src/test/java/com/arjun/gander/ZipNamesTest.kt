@@ -1,0 +1,182 @@
+package com.arjun.gander
+
+import com.google.common.truth.Truth.assertThat
+import java.io.RandomAccessFile
+import java.nio.charset.Charset
+import java.util.Locale
+import java.util.zip.CRC32
+import org.junit.Test
+
+/**
+ * Names inside a zip that the zip does not say how to read. Issue #30.
+ *
+ * The four fixture archives were written by Python's own codecs, a separate implementation
+ * from the JVM's, in the code page each name would have on the machine that made it. The
+ * other cases build their bytes here, which is fair for what is under test: not the codecs,
+ * but the choice of which one to use.
+ *
+ * Each archive is read on phones set to more than one language, because the language is only
+ * meant to settle a tie. An archive whose names are unmistakably one script has to come out
+ * right on a phone set to any language at all.
+ */
+class ZipNamesTest {
+
+    private val chinese = Locale.SIMPLIFIED_CHINESE
+    private val taiwan = Locale.TRADITIONAL_CHINESE
+    private val japanese = Locale.JAPAN
+    private val korean = Locale.KOREA
+    private val russian = Locale("ru", "RU")
+    private val turkish = Locale("tr", "TR")
+    private val english = Locale.US
+
+    private fun paths(fixture: String, locale: Locale): List<String> {
+        val raf = RandomAccessFile(Fixtures.file(fixture), "r")
+        return ZipSource(raf.channel, 0, raf.length(), raf).use {
+            ZipReader.entries(it, locale).map { e -> e.path }
+        }
+    }
+
+    private fun legacy(names: List<String>, charset: String): List<RawName> =
+        names.map { RawName(it.toByteArray(Charset.forName(charset)), utf8 = false) }
+
+    private fun decode(names: List<String>, charset: String, locale: Locale) =
+        ZipNames.decode(legacy(names, charset), locale)
+
+    // ---------------------------------------------------------------
+    // Written on Windows, read anywhere
+    // ---------------------------------------------------------------
+
+    @Test
+    fun chineseNamesFromWindowsReadAsChineseWhateverThePhoneIsSetTo() {
+        listOf(chinese, english, russian, japanese).forEach { locale ->
+            assertThat(paths("names-gbk.zip", locale))
+                .containsExactly("季度报告/会议记录.txt", "照片/北京旅行.txt").inOrder()
+        }
+    }
+
+    @Test
+    fun russianNamesFromWindowsReadAsRussianWhateverThePhoneIsSetTo() {
+        listOf(russian, english, chinese).forEach { locale ->
+            assertThat(paths("names-cp866.zip", locale))
+                .containsExactly("Документы/Отчёт за квартал.txt", "Фото/Москва.txt").inOrder()
+        }
+    }
+
+    /**
+     * The case strict decoding gets wrong: every one of these bytes is valid GBK, and reads
+     * as Chinese characters that exist. They are rare ones, though, from the part of GBK that
+     * everyday Chinese never reaches, which is what gives it away even on a Chinese phone.
+     */
+    @Test
+    fun japaneseNamesAreNotReadAsChineseEvenOnAChinesePhone() {
+        listOf(japanese, chinese, english).forEach { locale ->
+            assertThat(paths("names-sjis.zip", locale))
+                .containsExactly("資料/報告書.txt", "資料/議事録.txt").inOrder()
+        }
+    }
+
+    /** macOS writes UTF-8 and does not set the flag that says so. */
+    @Test
+    fun namesFromAMacReadAsUtf8() {
+        listOf(english, chinese, russian).forEach { locale ->
+            assertThat(paths("names-mac.zip", locale)).containsExactly("Отчёт/报告 résumé.txt")
+        }
+    }
+
+    @Test
+    fun traditionalChineseReadsAsBig5() {
+        val names = listOf("文件/季度報告.pdf", "文件/會議記錄.txt")
+        assertThat(decode(names, "Big5", taiwan)).isEqualTo(names)
+        assertThat(decode(names, "Big5", english)).isEqualTo(names)
+    }
+
+    @Test
+    fun koreanReadsAsKoreanOnAKoreanPhone() {
+        val names = listOf("문서/분기 보고서.pdf", "문서/회의록.txt")
+        assertThat(decode(names, "x-windows-949", korean)).isEqualTo(names)
+    }
+
+    /**
+     * Code page 437 read as CP866 is every bit as valid, and every accented letter becomes a
+     * Cyrillic one. What gives it away is where they sit: inside words of plain Latin letters,
+     * where Cyrillic never is. So a Russian phone still reads a French name as French.
+     */
+    @Test
+    fun westernNamesAreNotReadAsCyrillicOnARussianPhone() {
+        val names = listOf("Café menu/Crème brûlée.txt", "Café menu/Résumé.pdf")
+        assertThat(decode(names, "IBM437", russian)).isEqualTo(names)
+        assertThat(decode(names, "IBM437", english)).isEqualTo(names)
+    }
+
+    /** Not Explorer, but some Russian tools wrote zips in the Windows code page instead. */
+    @Test
+    fun russianInTheWindowsCodePageIsNotReadAsDos() {
+        val names = listOf("Документы/Отчёт за квартал.txt", "Фото/Москва.txt")
+        assertThat(decode(names, "windows-1251", russian)).isEqualTo(names)
+    }
+
+    /** Joins only on a Turkish phone; everywhere else it would only be a way to be wrong. */
+    @Test
+    fun turkishNamesReadAsTurkishOnATurkishPhone() {
+        val names = listOf("Şirket raporları/Ağustos özeti.txt")
+        assertThat(decode(names, "IBM857", turkish)).isEqualTo(names)
+    }
+
+    // ---------------------------------------------------------------
+    // What the archive does say
+    // ---------------------------------------------------------------
+
+    @Test
+    fun theUtf8FlagIsTakenAtItsWord() {
+        val name = "季度报告.txt"
+        val raw = RawName(name.toByteArray(Charsets.UTF_8), utf8 = true)
+        assertThat(ZipNames.decode(listOf(raw), russian)).containsExactly(name)
+    }
+
+    /**
+     * 7-Zip writes names that fit the machine's code page in it, and the rest as flagged UTF-8,
+     * in the same archive. Each is read the way it was written.
+     */
+    @Test
+    fun flaggedAndUnflaggedNamesInOneArchiveAreEachReadTheirOwnWay() {
+        val flagged = RawName("Отчёт.txt".toByteArray(Charsets.UTF_8), utf8 = true)
+        val gbk = legacy(listOf("季度报告/会议记录.txt", "照片/北京旅行.txt"), "GBK")
+        assertThat(ZipNames.decode(listOf(flagged) + gbk, english))
+            .containsExactly("Отчёт.txt", "季度报告/会议记录.txt", "照片/北京旅行.txt").inOrder()
+    }
+
+    /** Info-ZIP's Unicode Path field, when it still describes the name beside it. */
+    @Test
+    fun theUnicodePathFieldWinsWhenItsChecksumMatches() {
+        val legacyName = "Otchet.txt".toByteArray()
+        val field = byteArrayOf(1) + le32(crc(legacyName)) + "Отчёт.txt".toByteArray()
+        assertThat(ZipNames.decode(listOf(RawName(legacyName, false, field)), english))
+            .containsExactly("Отчёт.txt")
+    }
+
+    /** One left behind by a tool that renamed the entry and did not know about the field. */
+    @Test
+    fun aStaleUnicodePathFieldIsIgnored() {
+        val legacyName = "Renamed.txt".toByteArray()
+        val field = byteArrayOf(1) + le32(crc("Otchet.txt".toByteArray())) + "Отчёт.txt".toByteArray()
+        assertThat(ZipNames.decode(listOf(RawName(legacyName, false, field)), english))
+            .containsExactly("Renamed.txt")
+    }
+
+    @Test
+    fun asciiNamesAreLeftAlone() {
+        val raw = legacy(listOf("reports/q3.pdf", "notes.txt"), "US-ASCII")
+        assertThat(ZipNames.decode(raw, chinese)).containsExactly("reports/q3.pdf", "notes.txt")
+    }
+
+    /** Bytes that no candidate can read still come out as a name, not as an exception. */
+    @Test
+    fun namesNothingCanReadStillComeOut() {
+        val raw = listOf(RawName(byteArrayOf(0x81.toByte(), 0x7F, 0xFF.toByte(), 0x80.toByte()), false))
+        assertThat(ZipNames.decode(raw, english)).hasSize(1)
+    }
+
+    private fun crc(bytes: ByteArray): Long = CRC32().apply { update(bytes) }.value
+
+    private fun le32(value: Long) = ByteArray(4) { i -> (value ushr (8 * i)).toByte() }
+}

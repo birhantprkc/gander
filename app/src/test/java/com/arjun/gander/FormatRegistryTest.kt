@@ -149,6 +149,8 @@ class FormatRegistryTest {
             "application/vnd.openxmlformats-officedocument.presentationml.presentation"
                 to FileKind.PPTX,
             "application/vnd.ms-excel" to FileKind.XLSX,
+            "application/zip" to FileKind.ARCHIVE,
+            "application/x-zip-compressed" to FileKind.ARCHIVE,
         )
         shouldBeOffered.forEach { (mime, kind) ->
             assertThat("$mime claimed: ${mime in claimed}").isEqualTo("$mime claimed: true")

@@ -14,6 +14,9 @@ enum class FileKind(val page: String) {
     PPTX("pptx.html"),
     MD("md.html"),
     TEXT("text.html"),
+
+    /** A .zip, which is listed rather than drawn: see ArchiveBrowser. Issue #30. */
+    ARCHIVE(""),
     UNSUPPORTED("unsupported.html");
 
     companion object {
@@ -23,6 +26,7 @@ enum class FileKind(val page: String) {
         private val sheetExt = setOf("xlsx", "xls", "xlsm", "xlsb", "csv", "ods")
         private val slideExt = setOf("pptx")
         private val mdExt = setOf("md", "markdown")
+        private val archiveExt = setOf("zip")
         private val videoExt = setOf(
             "mp4", "m4v", "mov", "mkv", "webm", "3gp", "3g2", "m2ts", "mts", "avi", "flv"
         )
@@ -43,6 +47,10 @@ enum class FileKind(val page: String) {
         private const val MIME_PPTX =
             "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         private const val MIME_ODS = "application/vnd.oasis.opendocument.spreadsheet"
+        private const val MIME_ZIP = "application/zip"
+
+        /** What Windows calls a zip, and so what one attached on Windows often arrives as. */
+        private const val MIME_ZIP_WINDOWS = "application/x-zip-compressed"
 
         fun isAudioExt(ext: String) = ext in audioExt
 
@@ -58,12 +66,14 @@ enum class FileKind(val page: String) {
             ext in slideExt -> PPTX
             ext in mdExt -> MD
             ext in textExt -> TEXT
+            ext in archiveExt -> ARCHIVE
             mime == "application/pdf" -> PDF
             mime?.startsWith("video/") == true || mime?.startsWith("audio/") == true -> PLAYER
             mime == MIME_DOCX -> DOCX
             mime == MIME_XLSX || mime == "application/vnd.ms-excel" ||
                 mime == "text/csv" || mime == MIME_ODS -> XLSX
             mime == MIME_PPTX -> PPTX
+            mime == MIME_ZIP || mime == MIME_ZIP_WINDOWS -> ARCHIVE
             mime?.startsWith("image/") == true -> IMAGE_WEB
             mime?.startsWith("text/") == true -> TEXT
             mime == "application/json" || mime == "application/xml" -> TEXT

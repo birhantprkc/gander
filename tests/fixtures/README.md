@@ -56,6 +56,14 @@ should stay obviously so.
 | `tiny.png` | A small image with no EXIF. |
 | `anim.gif`, `icon.svg` | The WebView image path, which is what GIF and SVG take. |
 | `tone.wav` | The audio screen. One second, quiet, so a device test that plays it is bearable. |
+| `archive.zip` | Issue #30. The zip as people have it: a compressed PDF, a stored photo, a file whose sizes trail its data, a folder with no entry of its own, macOS's `__MACOSX` and a dotfile (both hidden), a zip stored inside and one compressed inside, a password-protected file and an LZMA one (listed, not opened), and a comment after the end record. |
+| `odd-names.zip` | Names that climb out (`../`), start at a root, use Windows' backslash, repeat, or carry a right-to-left override that would make `.apk` read as `.jpg`. |
+| `zip64.zip` | The same two files behind ZIP64 records, which every archive over 4 GB or 65,535 files has. |
+| `names-gbk.zip`, `names-cp866.zip`, `names-sjis.zip` | Names as Windows writes them in Chinese, Russian and Japanese: in the machine's code page, with the UTF-8 flag clear. |
+| `names-mac.zip` | UTF-8 names with the flag clear, which is what macOS writes. |
+
+The zips are written byte by byte rather than with `zipfile`, which sets the UTF-8 flag
+on every name that is not ASCII and so cannot write what Windows writes.
 
 Text files too large to commit (a 6 MB one, one of exactly 5 MiB, one with a
 multi-byte character straddling the page boundary, and one over the 16 MiB

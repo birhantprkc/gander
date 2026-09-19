@@ -35,7 +35,7 @@ class ListingTest {
         const val AA = 4.5
 
         val ALL_BADGES: Map<String, Int> =
-            (WELCOME_BADGES + FILE_BADGE).toMap() +
+            (WELCOME_BADGES + FILE_BADGE + ZIP_BADGE).toMap() +
                 mapOf("DIR" to DIR_COLOR, "ADD" to ADD_COLOR)
     }
 
@@ -100,10 +100,24 @@ class ListingTest {
             "song.mp3" to AUD_BADGE,
             "readme.md" to MD_BADGE,
             "main.kt" to TXT_BADGE,
+            "photos.zip" to ZIP_BADGE,
         )
         expected.forEach { (name, badge) ->
             assertThat(badgeFor(name, null)).isEqualTo(badge)
         }
+    }
+
+    /**
+     * A zip wears the folder's colour, because it behaves as one: it opens as a list to go
+     * into. Issue #30. Its label is its own, so it is never mistaken for a folder on the phone.
+     */
+    @Test
+    fun aZipIsAFolderColouredZip() {
+        assertThat(ZIP_BADGE.first).isEqualTo("ZIP")
+        assertThat(ZIP_BADGE.second).isEqualTo(DIR_COLOR)
+        // Declared after DIR_COLOR, so it is not the zero it would read as before it
+        assertThat(ZIP_BADGE.second).isNotEqualTo(0)
+        assertThat(badgeFor("attachment", "application/zip")).isEqualTo(ZIP_BADGE)
     }
 
     /**
@@ -118,7 +132,7 @@ class ListingTest {
 
     @Test
     fun anythingUnrecognisedFallsBackToFile() {
-        assertThat(badgeFor("archive.zip", null)).isEqualTo(FILE_BADGE)
+        assertThat(badgeFor("backup.rar", null)).isEqualTo(FILE_BADGE)
         assertThat(badgeFor("noextension", null)).isEqualTo(FILE_BADGE)
         assertThat(badgeFor("legacy.doc", null)).isEqualTo(FILE_BADGE)
     }

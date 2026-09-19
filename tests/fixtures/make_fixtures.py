@@ -28,6 +28,7 @@ import struct
 import sys
 import wave
 import zipfile
+import zlib
 from datetime import datetime
 from math import pi, sin
 from pathlib import Path
@@ -763,11 +764,158 @@ def audio() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Zips, issue #30
+# ---------------------------------------------------------------------------
+
+# Written by hand, like the wasm PDFs above and for the same reason: the point of
+# most of these is a byte Python's zipfile will not write. It sets the UTF-8 flag
+# on every name that is not ASCII, and the names Gander has to decode are exactly
+# the ones a Windows machine writes in its own code page with that flag clear.
+
+ZIP_DOS_DATE = ((ZIP_DATE[0] - 1980) << 9) | (ZIP_DATE[1] << 5) | ZIP_DATE[2]
+HOST_DOS, HOST_UNIX = 0, 3
+STORED, DEFLATED = 0, 8
+
+
+class Member:
+    """One entry. A method other than stored or deflated writes data as given."""
+
+    def __init__(self, name: bytes, data: bytes = b"", *, method=DEFLATED, flags=0,
+                 host=HOST_UNIX, extra=b"", descriptor=False, directory=False):
+        self.name, self.data, self.method = name, data, method
+        self.flags = flags | (0x08 if descriptor else 0)
+        self.host, self.extra = host, extra
+        self.descriptor, self.directory = descriptor, directory
+
+
+def _extra(field_id: int, data: bytes) -> bytes:
+    return struct.pack("<HH", field_id, len(data)) + data
+
+
+def zip_bytes(members, *, zip64=False, comment=b"") -> bytes:
+    out, central = bytearray(), bytearray()
+    for m in members:
+        crc = zlib.crc32(m.data) & 0xFFFFFFFF
+        if m.method == DEFLATED and not m.flags & 1:
+            packer = zlib.compressobj(9, zlib.DEFLATED, -15)
+            body = packer.compress(m.data) + packer.flush()
+        else:
+            body = m.data
+        needed = 63 if m.method not in (STORED, DEFLATED) else (45 if zip64 else 20)
+        made_by = (m.host << 8) | (45 if zip64 else 20)
+        if m.host == HOST_UNIX:
+            external = ((0o40755 << 16) | 0x10) if m.directory else (0o100644 << 16)
+        else:
+            external = 0x10 if m.directory else 0x20
+        offset = len(out)
+
+        local_crc, local_c, local_u = (0, 0, 0) if m.descriptor else (crc, len(body), len(m.data))
+        local_extra = b""
+        if zip64:
+            local_extra = _extra(1, struct.pack("<QQ", len(m.data), len(body)))
+            local_c = local_u = 0xFFFFFFFF
+        out += struct.pack("<IHHHHHIIIHH", 0x04034B50, needed, m.flags, m.method, 0,
+                           ZIP_DOS_DATE, local_crc, local_c, local_u, len(m.name),
+                           len(local_extra))
+        out += m.name + local_extra + body
+        if m.descriptor:
+            out += struct.pack("<IIII", 0x08074B50, crc, len(body), len(m.data))
+
+        central_extra = m.extra
+        c_size, u_size, c_offset = len(body), len(m.data), offset
+        if zip64:
+            central_extra = _extra(1, struct.pack("<QQQ", len(m.data), len(body), offset)) + central_extra
+            c_size = u_size = c_offset = 0xFFFFFFFF
+        central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, made_by, needed, m.flags,
+                               m.method, 0, ZIP_DOS_DATE, crc, c_size, u_size, len(m.name),
+                               len(central_extra), 0, 0, 0, external, c_offset)
+        central += m.name + central_extra
+
+    index_at = len(out)
+    out += central
+    count = len(members)
+    if zip64:
+        record_at = len(out)
+        out += struct.pack("<IQHHIIQQQQ", 0x06064B50, 44, 45, 45, 0, 0, count, count,
+                           len(central), index_at)
+        out += struct.pack("<IIQI", 0x07064B50, 0, record_at, 1)
+        out += struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, 0xFFFF, 0xFFFF,
+                           0xFFFFFFFF, 0xFFFFFFFF, len(comment))
+    else:
+        out += struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, count, count, len(central),
+                           index_at, len(comment))
+    return bytes(out + comment)
+
+
+def zips() -> None:
+    pdf = (OUT / "six-pages.pdf").read_bytes()
+    png = (OUT / "tiny.png").read_bytes()
+    notes = (OUT / "notes.md").read_bytes()
+    plain = (OUT / "plain.txt").read_bytes()
+    inner = zip_bytes([Member(b"inside.txt", b"A file inside a zip inside a zip.\n")])
+    # Extended timestamp, 2026-01-01T00:00:00Z: the one entry whose time has a zone
+    utc = _extra(0x5455, struct.pack("<BI", 1, 1767225600))
+
+    # What people actually have: folders with and without their own entries, a
+    # compressed PDF, a stored photo, a file whose sizes trail its data, the
+    # clutter macOS adds, zips inside the zip both ways, and the two kinds of file
+    # that are listed and cannot be opened. Plus a comment, which moves the end
+    # record away from the end of the file.
+    archive = [
+        Member(b"reports/", method=STORED, directory=True),
+        Member(b"reports/six-pages.pdf", pdf, extra=utc),
+        Member(b"reports/notes.md", notes, descriptor=True),
+        Member(b"photos/tiny.png", png, method=STORED),
+        Member(b"photos/.hidden-thumbs", b"not for people"),
+        Member(b"__MACOSX/photos/._tiny.png", b"resource fork"),
+        Member(b"plain.txt", plain),
+        Member(b"nested/stored.zip", inner, method=STORED),
+        Member(b"nested/packed.zip", inner),
+        Member(b"private/locked.txt", bytes(range(40)), flags=0x01),
+        Member(b"private/table.dat", bytes(range(40)), method=14),
+    ]
+    (OUT / "archive.zip").write_bytes(zip_bytes(archive, comment=b"Gander test archive"))
+    written(OUT / "archive.zip")
+
+    # Names that would climb out of a folder, start at a root, or use Windows'
+    # separator, and one that reorders itself to look like another file.
+    odd = [
+        Member(b"../escaped.txt", b"one"),
+        Member(b"/absolute/path.txt", b"two"),
+        Member(b"docs\\readme.txt", b"three", host=HOST_DOS),
+        Member(b"unix\\name.txt", b"four"),
+        Member(b"a//b/./c.txt", b"five"),
+        Member(b"dup.txt", b"first"),
+        Member(b"dup.txt", b"second"),
+        Member("photo\u202Egpj.apk".encode(), b"six", flags=0x800),
+    ]
+    (OUT / "odd-names.zip").write_bytes(zip_bytes(odd))
+    written(OUT / "odd-names.zip")
+
+    (OUT / "zip64.zip").write_bytes(zip_bytes(
+        [Member(b"big/report.pdf", pdf), Member(b"big/notes.txt", plain)], zip64=True))
+    written(OUT / "zip64.zip")
+
+    # Names as Windows writes them in each code page, flag clear, and as macOS
+    # writes them, UTF-8 with the flag clear too.
+    text = b"Plain text inside a zip.\n"
+    for fixture, encoding, names in [
+        ("names-gbk.zip", "gbk", ["季度报告/会议记录.txt", "照片/北京旅行.txt"]),
+        ("names-cp866.zip", "cp866", ["Документы/Отчёт за квартал.txt", "Фото/Москва.txt"]),
+        ("names-sjis.zip", "shift_jis", ["資料/報告書.txt", "資料/議事録.txt"]),
+        ("names-mac.zip", "utf-8", ["Отчёт/报告 résumé.txt"]),
+    ]:
+        members = [Member(n.encode(encoding), text) for n in names]
+        (OUT / fixture).write_bytes(zip_bytes(members))
+        written(OUT / fixture)
+
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, texts, images, audio):
+    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, texts, images, audio, zips):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
     count = sum(1 for p in OUT.iterdir() if p.is_file())

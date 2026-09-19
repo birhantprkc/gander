@@ -1,8 +1,14 @@
 package com.arjun.gander
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
+import android.os.Looper
+import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.appbar.MaterialToolbar
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -12,12 +18,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.common.truth.Truth.assertThat
 import java.io.File
+import java.util.concurrent.Executor
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import org.robolectric.shadows.ShadowToast
 
 /**
  * The viewer, driven by the intents that really reach it.
@@ -368,5 +376,206 @@ class ViewerActivityTest {
         val web = controller.webView()!!
         controller.pause().stop().destroy()
         assertThat(shadowOf(web).wasDestroyCalled()).isTrue()
+    }
+
+    // ---------------------------------------------------------------
+    // A zip, issue #30
+    // ---------------------------------------------------------------
+
+    /** A zip, with its index read inline so the list is there to assert on. */
+    private fun zip(
+        uri: Uri = FixtureProvider.uriFor("archive.zip"),
+        state: Bundle? = null,
+    ): ActivityController<ViewerActivity> {
+        val intent = Intent(context, ViewerActivity::class.java)
+            .setAction(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/zip")
+        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent)
+        controller.get().archiveLoader = Executor { it.run() }
+        // setup(null) restores from a null bundle and throws; the no-argument form is the one
+        // that means a fresh start
+        val started = if (state == null) controller.setup() else controller.setup(state)
+        return started.also { shadowOf(Looper.getMainLooper()).idle() }
+    }
+
+    private fun ActivityController<ViewerActivity>.list(): RecyclerView =
+        container().children().filterIsInstance<RecyclerView>().single()
+
+    /** Each row, bound through the adapter, as its title or its message. */
+    private fun ActivityController<ViewerActivity>.rows(): List<android.view.View> {
+        val rv = list()
+        val adapter = rv.adapter!!
+        return (0 until adapter.itemCount).map { position ->
+            val holder = adapter.createViewHolder(rv, adapter.getItemViewType(position))
+            adapter.bindViewHolder(holder, position)
+            holder.itemView
+        }
+    }
+
+    private fun ActivityController<ViewerActivity>.titles(): List<String> = rows().map {
+        (it.findViewById<TextView>(R.id.title) ?: it.findViewById(R.id.hintText)).text.toString()
+    }
+
+    private fun ActivityController<ViewerActivity>.tap(title: String) {
+        rows().single { it.findViewById<TextView>(R.id.title)?.text == title }.performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun ActivityController<ViewerActivity>.toolbarTitle(): String =
+        get().findViewById<MaterialToolbar>(R.id.toolbar).title.toString()
+
+    @Test
+    fun aZipOpensAsAListOfWhatIsInIt() {
+        val controller = zip()
+        assertThat(controller.webView()).isNull()
+        assertThat(controller.titles())
+            .containsExactly("nested", "photos", "private", "reports", "plain.txt").inOrder()
+        assertThat(controller.toolbarTitle()).isEqualTo("archive.zip")
+    }
+
+    /** Back walks up a level at a time, and only leaves from the top. */
+    @Test
+    fun aFolderOpensInPlaceAndBackWalksOutOfIt() {
+        val controller = zip()
+        controller.tap("reports")
+        assertThat(controller.titles()).containsExactly("notes.md", "six-pages.pdf").inOrder()
+        assertThat(controller.toolbarTitle()).isEqualTo("reports")
+
+        controller.get().onBackPressedDispatcher.onBackPressed()
+        assertThat(controller.titles()).contains("reports")
+        assertThat(controller.toolbarTitle()).isEqualTo("archive.zip")
+        assertThat(controller.get().isFinishing).isFalse()
+
+        controller.get().onBackPressedDispatcher.onBackPressed()
+        assertThat(controller.get().isFinishing).isTrue()
+    }
+
+    /** A file opens in a viewer of its own, under the name only Gander can start. */
+    @Test
+    fun aFileOpensInTheViewerUnderTheEntryAlias() {
+        val controller = zip()
+        controller.tap("plain.txt")
+        val started = shadowOf(controller.get()).nextStartedActivity
+        assertThat(started.component?.className).isEqualTo(ViewerActivity.ENTRY_VIEWER)
+        assertThat(started.data?.authority).isEqualTo(ArchiveProvider.authority(context))
+        assertThat(ArchiveProvider.parse(started.data!!)?.name).isEqualTo("plain.txt")
+    }
+
+    @Test
+    fun aFileThatCannotBeOpenedSaysWhyAndOpensNothing() {
+        val controller = zip()
+        controller.tap("private")
+        controller.tap("locked.txt")
+        assertThat(shadowOf(controller.get()).nextStartedActivity).isNull()
+        assertThat(ShadowToast.getTextOfLatestToast())
+            .isEqualTo(context.getString(R.string.entry_locked_open))
+    }
+
+    /** It says so in the row as well, before anybody taps it. */
+    @Test
+    fun aFileThatCannotBeOpenedIsMarkedInTheList() {
+        val controller = zip()
+        controller.tap("private")
+        val subtitles = controller.rows().associate {
+            it.findViewById<TextView>(R.id.title).text.toString() to
+                it.findViewById<TextView>(R.id.subtitle).text.toString()
+        }
+        assertThat(subtitles["locked.txt"]).isEqualTo(context.getString(R.string.entry_locked))
+        assertThat(subtitles["table.dat"]).isEqualTo(context.getString(R.string.entry_unsupported))
+    }
+
+    /** A change of theme recreates the viewer, and the reader stays in the folder they were in. */
+    @Test
+    fun theFolderOnScreenSurvivesARecreation() {
+        val first = zip()
+        first.tap("reports")
+        val state = Bundle()
+        first.saveInstanceState(state)
+
+        val second = zip(state = state)
+        assertThat(second.titles()).containsExactly("notes.md", "six-pages.pdf").inOrder()
+        assertThat(second.toolbarTitle()).isEqualTo("reports")
+    }
+
+    @Test
+    fun whatIsNotReallyAZipSaysSo() {
+        val provider = FixtureProvider.install()
+        val uri = provider.add("damaged.zip", Fixtures.file("plain.txt"))
+        assertThat(zip(uri).titles())
+            .containsExactly(context.getString(R.string.archive_unreadable))
+    }
+
+    /**
+     * ArchiveProvider reads whatever archive its URI names, with Gander's access, so one of its
+     * URIs arriving from another app is turned away rather than shown.
+     */
+    @Test
+    fun aFileInsideAZipIsRefusedFromAnywhereButGandersOwnList() {
+        val entry = ArchiveProvider.uriFor(
+            context,
+            FixtureProvider.uriFor("archive.zip"),
+            ArchiveEntry("plain.txt", false, false, 0, EntryLocation(0, 8, 1, 1, 0)),
+        )
+        val controller = view(entry, "text/plain")
+        assertThat(controller.get().isFinishing).isTrue()
+    }
+
+    /**
+     * A stored file in a zip is served as a window onto the archive, and a window is what
+     * openFileDescriptor refuses outright. A large PDF asks for ranges, so the range server
+     * has to take the window's own offset into account, or every piece comes back not found
+     * and pdf.js reports the document broken.
+     */
+    @Test
+    fun aLargeStoredFileInAZipIsServedInRangesFromItsOwnBytes() {
+        val size = (RANGE_THRESHOLD_BYTES + 1).toInt()
+        val body = ByteArray(size) { (it % 251).toByte() }
+        val file = File.createTempFile("ranged", ".zip").apply { deleteOnExit() }
+        java.util.zip.ZipOutputStream(file.outputStream()).use { z ->
+            // Something ahead of it, so the file does not start where the archive does
+            z.putNextEntry(java.util.zip.ZipEntry("first.txt"))
+            z.write("first".toByteArray())
+            z.closeEntry()
+            z.putNextEntry(java.util.zip.ZipEntry("big.pdf").apply {
+                method = java.util.zip.ZipEntry.STORED
+                this.size = body.size.toLong()
+                compressedSize = body.size.toLong()
+                crc = java.util.zip.CRC32().apply { update(body) }.value
+            })
+            z.write(body)
+            z.closeEntry()
+        }
+        val archive = FixtureProvider.install().add("ranged.zip", file)
+        Robolectric.buildContentProvider(ArchiveProvider::class.java)
+            .create(ArchiveProvider.authority(context))
+        val raf = java.io.RandomAccessFile(file, "r")
+        val entry = ZipSource(raf.channel, 0, raf.length(), raf).use {
+            ZipReader.entries(it, java.util.Locale.US).single { e -> e.path == "big.pdf" }
+        }
+        val intent = Intent()
+            .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+            .setData(ArchiveProvider.uriFor(context, archive, entry))
+        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+
+        assertThat(controller.loadedUrl()).contains("ranged=1")
+        val response = controller.serve("/doc/file.pdf", "bytes=100-199")!!
+        assertThat(response.statusCode).isEqualTo(206)
+        assertThat(response.responseHeaders["Content-Range"]).isEqualTo("bytes 100-199/$size")
+        assertThat(response.data.readBytes()).isEqualTo(body.copyOfRange(100, 200))
+    }
+
+    @Test
+    fun theEntryAliasIsLetThrough() {
+        val entry = ArchiveProvider.uriFor(
+            context,
+            FixtureProvider.uriFor("archive.zip"),
+            ArchiveEntry("plain.txt", false, false, 0, EntryLocation(0, 8, 1, 1, 0)),
+        )
+        val intent = Intent()
+            .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+            .setData(entry)
+        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        assertThat(controller.get().isFinishing).isFalse()
+        assertThat(controller.loadedUrl()).contains("viewer/text.html")
     }
 }

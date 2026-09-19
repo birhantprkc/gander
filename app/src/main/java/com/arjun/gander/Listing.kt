@@ -47,7 +47,8 @@ internal val FILE_BADGE = "FILE" to 0xFF607884.toInt()
  * Kinds rather than formats, which is what makes the grid hold still: FileKind maps
  * 78 extensions onto these nine, so adding .odt or .rst or another codec changes
  * nothing here. A tenth tile means a tenth renderer, and the layout's columnCount is
- * the number to revisit when that happens.
+ * the number to revisit when that happens. A .zip is not one: it opens as a list of
+ * other files rather than being drawn, so it has a badge and no tile.
  *
  * FILE is deliberately absent. It is what an unsupported file falls back to, and
  * this grid is a list of what Gander opens.
@@ -63,6 +64,14 @@ internal val WELCOME_BADGES = listOf(
 )
 
 internal val DIR_COLOR = 0xFF8A6D1F.toInt()
+
+/**
+ * A .zip, in the folder colour, because that is what it behaves as: tapped, it opens as a
+ * list to go into rather than as a document. Borrowing the colour also borrows its
+ * measured 4.90:1 against the white label. Declared after DIR_COLOR on purpose, since
+ * top-level properties are initialised in the order they are written.
+ */
+internal val ZIP_BADGE = "ZIP" to DIR_COLOR
 
 /**
  * The brand accent, and the one badge that is an action rather than a file type.
@@ -89,6 +98,7 @@ internal fun badgeFor(name: String, mime: String?): Pair<String, Int> {
         FileKind.PLAYER -> if (FileKind.isAudioExt(ext)) AUD_BADGE else VID_BADGE
         FileKind.MD -> MD_BADGE
         FileKind.TEXT -> TXT_BADGE
+        FileKind.ARCHIVE -> ZIP_BADGE
         FileKind.UNSUPPORTED -> FILE_BADGE
     }
 }

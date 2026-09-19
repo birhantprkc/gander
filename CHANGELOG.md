@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Gander opens .zip files (thanks @DEWE-ex, who asked in #30). A zip opens as a list laid out
+  like a folder, and each file in it opens in its usual viewer, read straight out of the archive:
+  nothing is unzipped or written to the phone. Names from zips made on Windows in Chinese,
+  Japanese, Russian and other languages come out as names rather than question marks. A
+  password-protected file is listed and says why it will not open.
+
 - A PDF reopens at the page it was left on (thanks @Rochey, who asked for this in #25). The
   page is kept against what the file contains rather than its name or where it came from,
   so it is the same page whether the file is opened from Recents, a folder, a file manager
