@@ -307,6 +307,23 @@ class ZipReaderTest {
         }
     }
 
+    /**
+     * A size no file has, which a zip made to hang its reader can give in ZIP64. Asking for one
+     * byte past what is left overflowed into asking for none, forever, so the timeout here is
+     * the failure: a hang, not a wrong answer.
+     */
+    @Test(timeout = 10_000)
+    fun aSizeTooLargeToCountIsAnErrorRatherThanAHang() {
+        source("archive.zip").use { zip ->
+            val real = ZipReader.entries(zip, Locale.US).named("photos/tiny.png").location
+            val huge = EntryLocation(real.headerOffset, real.method, real.compressedSize, Long.MAX_VALUE, real.crc)
+            val e = assertThrows(ZipException::class.java) {
+                ZipReader.open(zip, huge).use { it.readBytes() }
+            }
+            assertThat(e).hasMessageThat().contains("shorter")
+        }
+    }
+
     /** A damaged byte in a stored file gets past everything but the checksum. */
     @Test
     fun aDamagedFileFailsItsChecksum() {

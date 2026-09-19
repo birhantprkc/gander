@@ -620,8 +620,11 @@ internal object ZipReader {
             if (ended) return -1
             if (len == 0) return 0
             // One byte past what is left, never more: that byte is how an entry larger than it
-            // claims is caught, without inflating whatever else it had in store.
-            val n = input.read(b, off, minOf(len.toLong(), size - count + 1).toInt())
+            // claims is caught, without inflating whatever else it had in store. Compared before
+            // the one is added, because a size of Long.MAX_VALUE overflows into asking for
+            // nothing, and a stream that answers every read with nothing is read forever.
+            val left = size - count
+            val n = input.read(b, off, if (left < len) (left + 1).toInt() else len)
             if (n < 0) {
                 if (count != size) throw ZipException("entry is shorter than its index says")
                 if (crc != null && sum.value != crc) throw ZipException("entry is damaged")
