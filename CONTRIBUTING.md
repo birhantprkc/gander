@@ -62,9 +62,10 @@ The list of what Gander opens lives in more than one place, and
 3. A fixture in `tests/fixtures/make_fixtures.py`.
 4. A row in the table at the top of `FileKindTest`.
 5. A new renderer page also needs a `tests/viewer/test_<page>.py`, a line in
-   `test_theme.py`, and an entry in `ViewerFormatsTest`. A new *kind* also
-   needs a tenth tile, which means `WELCOME_BADGES`, the
-   `welcome_formats_spoken` string, and the grid's column count.
+   `test_theme.py`, and an entry in `ViewerFormatsTest`. A new *kind* needs no
+   tile of its own, since the ninth says ETC and stands for the kinds without
+   one; it does need naming in the `welcome_formats_spoken` string, which is
+   what a screen reader hears in place of the tiles.
 
 The viewer routes by extension first, MIME second, in `FileKind.kt`;
 WebView-based renderers live in `app/src/main/assets/viewer/`.

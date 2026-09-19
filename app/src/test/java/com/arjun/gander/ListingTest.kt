@@ -35,7 +35,7 @@ class ListingTest {
         const val AA = 4.5
 
         val ALL_BADGES: Map<String, Int> =
-            (WELCOME_BADGES + FILE_BADGE + ZIP_BADGE).toMap() +
+            (WELCOME_BADGES + TXT_BADGE + FILE_BADGE + ZIP_BADGE).toMap() +
                 mapOf("DIR" to DIR_COLOR, "ADD" to ADD_COLOR)
     }
 
@@ -161,24 +161,26 @@ class ListingTest {
         assertThat(WELCOME_BADGES.map { it.second }).containsNoDuplicates()
     }
 
-    /**
-     * FILE is what an unsupported file falls back to, and this grid is a list
-     * of what Gander opens. A tenth tile means a tenth renderer.
-     */
+    /** FILE is what an unsupported file falls back to, and this grid is a list of what Gander opens. */
     @Test
     fun theWelcomeGridDoesNotAdvertiseTheFallback() {
         assertThat(WELCOME_BADGES).doesNotContain(FILE_BADGE)
         assertThat(WELCOME_BADGES.map { it.first }).doesNotContain("FILE")
     }
 
-    /** Every tile is a badge some real file would actually get. */
+    /**
+     * Every tile but the last is a badge some real file would actually get, and the last,
+     * ETC, stands for exactly the kinds left without a tile of their own.
+     */
     @Test
     fun everyWelcomeTileIsReachableFromSomeFile() {
         val reachable = listOf(
             "a.pdf", "a.docx", "a.xlsx", "a.pptx", "a.jpg",
-            "a.mp4", "a.mp3", "a.md", "a.txt",
+            "a.mp4", "a.mp3", "a.md", "a.txt", "a.zip",
         ).map { badgeFor(it, null) }
-        assertThat(reachable).containsExactlyElementsIn(WELCOME_BADGES)
+        assertThat(WELCOME_BADGES.last()).isEqualTo(ETC_BADGE)
+        assertThat(reachable).containsAtLeastElementsIn(WELCOME_BADGES.dropLast(1))
+        assertThat(reachable - WELCOME_BADGES.toSet()).containsExactly(TXT_BADGE, ZIP_BADGE)
     }
 
     // ---------------------------------------------------------------

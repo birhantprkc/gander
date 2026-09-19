@@ -165,27 +165,29 @@ class FormatRegistryTest {
     /**
      * The grid is nine tiles and the string is prose, so nothing but this
      * keeps them describing the same app. The KDoc on WELCOME_BADGES warns
-     * about it; this is the warning made to fail.
+     * about it; this is the warning made to fail. ETC is not a kind, so the
+     * sentence has to name each of the kinds it stands for instead.
      */
     @Test
     fun theSpokenDescriptionNamesEveryKindTheGridShows() {
         val spoken = context.getString(R.string.welcome_formats_spoken).lowercase()
         val expected = mapOf(
-            "PDF" to listOf("pdf"),
-            "DOC" to listOf("word", "document"),
-            "XLS" to listOf("excel", "spreadsheet"),
-            "PPT" to listOf("powerpoint", "slide", "presentation"),
-            "IMG" to listOf("photo", "image", "picture"),
-            "VID" to listOf("video"),
-            "AUD" to listOf("audio", "music", "sound"),
-            "MD" to listOf("markdown"),
-            "TXT" to listOf("text", "code"),
+            "PDF" to listOf(listOf("pdf")),
+            "DOC" to listOf(listOf("word", "document")),
+            "XLS" to listOf(listOf("excel", "spreadsheet")),
+            "PPT" to listOf(listOf("powerpoint", "slide", "presentation")),
+            "IMG" to listOf(listOf("photo", "image", "picture")),
+            "VID" to listOf(listOf("video")),
+            "AUD" to listOf(listOf("audio", "music", "sound")),
+            "MD" to listOf(listOf("markdown")),
+            "ETC" to listOf(listOf("text", "code"), listOf("zip")),
         )
         WELCOME_BADGES.forEach { (label, _) ->
-            val words = expected.getValue(label)
-            val mentioned = words.any { it in spoken }
-            assertThat("$label mentioned in welcome_formats_spoken: $mentioned")
-                .isEqualTo("$label mentioned in welcome_formats_spoken: true")
+            expected.getValue(label).forEach { words ->
+                val mentioned = words.any { it in spoken }
+                assertThat("$label ${words.first()} mentioned in welcome_formats_spoken: $mentioned")
+                    .isEqualTo("$label ${words.first()} mentioned in welcome_formats_spoken: true")
+            }
         }
     }
 

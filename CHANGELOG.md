@@ -8,6 +8,9 @@
   Japanese, Russian and other languages come out as names rather than question marks. A
   password-protected file is listed and says why it will not open.
 
+- The welcome screen's last tile says ETC where it said TXT. It stands for text files, zips and
+  anything else Gander opens that has no tile of its own.
+
 - The search bar's buttons and box are a little larger, 48dp each way, the smallest Android
   recommends for anything you tap. They were 44dp and the box 45dp, and the device test meant to
   catch that had never run its checks: it looked at each screen without ever acting on it,

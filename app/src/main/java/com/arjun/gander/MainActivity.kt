@@ -640,12 +640,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Draws the nine tiles of the welcome grid, from the same pairs [badgeFor] returns.
+     * Draws the nine tiles of the welcome grid: eight of the pairs [badgeFor] returns, and
+     * ETC for the kinds that have no tile.
      *
-     * The grid is filled here rather than declared nine times in the layout so that a new
-     * file kind is one line in [WELCOME_BADGES] and the first screen cannot end up naming
-     * a different set of things from the rows underneath it. The tint is the same call the
-     * adapter makes on a real row.
+     * The grid is filled here rather than declared nine times in the layout so that the
+     * first screen cannot end up naming a different set of things from the rows underneath
+     * it. The tint is the same call the adapter makes on a real row.
      */
     private fun fillFormatGrid(grid: ViewGroup) {
         WELCOME_BADGES.forEach { (label, color) ->

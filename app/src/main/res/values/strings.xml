@@ -12,8 +12,9 @@
     <string name="welcome_promise">Nothing is uploaded. Gander has no internet permission.</string>
     <!-- Spoken form of the badge grid. The tiles themselves are not important for
          accessibility, so this is the whole announcement and it is one stop rather than
-         nine, the same way a file row carries the description for its own four views. -->
-    <string name="welcome_formats_spoken">Opens PDFs, Word documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown and text files.</string>
+         nine, the same way a file row carries the description for its own four views. It
+         names what the ETC tile stands for as well, which a list read aloud has room for. -->
+    <string name="welcome_formats_spoken">Opens PDFs, Word documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown, text files and zips.</string>
     <string name="open_a_file">Open a file</string>
     <string name="recent_files">Recent files</string>
     <string name="folders">Folders</string>
