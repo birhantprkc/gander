@@ -156,6 +156,42 @@ class ZipReaderTest {
         }
     }
 
+    /** Where the end record starts, found the same way the reader finds it. */
+    private fun endRecord(bytes: ByteArray): Int =
+        (bytes.size - 22 downTo 0).first { at ->
+            bytes[at] == 0x50.toByte() && bytes[at + 1] == 0x4B.toByte() &&
+                bytes[at + 2] == 0x05.toByte() && bytes[at + 3] == 0x06.toByte()
+        }
+
+    /**
+     * An archive that claims a larger index than a phone should hold is refused before anything
+     * is read into memory, rather than taken at its word.
+     */
+    @Test
+    fun anIndexTooLargeToHoldIsRefusedUnread() {
+        val bytes = Fixtures.bytes("odd-names.zip")
+        bytes.putInt(endRecord(bytes) + 12, 40L * 1024 * 1024)
+        source(bytes).use { zip ->
+            assertThrows(ZipReader.TooLarge::class.java) { ZipReader.entries(zip, Locale.US) }
+        }
+    }
+
+    /** And so is one that claims more entries than that, which only ZIP64 can express. */
+    @Test
+    fun tooManyEntriesIsRefusedUnread() {
+        val bytes = Fixtures.bytes("zip64.zip")
+        // The ZIP64 end record sits 56 bytes before its 20 byte locator, which sits before the
+        // end record; its two entry counts are at 24 and 32
+        val record = endRecord(bytes) - 20 - 56
+        for (field in listOf(24, 32)) {
+            bytes.putInt(record + field, 250_000L)
+            bytes.putInt(record + field + 4, 0L)
+        }
+        source(bytes).use { zip ->
+            assertThrows(ZipReader.TooLarge::class.java) { ZipReader.entries(zip, Locale.US) }
+        }
+    }
+
     @Test
     fun whatIsNotAZipIsRefused() {
         source("plain.txt").use { zip ->

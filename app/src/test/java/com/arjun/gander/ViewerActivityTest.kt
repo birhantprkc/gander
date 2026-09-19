@@ -505,6 +505,23 @@ class ViewerActivityTest {
             .containsExactly(context.getString(R.string.archive_unreadable))
     }
 
+    /** An archive too big to list says so, in place of a list or a crash. */
+    @Test
+    fun aZipTooLargeToListSaysSo() {
+        val bytes = Fixtures.bytes("odd-names.zip")
+        val end = (bytes.size - 22 downTo 0).first { at ->
+            bytes[at] == 0x50.toByte() && bytes[at + 1] == 0x4B.toByte() &&
+                bytes[at + 2] == 0x05.toByte() && bytes[at + 3] == 0x06.toByte()
+        }
+        // The size of the index, claimed at 40 MB
+        val claimed = 40 * 1024 * 1024
+        for (i in 0 until 4) bytes[end + 12 + i] = (claimed ushr (8 * i)).toByte()
+        val file = File.createTempFile("huge-index", ".zip").apply { writeBytes(bytes); deleteOnExit() }
+        val uri = FixtureProvider.install().add("huge-index.zip", file)
+        assertThat(zip(uri).titles())
+            .containsExactly(context.getString(R.string.archive_too_large))
+    }
+
     /**
      * ArchiveProvider reads whatever archive its URI names, with Gander's access, so one of its
      * URIs arriving from another app is turned away rather than shown.

@@ -189,6 +189,11 @@ internal class ArchiveBrowser(
         }
     } catch (_: ZipReader.TooLarge) {
         Listing.Failed(R.string.archive_too_large)
+    } catch (_: OutOfMemoryError) {
+        // The count limit is generous, and a phone with a small heap can run out below it. This
+        // is a background thread, where an error left to escape ends the app rather than the
+        // list, and what failed was one large allocation that is garbage the moment it fails.
+        Listing.Failed(R.string.archive_too_large)
     } catch (_: Exception) {
         // Damaged, not a zip at all, or no longer readable: a grant can lapse while the list
         // is on screen, and a change of theme reads the archive again
