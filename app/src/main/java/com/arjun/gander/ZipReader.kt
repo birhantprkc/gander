@@ -233,6 +233,14 @@ internal object ZipReader {
     /** How much of a compressed file is read to see a password really opened it. */
     private const val PROBE_BYTES = 256
 
+    /**
+     * Up to what size a stored file under the older encryption is read all the way through, to
+     * the only thing it has that can tell a wrong password from the right one: its checksum.
+     * Past it the file is handed over on the one byte the scheme checks, since reading a
+     * gigabyte twice to open it once costs more than those odds are worth.
+     */
+    private const val STORED_CHECK_BYTES = 8L * 1024 * 1024
+
     /** The archive is real and lists more than Gander will hold at once. */
     class TooLarge : ZipException("too many entries to list")
 
@@ -505,7 +513,10 @@ internal object ZipReader {
      * trails the data and was not known yet. That is the whole of the check, so one wrong
      * password in 256 passes it. A compressed file goes on to show whether it really opened
      * within its first bytes, which a wrong key turns into data no inflater accepts, so it is
-     * read that far before being handed over; a stored one has only its checksum at the end.
+     * read that far before being handed over. A stored one has nothing to show but its checksum
+     * at the end, so a small one is read all the way to it: otherwise one wrong password in 256
+     * opens it as noise and is remembered as the right one, and a password written in one code
+     * page loses to another spelling of it that passed the one byte first. See [STORED_CHECK_BYTES].
      */
     private fun openZipCrypto(source: ZipSource, at: EntryLocation, local: Local, password: String): InputStream {
         if (at.compressedSize < ZipCrypto.HEADER_SIZE) throw ZipException("damaged encryption header")
@@ -520,9 +531,26 @@ internal object ZipReader {
             val open = {
                 Checked(unpacked(ZipCryptoInput(source.stream(bodyStart, bodySize), keys.copy()), at.method), at.size, at.crc)
             }
-            if (at.method == METHOD_STORED || opens(open)) return open()
+            val opened = when {
+                at.method != METHOD_STORED -> opens(open)
+                at.size <= STORED_CHECK_BYTES -> readsThrough(open)
+                else -> true
+            }
+            if (opened) return open()
         }
         throw WrongPassword()
+    }
+
+    /** Whether [open] gives a stream that reads to its end, checksum and all, without an error. */
+    private fun readsThrough(open: () -> InputStream): Boolean = try {
+        open().use { input ->
+            val buffer = ByteArray(BUFFER)
+            while (input.read(buffer) >= 0) Unit
+        }
+        true
+    } catch (_: Exception) {
+        // A wrong key makes noise, and noise is what the checksum at the end is here to catch
+        false
     }
 
     /** Whether [open] gives a stream whose first bytes read without an error. */

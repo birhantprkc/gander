@@ -501,6 +501,26 @@ class ZipReaderTest {
         }
     }
 
+    /**
+     * A stored file has no inflater to trip over a wrong key, only its checksum at the end, and
+     * it is read that far. Left on the one byte, one wrong password in 256 opened it as noise,
+     * and the list then remembered that password for the whole archive.
+     */
+    @Test
+    fun aWrongPasswordThatPassesTheOneByteCheckOnAStoredFileIsStillCaught() {
+        source("locked.zip").use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("zipcrypto.png")
+            assertThat(entry.location.method).isEqualTo(ZipReader.METHOD_STORED)
+            val local = ZipReader.local(zip, entry.location)
+            val check = if (local.flags and 8 != 0) (local.time ushr 8) and 0xFF
+            else (entry.location.crc ushr 24).toInt() and 0xFF
+            val header = zip.read(local.dataStart, ZipCrypto.HEADER_SIZE)
+            val lucky = generateSequence(0) { it + 1 }.map { "wrong$it" }
+                .first { ZipCrypto.keyed(it.toByteArray()).checks(header, check) }
+            assertThrows(ZipReader.WrongPassword::class.java) { ZipReader.open(zip, entry.location, lucky) }
+        }
+    }
+
     @Test
     fun noPasswordAtAllIsAskedFor() {
         source("locked.zip").use { zip ->
