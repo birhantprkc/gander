@@ -73,13 +73,25 @@ class CDP {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A render that is interrupted must not leave a headless Chrome running or a few gigabytes
+// of frames behind in the temp directory, so everything made here is remembered and undone.
+const temps = [];
+let chrome = null;
+const mktemp = (prefix) => { const d = mkdtempSync(join(tmpdir(), prefix)); temps.push(d); return d; };
+const cleanup = () => {
+  try { chrome?.kill("SIGKILL"); } catch {}
+  for (const d of temps.splice(0)) try { rmSync(d, { recursive: true, force: true }); } catch {}
+};
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(sig, () => { cleanup(); process.exit(130); });
+
 async function launch() {
-  const profile = mkdtempSync(join(tmpdir(), "gander-film-"));
+  const profile = mktemp("gander-film-");
   const proc = spawn(CHROME, [
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--hide-scrollbars",
     "--mute-audio", "--no-first-run", "--force-color-profile=srgb", "--font-render-hinting=none",
     "--allow-file-access-from-files", "--disable-background-timer-throttling", "about:blank",
   ], { stdio: ["ignore", "ignore", "pipe"] });
+  chrome = proc;
   const wsUrl = await new Promise((ok, bad) => {
     let buf = "";
     proc.stderr.on("data", (d) => {
@@ -150,7 +162,7 @@ try {
     const a = await openTab(cdp, 1), b = await openTab(cdp, 1);
     const times = [];
     for (let t = 0.13; t < a.dur; t += 0.37) times.push(Number(t.toFixed(3)));
-    const dir = mkdtempSync(join(tmpdir(), "gander-check-"));
+    const dir = mktemp("gander-check-");
     const name = (side, i) => join(dir, `${side}${String(i).padStart(4, "0")}.png`);
     const sum = (buf) => createHash("sha256").update(buf).digest("hex");
     const fwd = [], back = [];
@@ -179,7 +191,7 @@ try {
   } else if (opt("sheet")) {
     const [a, b, n] = String(opt("sheet")).split(",").map(Number);
     const cols = Number(opt("cols", 4));
-    const dir = mkdtempSync(join(tmpdir(), "gander-sheet-"));
+    const dir = mktemp("gander-sheet-");
     const tab = await openTab(cdp, Number(opt("sheetscale", 0.25)));
     for (let i = 0; i < n; i++) writeFileSync(join(dir, `${String(i).padStart(3, "0")}.png`), await tab.shot(a + ((b - a) * i) / Math.max(1, n - 1)));
     const out = join(HERE, "out", `sheet-${a}-${b}.png`);
@@ -191,7 +203,7 @@ try {
     const first = await openTab(cdp, SCALE);
     const from = Number(opt("from", 0)), to = Number(opt("to", first.dur));
     const f0 = Math.round(from * FPS), f1 = Math.round(to * FPS), total = f1 - f0;
-    const frames = mkdtempSync(join(tmpdir(), "gander-frames-"));
+    const frames = mktemp("gander-frames-");
     const tabs = [first];
     while (tabs.length < Math.min(WORKERS, total)) tabs.push(await openTab(cdp, SCALE));
     console.log(`${total} frames at ${FPS} fps, ${1920 * SCALE}x${1080 * SCALE}, ${tabs.length} tabs`);
@@ -226,16 +238,14 @@ try {
       await encode(3840, 2160, "5.2", uhd);
       console.log(uhd);
     }
-    if (opt("keep")) console.log("frames kept in " + frames);
-    else rmSync(frames, { recursive: true, force: true });
+    if (opt("keep")) { temps.splice(temps.indexOf(frames), 1); console.log("frames kept in " + frames); }
   }
 } catch (e) {
   failed = e;
 } finally {
   try { await cdp.send("Browser.close"); } catch {}
-  proc.kill();
   await sleep(200);
-  try { rmSync(profile, { recursive: true, force: true }); } catch {}
+  cleanup();
 }
 if (failed) {
   console.error(failed.message);

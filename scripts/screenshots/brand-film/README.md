@@ -44,8 +44,10 @@ the pose it was handed was the keyframe itself, and every frame drawn bent the t
 next, so the goose lost its neck only in a render, and only in some orders. A few frames of
 large type differ by a level or two in a few pixels whatever you do (that is Chrome's glyph
 rasteriser, not the film), so a mismatch is measured rather than just counted, and only a
-real difference fails. The upload a 4K file gets from YouTube is a better 1080p stream than
-a 1080p file gets, which is what `--uhd` is for.
+real difference fails.
+
+`--uhd` also writes the frames out at 2160p, for anywhere that re-encodes what it is given:
+YouTube makes a better 1080p stream from a 4K upload than from a 1080p one.
 
 **The hand-drawn line is geometry, not a filter.** An SVG displacement filter moves pixels,
 which leaves every near-straight edge as an unantialiased staircase. `F.wob()` instead
@@ -83,7 +85,10 @@ colour let down into the cream. A new format colour in the app should be changed
 
 ## What it claims
 
-Film copy is a claim surface like any other. It says **about 5 MB**, **free**, **open source**
+Film copy is a claim surface like any other, and the dearest one to correct: a film cannot
+be edited in place, and a second upload is a second URL. So it carries **no size and no
+version**, the same decision as screenshot 6 and the feature graphic, and says "Tiny." where
+a number would go. It says **free**, **open source**
 and **MIT licensed**; that Gander requests **no permissions** and has **no internet access**,
 **no ads, trackers, analytics or accounts**; and it shows PDF, Word, Excel, PowerPoint, photos,
 video, audio, Markdown and `.zip`, find in document, deep zoom and night mode for PDFs. If

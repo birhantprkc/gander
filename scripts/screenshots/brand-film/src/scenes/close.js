@@ -19,7 +19,7 @@
       const goose = F.goose(g, { u: 13 });
       const head = F.headline(g, {
         x: 142, y: 410, size: 136, lh: 148, stagger: 0.333,
-        lines: [{ text: "About 5 MB.", fill: C.ink }, { text: "Free.", fill: C.ink }, { text: "Open source.", fill: C.red }],
+        lines: [{ text: "Tiny.", fill: C.ink }, { text: "Free.", fill: C.ink }, { text: "Open source.", fill: C.red }],
       });
       const sub = F.text(g, "MIT licensed. Every line of it is on GitHub.", { x: 148, y: 820, size: 40, weight: 500, fill: C.inkSoft });
       const beats = [T + 1.0, T + 1.8, T + 2.6];
