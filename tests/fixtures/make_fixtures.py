@@ -536,6 +536,23 @@ Text after the injected markup, so the sanitiser can be seen to have kept it.
     (OUT / "plain.txt").write_text(plain, encoding="utf-8")
     written(OUT / "plain.txt")
 
+    # Issue #32. A .json file as they nearly always arrive: no spacing at all,
+    # the whole document on one line. The id is 2**53 + 1, the smallest whole
+    # number a double cannot hold, so a viewer that reformatted by parsing and
+    # restringifying would show 9007199254740992 here and be caught. The text
+    # carries an accent and an emoji, which is a surrogate pair, because both
+    # sit inside a string the formatter has to copy through untouched.
+    snapshot = (
+        '{"id":9007199254740993,"app":"com.example.reader",'
+        '"screen":{"width":1080,"height":2376},"landscape":false,"tags":[],'
+        '"nodes":[{"id":0,"parent":-1,"name":"android.widget.FrameLayout",'
+        '"text":null,"visible":true},{"id":1,"parent":0,'
+        '"name":"android.widget.TextView","text":"café \U0001f600",'
+        '"visible":true}],"notes":{}}'
+    )
+    (OUT / "snapshot.json").write_text(snapshot, encoding="utf-8")
+    written(OUT / "snapshot.json")
+
     # Byte order marks. app.js sniffs these three bytes and picks the decoder;
     # the decoder strips the mark itself, so neither file should show one.
     marked = "Byte order marked text, decoded by the mark alone.\n"

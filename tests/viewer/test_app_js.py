@@ -104,3 +104,92 @@ def test_error_text_is_set_as_text_rather_than_markup(loaded):
     loaded.wait_for_timeout(200)
     assert loaded.evaluate("() => window.__xss") is None
     assert loaded.query_selector(".vw-error-detail img") is None
+
+
+# ---------------------------------------------------------------------------
+# vwFormatJson: laying a minified .json file out over lines
+# ---------------------------------------------------------------------------
+
+def laid_out(page, text):
+    return page.evaluate("(t) => vwFormatJson(t)", text)
+
+
+def test_a_minified_object_is_laid_out_over_lines(loaded):
+    assert laid_out(loaded, '{"a":1,"b":2}') == '{\n  "a": 1,\n  "b": 2\n}'
+
+
+def test_nesting_is_indented_by_depth(loaded):
+    assert laid_out(loaded, '{"a":{"b":[1]}}') == (
+        '{\n  "a": {\n    "b": [\n      1\n    ]\n  }\n}'
+    )
+
+
+def test_an_empty_container_stays_on_one_line(loaded):
+    """Breaking {} across two lines says there is something inside it."""
+    assert laid_out(loaded, '{"a":{},"b":[]}') == '{\n  "a": {},\n  "b": []\n}'
+
+
+def test_laying_out_an_already_laid_out_file_changes_nothing(loaded):
+    once = laid_out(loaded, '{"a":[1,2],"b":{}}')
+    assert laid_out(loaded, once) == once
+
+
+# The tokens themselves are copied through. Each of these is altered by the
+# obvious implementation, JSON.parse followed by JSON.stringify.
+
+def test_a_number_too_large_for_a_double_is_not_rounded(loaded):
+    """
+    The one that matters most. Snapshots and API dumps are full of 19-digit
+    ids, and rounding one is the viewer saying the file holds a number it
+    does not hold.
+    """
+    assert '"id": 12345678901234567890' in laid_out(
+        loaded, '{"id":12345678901234567890}'
+    )
+
+
+def test_a_number_keeps_the_form_it_was_written_in(loaded):
+    out = laid_out(loaded, '{"a":1.0,"b":1e5,"c":-0,"d":0.1000000000000000055}')
+    for written in ("1.0", "1e5", "-0", "0.1000000000000000055"):
+        assert written in out, written + " was rewritten"
+
+
+def test_every_one_of_a_set_of_duplicate_keys_survives(loaded):
+    assert laid_out(loaded, '{"a":1,"a":2}') == '{\n  "a": 1,\n  "a": 2\n}'
+
+
+def test_keys_that_look_like_integers_keep_their_place(loaded):
+    """An object with these keys is reordered by a parse and a restringify."""
+    assert laid_out(loaded, '{"b":1,"2":2,"1":3}') == (
+        '{\n  "b": 1,\n  "2": 2,\n  "1": 3\n}'
+    )
+
+
+def test_an_escape_is_not_expanded(loaded):
+    assert laid_out(loaded, '{"s":"\\u00e9 \\/ x"}') == '{\n  "s": "\\u00e9 \\/ x"\n}'
+
+
+def test_structure_inside_a_string_is_not_structure(loaded):
+    assert laid_out(loaded, '{"a":"}{,:"}') == '{\n  "a": "}{,:"\n}'
+
+
+def test_an_escaped_quote_does_not_end_a_string(loaded):
+    assert laid_out(loaded, '{"a":"x\\"y","b":1}') == '{\n  "a": "x\\"y",\n  "b": 1\n}'
+
+
+# Anything that is not JSON is declined, and the file is shown as it is.
+
+def test_text_that_is_not_json_is_declined(loaded):
+    for not_json in (
+        "",
+        "2026-09-20 10:43:01 INFO started",
+        '{ /* a comment */ "a":1 }',      # what an editor config often holds
+        '{"a":1,}',                        # trailing comma
+        "{'a':1}",                         # single quotes
+        '{"a":1',                          # truncated
+        '{"a":"x}',                        # unterminated string
+        '{"a":1}\n{"b":2}',                # JSON Lines
+        '{"a":NaN}',
+        '{"a":1} and then some',
+    ):
+        assert laid_out(loaded, not_json) is None, not_json + " was not declined"

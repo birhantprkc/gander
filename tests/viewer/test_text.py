@@ -3,7 +3,10 @@ text.html: anything can be asked for as text, including a multi-gigabyte
 binary, so it is read a page at a time.
 """
 
+import json
+
 VW_TEXT_PAGE = 5 * 1024 * 1024
+VW_JSON_MAX = 1024 * 1024
 
 
 def content(page):
@@ -142,3 +145,113 @@ def test_a_character_split_across_the_boundary_still_decodes(viewer, page, made)
     text = content(page)
     assert "€" in text, "the split character did not survive the page boundary"
     assert "�" not in text, "the split character decoded as a replacement"
+
+
+# ---------------------------------------------------------------------------
+# JSON, which is very often written with no spacing at all
+# ---------------------------------------------------------------------------
+
+def test_a_json_file_is_laid_out_when_it_opens(viewer, page):
+    viewer("text.html", "snapshot.json")
+    wait_for_text(page)
+    shown = content(page)
+    assert '"app": "com.example.reader"' in shown
+    assert shown.count("\n") >= 15, "the file was shown as one line"
+
+
+def test_laying_it_out_does_not_change_what_it_says(viewer, page, fixture_path):
+    """
+    Whitespace is the only thing rewritten, so the document still reads back
+    as the one on disk.
+    """
+    viewer("text.html", "snapshot.json")
+    wait_for_text(page)
+    original = fixture_path("snapshot.json").read_text(encoding="utf-8")
+    assert json.loads(content(page)) == json.loads(original)
+
+
+def test_a_number_a_double_cannot_hold_is_not_rounded(viewer, page):
+    """
+    The fixture id is 2**53 + 1. Reformatting by parsing and restringifying
+    would show 9007199254740992 instead, and the file would be saying
+    something it does not say.
+    """
+    viewer("text.html", "snapshot.json")
+    wait_for_text(page)
+    assert '"id": 9007199254740993' in content(page)
+
+
+def test_an_emoji_in_a_string_survives_being_laid_out(viewer, page):
+    """A surrogate pair, which is two units of the string being copied."""
+    viewer("text.html", "snapshot.json")
+    wait_for_text(page)
+    assert "caf\u00e9 \U0001f600" in content(page)
+
+
+def test_a_json_file_that_is_not_json_is_shown_as_it_is(viewer, page):
+    """Named .json, is prose. Nothing is laid out and nothing is lost."""
+    viewer("text.html", "plain.txt", ext="json")
+    wait_for_text(page)
+    assert "Plain text, opened by the text viewer." in content(page)
+    assert "caf\u00e9" in content(page)
+
+
+def test_json_in_a_file_not_named_json_is_left_alone(viewer, page, fixture_path):
+    """The extension is what asks for this, so that .txt stays literal."""
+    viewer("text.html", "snapshot.json", ext="txt")
+    wait_for_text(page)
+    assert content(page) == fixture_path("snapshot.json").read_text(encoding="utf-8")
+
+
+def test_a_json_file_past_one_page_is_shown_as_it_is(viewer, page, made):
+    """
+    A page on its own is a fragment, and a fragment is not JSON, so a file
+    too large to arrive whole keeps the spacing it came with.
+    """
+    one = '{"id":0,"name":"android.widget.FrameLayout","depth":0}'
+    count = VW_TEXT_PAGE // len(one) + 100
+    big = made("big.json", '{"nodes":[' + ",".join([one] * count) + "]}")
+    assert big.stat().st_size > VW_TEXT_PAGE
+
+    viewer("text.html", big)
+    wait_for_text(page)
+    assert page.query_selector("#more").is_visible()
+    assert '"id": 0' not in content(page), "a fragment was laid out"
+
+
+def test_a_json_file_too_large_to_be_worth_drawing_is_shown_as_it_is(viewer, page, made):
+    """
+    Laying out is cheap; drawing the result is not, because a minified megabyte
+    becomes about a hundred thousand lines. Past VW_JSON_MAX the file opens as
+    it came rather than taking three times as long to appear.
+    """
+    one = '{"id":0,"name":"android.widget.FrameLayout","depth":0}'
+    count = VW_JSON_MAX // len(one) + 1000
+    big = made("wide.json", '{"nodes":[' + ",".join([one] * count) + "]}")
+    assert VW_JSON_MAX < big.stat().st_size < VW_TEXT_PAGE, "must be over the cap, under a page"
+
+    viewer("text.html", big)
+    wait_for_text(page)
+    assert page.query_selector("#more").is_hidden(), "it should still arrive in one page"
+    assert '"id": 0' not in content(page), "a file past the cap was laid out"
+
+
+def test_a_later_page_that_parses_is_not_laid_out_either(viewer, page, made):
+    """
+    Whether to lay the file out is settled once, when it opens. A file that is
+    not JSON but whose last page happens to be would otherwise arrive half raw
+    and half laid out, one appended to the other.
+    """
+    tail = '{"x":1}'
+    odd = made("tail.json", b"a" * VW_TEXT_PAGE + tail.encode())
+
+    viewer("text.html", odd)
+    wait_for_text(page)
+    page.click("#moreBtn")
+    page.wait_for_function(
+        "() => document.querySelector('#content').textContent.indexOf('{') >= 0",
+        timeout=20000,
+    )
+    shown = content(page)
+    assert tail in shown, "the last page is missing"
+    assert '"x": 1' not in shown, "a later page was laid out"
