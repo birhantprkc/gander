@@ -42,27 +42,47 @@ internal val TXT_BADGE = "TXT" to 0xFF616161.toInt()
 internal val FILE_BADGE = "FILE" to 0xFF607884.toInt()
 
 /**
+ * The last tile of the welcome grid, standing for everything Gander opens that has no tile of
+ * its own: text and code, and zips. In the grey the TXT tile had in that place, so the grid
+ * reads exactly as it did and only the word has changed.
+ *
+ * Three letters, as every other tile is. The tile is a fixed square and its label grows with
+ * the phone's font size, and a fourth letter wrapped it at 150% and cut it off at 200%.
+ */
+internal val ETC_BADGE = "ETC" to TXT_BADGE.second
+
+/**
  * Draws the nine tiles of the welcome grid, in reading order.
  *
  * Kinds rather than formats, which is what makes the grid hold still: FileKind maps
- * 78 extensions onto these nine, so adding .odt or .rst or another codec changes
- * nothing here. A tenth tile means a tenth renderer, and the layout's columnCount is
- * the number to revisit when that happens.
+ * 78 extensions onto its kinds, so adding .odt or .rst or another codec changes nothing
+ * here. There are more kinds than tiles, since text files and zips both open, and three
+ * rows of three is what fits the narrowest phone, so the last tile says ETC rather than
+ * naming one of them. A new kind needs no tile: ETC already covers it.
  *
  * FILE is deliberately absent. It is what an unsupported file falls back to, and
  * this grid is a list of what Gander opens.
  *
  * One thing here does not update itself: welcome_formats_spoken is the sentence a
- * screen reader hears in place of these tiles, and it is prose. Adding a kind means
- * editing that string too, or the grid and its description stop agreeing.
+ * screen reader hears in place of these tiles, and it is prose that names every kind,
+ * including the ones behind ETC. Adding a kind means editing that string too, or the
+ * grid and its description stop agreeing.
  */
 internal val WELCOME_BADGES = listOf(
     PDF_BADGE, DOC_BADGE, XLS_BADGE,
     PPT_BADGE, IMG_BADGE, VID_BADGE,
-    AUD_BADGE, MD_BADGE, TXT_BADGE,
+    AUD_BADGE, MD_BADGE, ETC_BADGE,
 )
 
 internal val DIR_COLOR = 0xFF8A6D1F.toInt()
+
+/**
+ * A .zip, in the folder colour, because that is what it behaves as: tapped, it opens as a
+ * list to go into rather than as a document. Borrowing the colour also borrows its
+ * measured 4.90:1 against the white label. Declared after DIR_COLOR on purpose, since
+ * top-level properties are initialised in the order they are written.
+ */
+internal val ZIP_BADGE = "ZIP" to DIR_COLOR
 
 /**
  * The brand accent, and the one badge that is an action rather than a file type.
@@ -89,6 +109,7 @@ internal fun badgeFor(name: String, mime: String?): Pair<String, Int> {
         FileKind.PLAYER -> if (FileKind.isAudioExt(ext)) AUD_BADGE else VID_BADGE
         FileKind.MD -> MD_BADGE
         FileKind.TEXT -> TXT_BADGE
+        FileKind.ARCHIVE -> ZIP_BADGE
         FileKind.UNSUPPORTED -> FILE_BADGE
     }
 }

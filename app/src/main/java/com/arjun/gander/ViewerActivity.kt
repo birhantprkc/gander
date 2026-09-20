@@ -1,6 +1,7 @@
 package com.arjun.gander
 
 import android.annotation.SuppressLint
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -73,7 +74,21 @@ class ViewerActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_PATH = "path"
         private const val STATE_COPY_SOURCE = "copy_source"
+        private const val STATE_ARCHIVE_FOLDER = "archive_folder"
+        private const val STATE_ARCHIVE_CODE_PAGE = "archive_code_page"
         private const val ASSET_HOST = "appassets.androidplatform.net"
+
+        /**
+         * This activity again, under the name the manifest gives it for a file inside a zip.
+         *
+         * An alias, so that it can be declared not exported and nothing outside Gander can
+         * start it. That matters because ArchiveProvider reads whatever archive its URI
+         * names, with Gander's access: a folder the reader granted, or a file in Recents. So
+         * an archive URI arriving any other way than from Gander's own list is turned away
+         * rather than opened. Nothing would leave the phone if it were not, since nothing can,
+         * but another app has no business deciding what Gander shows.
+         */
+        const val ENTRY_VIEWER = "com.arjun.gander.ArchiveEntryViewer"
 
         /**
          * How long the page readout stays up after the last scroll, and how long it
@@ -93,6 +108,20 @@ class ViewerActivity : AppCompatActivity() {
 
     private var webView: ScrollProbeWebView? = null
     private var player: ExoPlayer? = null
+
+    /** The list of what is in a zip, when this is one. */
+    private var archiveBrowser: ArchiveBrowser? = null
+
+    /** Where that list reads the archive; tests swap in one that runs inline. */
+    @androidx.annotation.VisibleForTesting
+    internal var archiveLoader: java.util.concurrent.Executor? = null
+
+    /**
+     * Whether Save a copy is reporting on the bar under the toolbar. A zip's list waits on the
+     * same bar and leaves it alone meanwhile.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal var saving = false
 
     /** The file the destination picker is currently open for. */
     private var copySource: Uri? = null
@@ -140,6 +169,7 @@ class ViewerActivity : AppCompatActivity() {
             bar.progress = 0
         }
         bar.visibility = View.VISIBLE
+        saving = true
 
         // Shut down immediately after submitting: the already-queued copy still
         // runs to completion, and the worker thread ends with it instead of idling
@@ -182,6 +212,7 @@ class ViewerActivity : AppCompatActivity() {
             // it opens, it looks complete, and it is not.
             if (!saved) runCatching { DocumentsContract.deleteDocument(contentResolver, dest) }
             main.post {
+                saving = false
                 if (!isDestroyed) bar.visibility = View.GONE
                 Toast.makeText(
                     app,
@@ -201,6 +232,8 @@ class ViewerActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString(STATE_COPY_SOURCE, copySource?.toString())
+        outState.putString(STATE_ARCHIVE_FOLDER, archiveBrowser?.folder)
+        outState.putString(STATE_ARCHIVE_CODE_PAGE, archiveBrowser?.codePage)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -226,6 +259,11 @@ class ViewerActivity : AppCompatActivity() {
             finish()
             return
         }
+        // A file inside a zip, from anywhere but Gander's own list. See ENTRY_VIEWER.
+        if (ArchiveProvider.isEntry(this, uri) && componentName.className != ENTRY_VIEWER) {
+            finish()
+            return
+        }
 
         val name = resolveDisplayName(uri)
         toolbar.title = name
@@ -233,8 +271,10 @@ class ViewerActivity : AppCompatActivity() {
         val mime = runCatching { contentResolver.getType(uri) }.getOrNull() ?: intent.type
 
         // Picker selections carry a persistable grant; keep those in Recents.
-        // Open-with and folder-browsed URIs throw here and are simply skipped.
-        if (uri.scheme == "content") {
+        // Open-with and folder-browsed URIs throw here and are simply skipped. A file
+        // inside a zip would too, but is kept out by name rather than by that: nothing
+        // in a zip is written to the phone, and Recents is on the phone.
+        if (uri.scheme == "content" && !ArchiveProvider.isEntry(this, uri)) {
             runCatching {
                 contentResolver.takePersistableUriPermission(
                     uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -249,6 +289,7 @@ class ViewerActivity : AppCompatActivity() {
         when (kind) {
             FileKind.IMAGE -> showImage(container, uri, name, ext)
             FileKind.PLAYER -> showPlayer(container, uri, name, ext)
+            FileKind.ARCHIVE -> showArchive(container, uri, name, savedInstanceState)
             else -> showWeb(container, uri, kind, name, ext)
         }
         setUpSearch(toolbar, kind)
@@ -346,9 +387,14 @@ class ViewerActivity : AppCompatActivity() {
             .setType(mime ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*")
             .putExtra(Intent.EXTRA_STREAM, shareUri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // Not to Gander itself, as the home screen's share is not: a file from a zip
+        // would be turned away at the door (see ENTRY_VIEWER), which looks like a
+        // crash, and any other file is already open right here.
+        val chooser = Intent.createChooser(send, getString(R.string.share_file))
+            .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(ComponentName(this, ViewerActivity::class.java)))
         // Some Android versions refuse to delegate a tree-derived grant and
         // throw here rather than at read time
-        runCatching { startActivity(Intent.createChooser(send, getString(R.string.share_file))) }
+        runCatching { startActivity(chooser) }
             .onFailure { Toast.makeText(this, R.string.share_failed, Toast.LENGTH_SHORT).show() }
     }
 
@@ -1273,6 +1319,25 @@ class ViewerActivity : AppCompatActivity() {
         exo.playWhenReady = true
     }
 
+    /** A zip, listed rather than drawn. See [ArchiveBrowser]. */
+    private fun showArchive(container: FrameLayout, uri: Uri, name: String, state: Bundle?) {
+        val browser = ArchiveBrowser(
+            activity = this,
+            toolbar = findViewById(R.id.toolbar),
+            // The bar under the toolbar that a save reports on, doing the same job for the
+            // list that the home screen's does for a folder
+            progress = findViewById(R.id.saveProgress),
+            saving = { saving },
+            archive = uri,
+            archiveName = name,
+            restoredFolder = state?.getString(STATE_ARCHIVE_FOLDER),
+            restoredCodePage = state?.getString(STATE_ARCHIVE_CODE_PAGE),
+            loader = archiveLoader ?: java.util.concurrent.Executors.newSingleThreadExecutor(),
+        )
+        archiveBrowser = browser
+        browser.attach(container)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
         val web = ScrollProbeWebView(this)
@@ -1406,9 +1471,16 @@ class ViewerActivity : AppCompatActivity() {
         loadedNight = night == 1
         // The page a PDF was left at goes the same way, for the same two reasons and one
         // more: a document that opened at the top and then jumped would spend its opening
-        // drawing a page nobody asked to see. Issue #25.
+        // drawing a page nobody asked to see. Issue #25. Never for a file inside a zip:
+        // the position is filed on the phone under a fingerprint of the file, nothing in a
+        // zip is written to the phone, and one under a password would leave a fingerprint
+        // of what the password was keeping.
         positionKey =
-            if (kind == FileKind.PDF) Positions.keyFor(contentResolver, uri, total) else null
+            if (kind == FileKind.PDF && !ArchiveProvider.isEntry(this, uri)) {
+                Positions.keyFor(contentResolver, uri, total)
+            } else {
+                null
+            }
         val resumeAt = positionKey?.let { Positions.page(this, it) } ?: 0
         web.loadUrl(
             "https://$ASSET_HOST/assets/viewer/${kind.page}" +
@@ -1537,15 +1609,23 @@ class ViewerActivity : AppCompatActivity() {
         contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
     }.getOrNull()?.takeIf { it >= 0 } ?: -1L
 
-    /** Exactly [start, end], seeking to the offset rather than reading up to it. */
+    /**
+     * Exactly [start, end], seeking to the offset rather than reading up to it.
+     *
+     * Asked for as an asset descriptor, which is allowed to be a window onto a larger file,
+     * rather than as a plain one, which is not: ContentResolver refuses openFileDescriptor
+     * outright for a window. That is how a file stored inside a zip arrives, so the range is
+     * counted from where the window starts, which is zero for every other file.
+     */
     private fun slice(uri: Uri, start: Long, end: Long): InputStream {
-        val pfd = contentResolver.openFileDescriptor(uri, "r")
+        val afd = contentResolver.openAssetFileDescriptor(uri, "r")
             ?: throw java.io.IOException("cannot open $uri")
-        val stream = java.io.FileInputStream(pfd.fileDescriptor)
+        val stream = java.io.FileInputStream(afd.fileDescriptor)
+        val from = afd.startOffset + start
         // Seekable for anything file backed; a pipe has to be read through instead
-        runCatching { stream.channel.position(start) }
-            .onFailure { runCatching { stream.skip(start) } }
-        return LimitedInputStream(stream, end - start + 1, pfd)
+        runCatching { stream.channel.position(from) }
+            .onFailure { runCatching { stream.skip(from) } }
+        return LimitedInputStream(stream, end - start + 1, afd)
     }
 
     private fun matchParent() = FrameLayout.LayoutParams(

@@ -16,9 +16,12 @@ PDFs get ReportLab's invariant flag; the OOXML formats are zips, so their
 entry timestamps and core properties are normalised by hand afterwards.
 
 Usage:  python3 tests/fixtures/make_fixtures.py
-Needs:  reportlab python-docx openpyxl python-pptx pillow
+Needs:  reportlab python-docx openpyxl python-pptx pillow cryptography
 """
 
+import hashlib
+import heapq
+import hmac
 import io
 import os
 import random
@@ -28,6 +31,7 @@ import struct
 import sys
 import wave
 import zipfile
+import zlib
 from datetime import datetime
 from math import pi, sin
 from pathlib import Path
@@ -763,11 +767,483 @@ def audio() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Zips, issue #30
+# ---------------------------------------------------------------------------
+
+# Written by hand, like the wasm PDFs above and for the same reason: the point of
+# most of these is a byte Python's zipfile will not write. It sets the UTF-8 flag
+# on every name that is not ASCII, and the names Gander has to decode are exactly
+# the ones a Windows machine writes in its own code page with that flag clear.
+
+ZIP_DOS_DATE = ((ZIP_DATE[0] - 1980) << 9) | (ZIP_DATE[1] << 5) | ZIP_DATE[2]
+HOST_DOS, HOST_UNIX = 0, 3
+STORED, DEFLATED, DEFLATE64 = 0, 8, 9
+AES = 99
+
+
+class Member:
+    """One entry. A method other than stored, deflated or Deflate64 writes data as given.
+
+    zipcrypto or aes, a password, encrypts it: aes as (strength, version), strength 1 to 3
+    for 128 to 256 bit keys and version 1 or 2 for AE-1 or AE-2.
+    """
+
+    def __init__(self, name: bytes, data: bytes = b"", *, method=DEFLATED, flags=0,
+                 host=HOST_UNIX, extra=b"", descriptor=False, directory=False, time=0,
+                 zipcrypto: bytes = None, aes=None, password: bytes = None):
+        self.name, self.data, self.method = name, data, method
+        self.flags = flags | (0x08 if descriptor else 0) | (0x01 if zipcrypto or aes else 0)
+        self.host, self.extra = host, extra
+        self.descriptor, self.directory, self.time = descriptor, directory, time
+        self.zipcrypto, self.aes, self.password = zipcrypto, aes, password
+
+
+def _extra(field_id: int, data: bytes) -> bytes:
+    return struct.pack("<HH", field_id, len(data)) + data
+
+
+# PKWARE's original encryption, APPNOTE 6.1. Twelve bytes in front, the last of them the
+# top byte of the CRC, or of the time when the CRC trails the data; the eleven before it
+# would be random, and are a hash of the name here so the output never changes.
+
+def _crc_byte(crc: int, b: int) -> int:
+    return zlib.crc32(bytes([b]), crc ^ 0xFFFFFFFF) ^ 0xFFFFFFFF
+
+
+class _ZipCrypto:
+    def __init__(self, password: bytes):
+        self.k = [0x12345678, 0x23456789, 0x34567890]
+        for b in password:
+            self._update(b)
+
+    def _update(self, b: int) -> None:
+        k0 = _crc_byte(self.k[0], b)
+        k1 = ((self.k[1] + (k0 & 0xFF)) * 134775813 + 1) & 0xFFFFFFFF
+        self.k = [k0, k1, _crc_byte(self.k[2], k1 >> 24)]
+
+    def encrypt(self, data: bytes) -> bytes:
+        out = bytearray()
+        for b in data:
+            t = (self.k[2] | 2) & 0xFFFF
+            out.append(b ^ (((t * (t ^ 1)) >> 8) & 0xFF))
+            self._update(b)
+        return bytes(out)
+
+
+def zipcrypto(body: bytes, password: bytes, check: int, name: bytes) -> bytes:
+    keys = _ZipCrypto(password)
+    header = hashlib.sha256(b"header" + name).digest()[:11] + bytes([check])
+    return keys.encrypt(header) + keys.encrypt(body)
+
+
+# WinZip's AES, from its published specification: PBKDF2-HMAC-SHA1 over the password and a
+# salt, a thousand rounds, into the AES key, an HMAC key and a two byte verifier; AES in
+# counter mode counting up from one little-endian; the first ten bytes of HMAC-SHA1 over what
+# was encrypted, after it. The salt is a hash of the name, again so nothing changes.
+
+def winzip_aes(body: bytes, password: bytes, strength: int, name: bytes) -> bytes:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    size = {1: 16, 2: 24, 3: 32}[strength]
+    salt = hashlib.sha256(b"salt" + name).digest()[:size // 2]
+    keys = hashlib.pbkdf2_hmac("sha1", password, salt, 1000, 2 * size + 2)
+    aes = Cipher(algorithms.AES(keys[:size]), modes.ECB()).encryptor()
+    out = bytearray()
+    for n, at in enumerate(range(0, len(body), 16), start=1):
+        stream = aes.update(n.to_bytes(16, "little"))
+        out += bytes(a ^ b for a, b in zip(body[at:at + 16], stream))
+    code = hmac.new(keys[size:2 * size], bytes(out), hashlib.sha1).digest()[:10]
+    return salt + keys[2 * size:] + bytes(out) + code
+
+
+# Deflate64, which zlib cannot write. Enough of an encoder to put every part of the format
+# in one stream: a stored block, a fixed one and dynamic ones, matches reaching into the
+# second 32 KB of the window, and lengths past 258, which only Deflate64's last length code
+# can carry. Greedy matching over the whole 64 KB window, nothing cleverer.
+
+_LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83,
+             99, 115, 131, 163, 195, 227, 3]
+_LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5,
+              5, 16]
+_DIST_BASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769,
+              1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577, 32769, 49153]
+_DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
+               11, 12, 12, 13, 13, 14, 14]
+_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+
+
+class _Bits:
+    def __init__(self):
+        self.out, self.acc, self.n = bytearray(), 0, 0
+
+    def put(self, value: int, count: int) -> None:
+        self.acc |= value << self.n
+        self.n += count
+        while self.n >= 8:
+            self.out.append(self.acc & 0xFF)
+            self.acc >>= 8
+            self.n -= 8
+
+    def code(self, code: int, length: int) -> None:
+        self.put(int(format(code, f"0{length}b")[::-1], 2), length)
+
+    def align(self) -> None:
+        if self.n:
+            self.out.append(self.acc & 0xFF)
+        self.acc = self.n = 0
+
+
+def _lengths(freqs, limit):
+    used = [(f, s) for s, f in enumerate(freqs) if f]
+    lengths = [0] * len(freqs)
+    if not used:
+        # A block of nothing but literals has no distance code at all, which is allowed
+        return lengths
+    if len(used) == 1:
+        # One code alone is incomplete; a second, never used, completes it
+        lengths[used[0][1]] = 1
+        lengths[0 if used[0][1] else 1] = 1
+        return lengths
+    while True:
+        heap = [(f, i, (s,)) for i, (f, s) in enumerate(used)]
+        heapq.heapify(heap)
+        depth, tie = {s: 0 for _, s in used}, len(heap)
+        while len(heap) > 1:
+            f1, _, a = heapq.heappop(heap)
+            f2, _, b = heapq.heappop(heap)
+            for s in a + b:
+                depth[s] += 1
+            heapq.heappush(heap, (f1 + f2, tie, a + b))
+            tie += 1
+        if max(depth.values()) <= limit:
+            for s, d in depth.items():
+                lengths[s] = d
+            return lengths
+        used = [((f + 1) // 2, s) for f, s in used]
+
+
+def _canonical(lengths):
+    count = [0] * 16
+    for n in lengths:
+        if n:
+            count[n] += 1
+    code, first = 0, [0] * 16
+    for n in range(1, 16):
+        code = (code + count[n - 1]) << 1
+        first[n] = code
+    codes = []
+    for n in lengths:
+        codes.append(first[n])
+        if n:
+            first[n] += 1
+    return codes
+
+
+def _length_code(n):
+    if n > 258:
+        return 285, n - 3, 16
+    i = max(i for i in range(28) if _LEN_BASE[i] <= n)
+    return 257 + i, n - _LEN_BASE[i], _LEN_EXTRA[i]
+
+
+def _distance_code(d):
+    i = max(i for i in range(32) if _DIST_BASE[i] <= d)
+    return i, d - _DIST_BASE[i], _DIST_EXTRA[i]
+
+
+def _matches(data: bytes, start: int):
+    """Greedy LZ77 over a 64 KB window, from start, reaching back before it."""
+    table, tokens, i = {}, [], 0
+    for j in range(max(0, start - 65536), start):
+        table.setdefault(data[j:j + 3], []).append(j)
+    i = start
+    while i < len(data):
+        best, where = 0, 0
+        for j in reversed(table.get(data[i:i + 3], [])[-32:]):
+            if i - j > 65536:
+                break
+            n = 0
+            while i + n < len(data) and n < 65538 and data[j + n] == data[i + n]:
+                n += 1
+            if n > best:
+                best, where = n, i - j
+        step = best if best >= 3 else 1
+        for j in range(i, min(i + step, len(data) - 2)):
+            table.setdefault(data[j:j + 3], []).append(j)
+        tokens.append((best, where) if best >= 3 else data[i])
+        i += step
+    return tokens
+
+
+def _block(bits: _Bits, tokens, last: bool, dynamic: bool) -> None:
+    if dynamic:
+        lit, dist = [0] * 286, [0] * 32
+        lit[256] = 1
+        for t in tokens:
+            if isinstance(t, int):
+                lit[t] += 1
+            else:
+                lit[_length_code(t[0])[0]] += 1
+                dist[_distance_code(t[1])[0]] += 1
+        lit_lengths, dist_lengths = _lengths(lit, 15), _lengths(dist, 15)
+        hlit = max(257, max(s for s, n in enumerate(lit_lengths) if n) + 1)
+        hdist = max(1, max((s for s, n in enumerate(dist_lengths) if n), default=0) + 1)
+        seq, all_lengths, i = [], lit_lengths[:hlit] + dist_lengths[:hdist], 0
+        while i < len(all_lengths):
+            n = all_lengths[i]
+            run = 1
+            while i + run < len(all_lengths) and all_lengths[i + run] == n:
+                run += 1
+            if n == 0 and run >= 3:
+                r = min(run, 138)
+                seq.append((18, r - 11, 7) if r >= 11 else (17, r - 3, 3))
+                i += r
+            elif n and run >= 4:
+                r = min(run - 1, 6)
+                seq += [(n, 0, 0), (16, r - 3, 2)]
+                i += 1 + r
+            else:
+                seq.append((n, 0, 0))
+                i += 1
+        cl = [0] * 19
+        for sym, _, _ in seq:
+            cl[sym] += 1
+        cl_lengths = _lengths(cl, 7)
+        hclen = 19
+        while hclen > 4 and cl_lengths[_ORDER[hclen - 1]] == 0:
+            hclen -= 1
+        bits.put(1 if last else 0, 1)
+        bits.put(2, 2)
+        bits.put(hlit - 257, 5)
+        bits.put(hdist - 1, 5)
+        bits.put(hclen - 4, 4)
+        for i in range(hclen):
+            bits.put(cl_lengths[_ORDER[i]], 3)
+        cl_codes = _canonical(cl_lengths)
+        for sym, value, extra in seq:
+            bits.code(cl_codes[sym], cl_lengths[sym])
+            if extra:
+                bits.put(value, extra)
+    else:
+        lit_lengths = [8] * 144 + [9] * 112 + [7] * 24 + [8] * 8
+        dist_lengths = [5] * 32
+        bits.put(1 if last else 0, 1)
+        bits.put(1, 2)
+    lit_codes, dist_codes = _canonical(lit_lengths), _canonical(dist_lengths)
+    for t in tokens:
+        if isinstance(t, int):
+            bits.code(lit_codes[t], lit_lengths[t])
+        else:
+            sym, value, extra = _length_code(t[0])
+            bits.code(lit_codes[sym], lit_lengths[sym])
+            bits.put(value, extra)
+            sym, value, extra = _distance_code(t[1])
+            bits.code(dist_codes[sym], dist_lengths[sym])
+            bits.put(value, extra)
+    bits.code(lit_codes[256], lit_lengths[256])
+
+
+def deflate64(data: bytes) -> bytes:
+    """A stored block, then a fixed one, then two dynamic ones."""
+    bits = _Bits()
+    stored = data[:min(len(data), 16 * 1024)]
+    bits.put(0, 1)
+    bits.put(0, 2)
+    bits.align()
+    bits.out += struct.pack("<HH", len(stored), len(stored) ^ 0xFFFF) + stored
+    tokens = _matches(data, len(stored))
+    fixed, rest = tokens[:500], tokens[500:]
+    half = len(rest) // 2
+    _block(bits, fixed, last=False, dynamic=False)
+    _block(bits, rest[:half], last=False, dynamic=True)
+    _block(bits, rest[half:], last=True, dynamic=True)
+    bits.align()
+    return bytes(bits.out)
+
+
+def zip_bytes(members, *, zip64=False, comment=b"") -> bytes:
+    out, central = bytearray(), bytearray()
+    for m in members:
+        crc = zlib.crc32(m.data) & 0xFFFFFFFF
+        if m.method == DEFLATED:
+            packer = zlib.compressobj(9, zlib.DEFLATED, -15)
+            body = packer.compress(m.data) + packer.flush()
+        elif m.method == DEFLATE64:
+            body = deflate64(m.data)
+        else:
+            body = m.data
+        method, aes_extra = m.method, b""
+        if m.zipcrypto:
+            check = (m.time >> 8) if m.descriptor else (crc >> 24)
+            body = zipcrypto(body, m.zipcrypto, check, m.name)
+        elif m.aes:
+            strength, version = m.aes
+            body = winzip_aes(body, m.password, strength, m.name)
+            aes_extra = _extra(0x9901, struct.pack("<H2sBH", version, b"AE", strength, m.method))
+            method = AES
+            if version == 2:
+                crc = 0
+        if method == AES:
+            needed = 51
+        elif method == DEFLATE64:
+            needed = 21
+        else:
+            needed = 63 if method not in (STORED, DEFLATED) else (45 if zip64 else 20)
+        made_by = (m.host << 8) | (45 if zip64 else 20)
+        if m.host == HOST_UNIX:
+            external = ((0o40755 << 16) | 0x10) if m.directory else (0o100644 << 16)
+        else:
+            external = 0x10 if m.directory else 0x20
+        offset = len(out)
+
+        local_crc, local_c, local_u = (0, 0, 0) if m.descriptor else (crc, len(body), len(m.data))
+        local_extra = aes_extra
+        if zip64:
+            local_extra = _extra(1, struct.pack("<QQ", len(m.data), len(body))) + local_extra
+            local_c = local_u = 0xFFFFFFFF
+        out += struct.pack("<IHHHHHIIIHH", 0x04034B50, needed, m.flags, method, m.time,
+                           ZIP_DOS_DATE, local_crc, local_c, local_u, len(m.name),
+                           len(local_extra))
+        out += m.name + local_extra + body
+        if m.descriptor:
+            out += struct.pack("<IIII", 0x08074B50, crc, len(body), len(m.data))
+
+        central_extra = m.extra + aes_extra
+        c_size, u_size, c_offset = len(body), len(m.data), offset
+        if zip64:
+            central_extra = _extra(1, struct.pack("<QQQ", len(m.data), len(body), offset)) + central_extra
+            c_size = u_size = c_offset = 0xFFFFFFFF
+        central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, made_by, needed, m.flags,
+                               method, m.time, ZIP_DOS_DATE, crc, c_size, u_size, len(m.name),
+                               len(central_extra), 0, 0, 0, external, c_offset)
+        central += m.name + central_extra
+
+    index_at = len(out)
+    out += central
+    count = len(members)
+    if zip64:
+        record_at = len(out)
+        out += struct.pack("<IQHHIIQQQQ", 0x06064B50, 44, 45, 45, 0, 0, count, count,
+                           len(central), index_at)
+        out += struct.pack("<IIQI", 0x07064B50, 0, record_at, 1)
+        out += struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, 0xFFFF, 0xFFFF,
+                           0xFFFFFFFF, 0xFFFFFFFF, len(comment))
+    else:
+        out += struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, count, count, len(central),
+                           index_at, len(comment))
+    return bytes(out + comment)
+
+
+def zips() -> None:
+    pdf = (OUT / "six-pages.pdf").read_bytes()
+    png = (OUT / "tiny.png").read_bytes()
+    notes = (OUT / "notes.md").read_bytes()
+    plain = (OUT / "plain.txt").read_bytes()
+    inner = zip_bytes([Member(b"inside.txt", b"A file inside a zip inside a zip.\n")])
+    # Extended timestamp, 2026-01-01T00:00:00Z: the one entry whose time has a zone
+    utc = _extra(0x5455, struct.pack("<BI", 1, 1767225600))
+
+    # What people actually have: folders with and without their own entries, a
+    # compressed PDF, a stored photo, a file whose sizes trail its data, the
+    # clutter macOS adds, zips inside the zip both ways, and the two kinds of file
+    # that are listed and cannot be opened. Plus a comment, which moves the end
+    # record away from the end of the file.
+    archive = [
+        Member(b"reports/", method=STORED, directory=True),
+        Member(b"reports/six-pages.pdf", pdf, extra=utc),
+        Member(b"reports/notes.md", notes, descriptor=True),
+        Member(b"photos/tiny.png", png, method=STORED),
+        Member(b"photos/.hidden-thumbs", b"not for people"),
+        Member(b"__MACOSX/photos/._tiny.png", b"resource fork"),
+        Member(b"plain.txt", plain),
+        Member(b"nested/stored.zip", inner, method=STORED),
+        Member(b"nested/packed.zip", inner),
+        Member(b"private/locked.txt", b"The password was gander.\n", zipcrypto=b"gander"),
+        Member(b"private/table.dat", bytes(range(40)), method=14),
+    ]
+    (OUT / "archive.zip").write_bytes(zip_bytes(archive, comment=b"Gander test archive"))
+    written(OUT / "archive.zip")
+
+    # Names that would climb out of a folder, start at a root, or use Windows'
+    # separator, and one that reorders itself to look like another file.
+    odd = [
+        Member(b"../escaped.txt", b"one"),
+        Member(b"/absolute/path.txt", b"two"),
+        Member(b"docs\\readme.txt", b"three", host=HOST_DOS),
+        Member(b"unix\\name.txt", b"four"),
+        Member(b"a//b/./c.txt", b"five"),
+        Member(b"dup.txt", b"first"),
+        Member(b"dup.txt", b"second"),
+        Member("photo\u202Egpj.apk".encode(), b"six", flags=0x800),
+    ]
+    (OUT / "odd-names.zip").write_bytes(zip_bytes(odd))
+    written(OUT / "odd-names.zip")
+
+    (OUT / "zip64.zip").write_bytes(zip_bytes(
+        [Member(b"big/report.pdf", pdf), Member(b"big/notes.txt", plain)], zip64=True))
+    written(OUT / "zip64.zip")
+
+    # Every way a file can be under a password that Gander reads, and the one it does not,
+    # all with the password gander, beside a file with none. A half past two in the
+    # afternoon on the file whose CRC trails it, since that is what its check byte is.
+    half_past_two = (14 << 11) | (30 << 5)
+    (OUT / "locked.zip").write_bytes(zip_bytes([
+        Member(b"open.txt", plain),
+        Member(b"zipcrypto.txt", plain, zipcrypto=b"gander"),
+        Member(b"zipcrypto-trailing.md", notes, zipcrypto=b"gander", descriptor=True,
+               time=half_past_two),
+        Member(b"zipcrypto.png", png, method=STORED, zipcrypto=b"gander"),
+        Member(b"aes128.txt", plain, aes=(1, 1), password=b"gander"),
+        Member(b"aes192.pdf", pdf, aes=(2, 2), password=b"gander"),
+        Member(b"aes256.png", png, method=STORED, aes=(3, 2), password=b"gander"),
+        Member(b"aes256-deflate64.md", notes, method=DEFLATE64, aes=(3, 2), password=b"gander"),
+        Member(b"strong.bin", bytes(range(64)), method=STORED, flags=0x41),
+    ]))
+    written(OUT / "locked.zip")
+
+    # A password that is not ASCII, as each encryption takes it: WinZip's AES as UTF-8, and
+    # the older one as a Russian Windows machine's own code page.
+    (OUT / "locked-cyrillic.zip").write_bytes(zip_bytes([
+        Member(b"zipcrypto.txt", plain, zipcrypto="пароль".encode("cp866")),
+        Member(b"aes.txt", plain, aes=(3, 2), password="пароль".encode("utf-8")),
+    ]))
+    written(OUT / "locked-cyrillic.zip")
+
+    # Deflate64, which Windows writes for anything over 2 GB. Text to compress, then the
+    # three things only Deflate64 has: a match from more than 32 KB back, one from more than
+    # 48 KB back, and matches far longer than 258.
+    rng = random.Random(64)
+    words = [w.encode() for w in (plain + notes).decode().split() if w.isalpha()]
+    prose = b" ".join(rng.choice(words) for _ in range(12000))[:70000]
+    long_text = (prose + prose[30000:33000] + prose[5000:6000] + b"ab" * 3000 +
+                 prose[10000:30000])
+    (OUT / "deflate64.zip").write_bytes(zip_bytes([
+        Member(b"long.txt", long_text, method=DEFLATE64),
+        Member(b"short.txt", plain, method=DEFLATE64),
+        Member(b"empty.txt", b"", method=DEFLATE64),
+    ]))
+    written(OUT / "deflate64.zip")
+
+    # Names as Windows writes them in each code page, flag clear, and as macOS
+    # writes them, UTF-8 with the flag clear too.
+    text = b"Plain text inside a zip.\n"
+    for fixture, encoding, names in [
+        ("names-gbk.zip", "gbk", ["季度报告/会议记录.txt", "照片/北京旅行.txt"]),
+        ("names-cp866.zip", "cp866", ["Документы/Отчёт за квартал.txt", "Фото/Москва.txt"]),
+        ("names-sjis.zip", "shift_jis", ["資料/報告書.txt", "資料/議事録.txt"]),
+        ("names-korean.zip", "cp949", ["문서/분기 보고서.pdf", "사진/제주도 여행.jpg"]),
+        ("names-mac.zip", "utf-8", ["Отчёт/报告 résumé.txt"]),
+    ]:
+        members = [Member(n.encode(encoding), text) for n in names]
+        (OUT / fixture).write_bytes(zip_bytes(members))
+        written(OUT / fixture)
+
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, texts, images, audio):
+    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, texts, images, audio, zips):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
     count = sum(1 for p in OUT.iterdir() if p.is_file())

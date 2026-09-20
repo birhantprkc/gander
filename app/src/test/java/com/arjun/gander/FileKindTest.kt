@@ -1,5 +1,6 @@
 package com.arjun.gander
 
+import com.arjun.gander.FileKind.ARCHIVE
 import com.arjun.gander.FileKind.DOCX
 import com.arjun.gander.FileKind.IMAGE
 import com.arjun.gander.FileKind.IMAGE_WEB
@@ -70,6 +71,9 @@ class FileKindTest {
             "gradle" to TEXT, "properties" to TEXT, "toml" to TEXT,
             "ini" to TEXT, "cfg" to TEXT, "conf" to TEXT, "tex" to TEXT,
             "r" to TEXT,
+
+            // Listed rather than drawn, issue #30
+            "zip" to ARCHIVE,
         )
 
         const val MIME_DOCX =
@@ -90,8 +94,8 @@ class FileKindTest {
 
     /** A count, so a silently deleted table row is noticed. */
     @Test
-    fun theTableCoversSeventyEightExtensions() {
-        assertThat(EXPECTED).hasSize(78)
+    fun theTableCoversSeventyNineExtensions() {
+        assertThat(EXPECTED).hasSize(79)
     }
 
     @Test
@@ -162,6 +166,8 @@ class FileKindTest {
             "text/plain" to TEXT,
             "application/json" to TEXT,
             "application/xml" to TEXT,
+            "application/zip" to ARCHIVE,
+            "application/x-zip-compressed" to ARCHIVE,
         )
         byMime.forEach { (mime, kind) ->
             assertThat(FileKind.detect("", mime)).isEqualTo(kind)
@@ -188,6 +194,21 @@ class FileKindTest {
     fun imagesByMimeGoToTheWebViewer() {
         assertThat(FileKind.detect("", "image/jpeg")).isEqualTo(IMAGE_WEB)
         assertThat(FileKind.detect("", "image/svg+xml")).isEqualTo(IMAGE_WEB)
+    }
+
+    /**
+     * Word, Excel and PowerPoint files are zips underneath, and so are .epub, .apk and .jar.
+     * Only a file called .zip, or sent as one, is listed as an archive: the rest open as what
+     * they are, or not at all.
+     */
+    @Test
+    fun onlyAZipIsTakenForAnArchive() {
+        assertThat(FileKind.detect("docx", "application/zip")).isEqualTo(DOCX)
+        assertThat(FileKind.detect("xlsx", null)).isEqualTo(XLSX)
+        assertThat(FileKind.detect("pptx", null)).isEqualTo(PPTX)
+        assertThat(FileKind.detect("epub", null)).isEqualTo(UNSUPPORTED)
+        assertThat(FileKind.detect("apk", null)).isEqualTo(UNSUPPORTED)
+        assertThat(FileKind.detect("jar", null)).isEqualTo(UNSUPPORTED)
     }
 
     @Test
@@ -235,10 +256,11 @@ class FileKindTest {
         }
     }
 
-    /** The two kinds a native view draws carry no page at all. */
+    /** The kinds a native view draws carry no page at all. */
     @Test
     fun nativeKindsNameNoPage() {
         assertThat(IMAGE.page).isEmpty()
         assertThat(PLAYER.page).isEmpty()
+        assertThat(ARCHIVE.page).isEmpty()
     }
 }

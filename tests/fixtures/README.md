@@ -11,7 +11,7 @@ Output is byte-stable, so an unchanged fixture produces no diff. If a
 regeneration does change bytes, something in the generator or a library
 version changed and the diff is worth reading.
 
-Needs `reportlab python-docx openpyxl python-pptx pillow`.
+Needs `reportlab python-docx openpyxl python-pptx pillow cryptography`.
 
 ## Why they are committed rather than generated on demand
 
@@ -56,6 +56,18 @@ should stay obviously so.
 | `tiny.png` | A small image with no EXIF. |
 | `anim.gif`, `icon.svg` | The WebView image path, which is what GIF and SVG take. |
 | `tone.wav` | The audio screen. One second, quiet, so a device test that plays it is bearable. |
+| `archive.zip` | Issue #30. The zip as people have it: a compressed PDF, a stored photo, a file whose sizes trail its data, a folder with no entry of its own, macOS's `__MACOSX` and a dotfile (both hidden), a zip stored inside and one compressed inside, a file under a password (ZipCrypto, password `gander`) and an LZMA one (listed, not opened), and a comment after the end record. |
+| `odd-names.zip` | Names that climb out (`../`), start at a root, use Windows' backslash, repeat, or carry a right-to-left override that would make `.apk` read as `.jpg`. |
+| `zip64.zip` | The same two files behind ZIP64 records, which every archive over 4 GB or 65,535 files has. |
+| `names-gbk.zip`, `names-cp866.zip`, `names-sjis.zip` | Names as Windows writes them in Chinese, Russian and Japanese: in the machine's code page, with the UTF-8 flag clear. |
+| `names-korean.zip` | Korean in code page 949, every byte of which is also everyday Chinese in GBK. It read as Chinese on any phone not set to Korean until `CommonCharacters` settled it. |
+| `locked.zip` | Every encryption Gander reads, all under the password `gander`, beside a file under none: ZipCrypto compressed, stored, and with its CRC trailing the data (so its check byte is the time's), WinZip AES at all three strengths and both versions, and AES over Deflate64. Plus PKWARE's Strong Encryption, which is listed and refused. The generator's own ZipCrypto and AES; 7-Zip and Info-ZIP both read them back. |
+| `locked-cyrillic.zip` | A password that is not ASCII, `пароль`: ZipCrypto in a Russian Windows machine's code page, CP866, and AES in UTF-8. |
+| `deflate64.zip` | Deflate64, method 9, from the generator's own encoder, since zlib has none: a stored block, a fixed and two dynamic ones, matches from past 32 KB and past 48 KB back, and lengths far past 258. 7-Zip reads it back. |
+| `names-mac.zip` | UTF-8 names with the flag clear, which is what macOS writes. |
+
+The zips are written byte by byte rather than with `zipfile`, which sets the UTF-8 flag
+on every name that is not ASCII and so cannot write what Windows writes.
 
 Text files too large to commit (a 6 MB one, one of exactly 5 MiB, one with a
 multi-byte character straddling the page boundary, and one over the 16 MiB

@@ -17,6 +17,9 @@
         app:navigationIcon="@drawable/ic_back"
         app:titleTextAppearance="?attr/textAppearanceTitleMedium" />
 
+    <!-- Every control in the bar is at least 48dp each way, the smallest target Android's
+         guidelines and Play's accessibility scan accept. The buttons were 44 and the box 45
+         until 2026-09-19, which AccessibilityTest had claimed to check and never had. -->
     <LinearLayout
         android:id="@+id/searchBar"
         android:layout_width="match_parent"
@@ -38,6 +41,7 @@
             android:imeOptions="actionSearch"
             android:inputType="text|textNoSuggestions"
             android:maxLines="1"
+            android:minHeight="48dp"
             android:importantForAutofill="no" />
 
         <TextView
@@ -52,24 +56,24 @@
 
         <ImageButton
             android:id="@+id/searchPrev"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/previous_match"
             android:src="@drawable/ic_up" />
 
         <ImageButton
             android:id="@+id/searchNext"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/next_match"
             android:src="@drawable/ic_down" />
 
         <ImageButton
             android:id="@+id/searchClose"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/close_search"
             android:src="@drawable/ic_close" />

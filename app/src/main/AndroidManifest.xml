@@ -67,6 +67,8 @@
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
                 <data android:mimeType="application/vnd.ms-excel" />
                 <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -83,7 +85,27 @@
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
                 <data android:mimeType="application/vnd.ms-excel" />
                 <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
         </activity>
+
+        <!-- The viewer again, for a file inside a zip. Not exported, so only Gander can start
+             it, and ViewerActivity refuses an archive URI that arrives any other way: see
+             ViewerActivity.ENTRY_VIEWER for why. Declared after the activity it names, which
+             an alias has to be. -->
+        <activity-alias
+            android:name=".ArchiveEntryViewer"
+            android:exported="false"
+            android:targetActivity=".ViewerActivity" />
+
+        <!-- Serves a file inside a zip to the viewers, read straight out of the archive, issue
+             #30. Not exported: Share hands one file's URI on with a one-off read grant, the
+             same shape as the FileProvider above, so the zero-permission story is unchanged. -->
+        <provider
+            android:name=".ArchiveProvider"
+            android:authorities="${applicationId}.archive"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

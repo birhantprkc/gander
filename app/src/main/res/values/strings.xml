@@ -12,8 +12,9 @@
     <string name="welcome_promise">Nothing is uploaded. Gander has no internet permission.</string>
     <!-- Spoken form of the badge grid. The tiles themselves are not important for
          accessibility, so this is the whole announcement and it is one stop rather than
-         nine, the same way a file row carries the description for its own four views. -->
-    <string name="welcome_formats_spoken">Opens PDFs, Word documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown and text files.</string>
+         nine, the same way a file row carries the description for its own four views. It
+         names what the ETC tile stands for as well, which a list read aloud has room for. -->
+    <string name="welcome_formats_spoken">Opens PDFs, Word documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown, text files and zips.</string>
     <string name="open_a_file">Open a file</string>
     <string name="recent_files">Recent files</string>
     <string name="folders">Folders</string>
@@ -21,6 +22,48 @@
     <string name="no_recents_hint">Files you open appear here for quick access.</string>
     <string name="no_folders_hint">Grant a folder to browse its files right here. Gander needs no storage permission to do it.</string>
     <string name="empty_folder">Nothing to show in this folder.</string>
+    <!-- What the list of a .zip says in place of its contents. The second is a zip handed
+         over as a stream rather than a file, which has to be read from the start and so
+         cannot be looked inside; a saved copy is a file. -->
+    <string name="archive_unreadable">Gander can\'t read this zip. It may be damaged, or not a zip at all.</string>
+    <string name="archive_not_seekable">Gander can\'t look inside this zip from where it is. Save a copy from the menu and open that instead.</string>
+    <string name="archive_too_large">This zip holds more files than Gander can list.</string>
+    <!-- Beside a file in a zip that is listed and cannot be opened, and what tapping it says.
+         A password-protected file opens with its password, and says why when it cannot: it is
+         locked with PKWARE's Strong Encryption, which next to nothing writes. -->
+    <string name="entry_locked">Password protected</string>
+    <string name="entry_locked_unsupported">This file is locked in a way Gander can\'t unlock</string>
+    <string name="entry_unsupported">Packed in a format Gander can\'t unpack</string>
+    <string name="entry_unsupported_open">This file is packed in a way Gander can\'t read</string>
+    <!-- Asking for a file's password, in the words the PDF viewer asks for a PDF's -->
+    <string name="password_title">This file is password protected</string>
+    <string name="password_message">Enter its password to open it.</string>
+    <string name="password">Password</string>
+    <string name="password_open">Open</string>
+    <string name="password_wrong">That password did not work.</string>
+    <!-- Choosing how a zip's names are read, when Gander's guess is wrong. Named by language
+         first, since that is what a reader recognises, and by code page after it, which is
+         what anyone who knows the term is looking for. -->
+    <string name="name_encoding">File name encoding</string>
+    <string name="name_encoding_automatic">Automatic</string>
+    <string name="name_encoding_automatic_as">Automatic: %1$s</string>
+    <string name="encoding_utf8">Unicode (UTF-8)</string>
+    <string name="encoding_gbk">Chinese, Simplified (GBK)</string>
+    <string name="encoding_big5">Chinese, Traditional (Big5)</string>
+    <string name="encoding_sjis">Japanese (Shift_JIS)</string>
+    <string name="encoding_korean">Korean (EUC-KR)</string>
+    <string name="encoding_cp866">Cyrillic (DOS 866)</string>
+    <string name="encoding_cp1251">Cyrillic (Windows 1251)</string>
+    <string name="encoding_cp850">Western European (DOS 850)</string>
+    <string name="encoding_cp437">English (DOS 437)</string>
+    <string name="encoding_cp852">Central European (DOS 852)</string>
+    <string name="encoding_cp737">Greek (DOS 737)</string>
+    <string name="encoding_cp857">Turkish (DOS 857)</string>
+    <string name="encoding_cp862">Hebrew (DOS 862)</string>
+    <string name="encoding_cp720">Arabic (DOS 720)</string>
+    <string name="encoding_cp874">Thai (874)</string>
+    <string name="encoding_cp775">Baltic (DOS 775)</string>
+    <string name="encoding_cp1258">Vietnamese (1258)</string>
     <string name="removed">Removed</string>
     <!-- Releasing a folder grant is the one thing on this screen that cannot be undone:
          Android has no way to re-take a released permission, so the reader would have to
