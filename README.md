@@ -5,8 +5,9 @@
 # Gander 🪿
 
 **Take a gander at any file.** A tiny, open source, fully offline **file viewer for Android** that opens
-PDF, Word (`.docx`), Excel, PowerPoint (`.pptx`), photos, videos, audio, Markdown, text and code
-in one app, with **zero permissions, no ads, no tracking and no internet access at all**.
+PDF, Word (`.docx`), Excel, PowerPoint (`.pptx`), photos, videos, audio, Markdown, text, code
+and `.zip` archives in one app, with **zero permissions, no ads, no tracking and no internet
+access at all**.
 
 > [!NOTE]
 > **Gander is coming to Google Play.** [Join the mailing list](https://groups.google.com/g/gander-testers)
@@ -42,6 +43,7 @@ It cannot phone home because it does not even hold the INTERNET permission.
 ## Features
 
 - **One viewer for everything**: documents, spreadsheets, slides, images, video, audio, Markdown, code
+- **Opens `.zip` files**: a zip lists like a folder, and each file in it opens in its usual viewer, read straight out of the archive with nothing unzipped to the phone
 - **Pinch zoom and smooth scrolling** everywhere, with deep zoom into huge photos (tiled decoding)
 - **Recent files** with thumbnail previews (image, video frame, PDF first page)
 - **Folder browsing** through one-time system grants, still without any storage permission
@@ -69,6 +71,13 @@ It cannot phone home because it does not even hold the INTERNET permission.
 | Audio | MP3, M4A, AAC, FLAC, WAV, OGG, Opus, AMR | Media3 ExoPlayer |
 | Markdown | `.md` rendered as formatted HTML | marked + DOMPurify, offline |
 | Text and code | `.txt` `.json` `.xml` logs, most source files | Text viewer |
+| Archives | `.zip` | Listed like a folder, entries opened in place |
+
+A `.zip` opens as a list laid out like a folder, and each file in it opens in the viewer it
+would get on its own, read straight out of the archive: nothing is unzipped or written to the
+phone. Password-protected entries open with their password, and names written by Windows zip
+tools in other languages are read as names rather than question marks, with **File name
+encoding** in the menu to correct a wrong guess.
 
 Anything else, including files with no extension at all, offers **View as text**, which
 shows the raw contents without renaming the file. Large files load 5 MB at a time with a
@@ -162,9 +171,11 @@ install of a release from here; the official signing certificate is above.
 ## Architecture in one paragraph
 
 `ViewerActivity` routes by file extension first, MIME type second (`FileKind.kt`),
-into one of three surfaces: a tiled `SubsamplingScaleImageView` for photos, Media3
-ExoPlayer for video and audio, or a sandboxed WebView for everything rendered by
-vendored JS libraries (`app/src/main/assets/viewer/`), PDF included. Documents
+into one of four surfaces: a tiled `SubsamplingScaleImageView` for photos, Media3
+ExoPlayer for video and audio, a sandboxed WebView for everything rendered by
+vendored JS libraries (`app/src/main/assets/viewer/`), PDF included, or a list
+(`ArchiveBrowser.kt`) for a `.zip`, whose entries `ArchiveProvider` serves back to
+those same surfaces without ever touching the disk. Documents
 under 16 MB are handed to the WebView whole; larger ones are served in ranges so
 only the pages being read are held in memory. The home screen (`MainActivity`) lists recents
 (persisted SAF grants) and granted folders (DocumentsContract child queries), with
