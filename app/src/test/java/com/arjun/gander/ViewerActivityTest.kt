@@ -9,6 +9,7 @@ import android.os.Looper
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -656,6 +657,30 @@ class ViewerActivityTest {
 
         val raw = "季度报告".toByteArray(charset("GBK"))
         assertThat(controller.titles()).contains(String(raw, charset("Big5")))
+    }
+
+    /**
+     * The list waits on the bar Save a copy reports on, and leaves it alone while a save is
+     * using it: reading the names again used to hide it partway through a save.
+     */
+    @Test
+    fun aZipsListLeavesTheBarToASaveUnderWay() {
+        val controller = zip(FixtureProvider.uriFor("names-gbk.zip"))
+        val activity = controller.get()
+        val bar = activity.findViewById<LinearProgressIndicator>(R.id.saveProgress)
+        // As Save a copy leaves it partway through
+        activity.saving = true
+        bar.isIndeterminate = false
+        bar.visibility = android.view.View.VISIBLE
+        activity.findViewById<MaterialToolbar>(R.id.toolbar).menu
+            .performIdentifierAction(controller.encodingItem().itemId, 0)
+        val box = ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        val choices = box.listView.adapter
+        val big5 = (0 until choices.count).single { choices.getItem(it).toString() == context.getString(R.string.encoding_big5) }
+        box.listView.performItemClick(null, big5, big5.toLong())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertThat(bar.visibility).isEqualTo(android.view.View.VISIBLE)
+        assertThat(bar.isIndeterminate).isFalse()
     }
 
     /** And the choice survives a recreation, which reads the index again. */

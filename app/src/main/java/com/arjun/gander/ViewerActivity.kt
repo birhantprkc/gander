@@ -116,6 +116,13 @@ class ViewerActivity : AppCompatActivity() {
     @androidx.annotation.VisibleForTesting
     internal var archiveLoader: java.util.concurrent.Executor? = null
 
+    /**
+     * Whether Save a copy is reporting on the bar under the toolbar. A zip's list waits on the
+     * same bar and leaves it alone meanwhile.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal var saving = false
+
     /** The file the destination picker is currently open for. */
     private var copySource: Uri? = null
 
@@ -162,6 +169,7 @@ class ViewerActivity : AppCompatActivity() {
             bar.progress = 0
         }
         bar.visibility = View.VISIBLE
+        saving = true
 
         // Shut down immediately after submitting: the already-queued copy still
         // runs to completion, and the worker thread ends with it instead of idling
@@ -204,6 +212,7 @@ class ViewerActivity : AppCompatActivity() {
             // it opens, it looks complete, and it is not.
             if (!saved) runCatching { DocumentsContract.deleteDocument(contentResolver, dest) }
             main.post {
+                saving = false
                 if (!isDestroyed) bar.visibility = View.GONE
                 Toast.makeText(
                     app,
@@ -1318,6 +1327,7 @@ class ViewerActivity : AppCompatActivity() {
             // The bar under the toolbar that a save reports on, doing the same job for the
             // list that the home screen's does for a folder
             progress = findViewById(R.id.saveProgress),
+            saving = { saving },
             archive = uri,
             archiveName = name,
             restoredFolder = state?.getString(STATE_ARCHIVE_FOLDER),

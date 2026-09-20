@@ -117,6 +117,8 @@ internal class ArchiveBrowser(
     private val activity: AppCompatActivity,
     private val toolbar: MaterialToolbar,
     private val progress: LinearProgressIndicator,
+    /** Whether Save a copy is reporting on [progress], which is then left to it. */
+    private val saving: () -> Boolean,
     private val archive: Uri,
     private val archiveName: String,
     /** Where the reader was before a configuration change, or null for the top. */
@@ -217,14 +219,13 @@ internal class ArchiveBrowser(
      * first, so the bar comes up if it is taking long enough to notice.
      */
     private fun load() {
-        val announce = announceAfterADelay()
+        val quiet = announceAfterADelay()
         val chosen = ZipNames.CHOICES.firstOrNull { it.first == codePage }?.second
         loader.execute {
             val result = read(chosen)
             main.post {
-                main.removeCallbacks(announce)
+                quiet()
                 if (activity.isDestroyed) return@post
-                progress.visibility = View.GONE
                 when (result) {
                     is Listing.Ready -> {
                         tree = result.tree
@@ -243,16 +244,27 @@ internal class ArchiveBrowser(
         }
     }
 
-    /** The bar under the toolbar, if what is about to happen takes long enough to notice. */
-    private fun announceAfterADelay(): Runnable {
+    /**
+     * The bar under the toolbar, if what is about to happen takes long enough to notice, and
+     * what takes it down again once it has happened. The bar is Save a copy's first: while a
+     * save is reporting on it, it is left alone, and it is only ever taken down by whoever put
+     * it up, which is what kept a quick reread of the names from hiding a save partway through.
+     */
+    private fun announceAfterADelay(): () -> Unit {
+        var shown = false
         // Indeterminate, set before it shows: the bar is the one a save reports on, and it is
         // left determinate at nought, which would draw as an empty track that never moves
         val announce = Runnable {
+            if (saving()) return@Runnable
             progress.isIndeterminate = true
             progress.visibility = View.VISIBLE
+            shown = true
         }
         main.postDelayed(announce, PROGRESS_DELAY_MS)
-        return announce
+        return {
+            main.removeCallbacks(announce)
+            if (shown && !saving()) progress.visibility = View.GONE
+        }
     }
 
     private fun read(chosen: Charset?): Listing = try {
@@ -358,7 +370,7 @@ internal class ArchiveBrowser(
 
     /** Tries [password] on [entry] off the main thread, and says what came of it on it. */
     private fun unlock(entry: ArchiveEntry, password: String, then: (Unlock) -> Unit) {
-        val announce = announceAfterADelay()
+        val quiet = announceAfterADelay()
         loader.execute {
             val result = try {
                 val afd = activity.contentResolver.openAssetFileDescriptor(archive, "r")
@@ -376,9 +388,8 @@ internal class ArchiveBrowser(
                 Unlock.FAILED
             }
             main.post {
-                main.removeCallbacks(announce)
+                quiet()
                 if (activity.isDestroyed) return@post
-                progress.visibility = View.GONE
                 if (result == Unlock.OPENS) ArchivePasswords.remember(archive, password)
                 if (result == Unlock.FAILED) {
                     Toast.makeText(activity, R.string.archive_unreadable, Toast.LENGTH_SHORT).show()
