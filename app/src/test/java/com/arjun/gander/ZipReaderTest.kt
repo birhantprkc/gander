@@ -7,8 +7,11 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
 import java.util.zip.ZipException
+import org.junit.After
 import org.junit.Assert.assertThrows
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -20,6 +23,24 @@ import org.junit.Test
  * comment after the end record, ZIP64 records, entries nothing can open.
  */
 class ZipReaderTest {
+
+    /**
+     * A zip's own times carry no zone and its extended ones carry UTC, and in UTC a fixture
+     * written at midnight reads the same either way: a test of which of the two is used passes
+     * whichever it is. CI runs in UTC, so these run in a zone that is neither UTC nor a whole
+     * number of hours from it.
+     */
+    private val zone = TimeZone.getDefault()
+
+    @Before
+    fun inAZoneThatIsNotUtc() {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"))
+    }
+
+    @After
+    fun backToTheZoneTheMachineKeeps() {
+        TimeZone.setDefault(zone)
+    }
 
     private fun source(file: File): ZipSource {
         val raf = RandomAccessFile(file, "r")

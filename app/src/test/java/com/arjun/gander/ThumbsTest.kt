@@ -3,7 +3,6 @@ package com.arjun.gander
 import android.content.Context
 import android.net.Uri
 import android.os.Looper
-import android.os.SystemClock
 import android.view.View
 import android.widget.ImageView
 import androidx.test.core.app.ApplicationProvider
@@ -69,7 +68,6 @@ class ThumbsTest {
         ).forEach { assertThat(Thumbs.supported(it, "")).isFalse() }
     }
 
-    /** Every kind is decided one way or the other; none of them throws. */
     /**
      * Inside a zip: photos however they are packed, video only as a window, never a PDF. The
      * fixture's photo is stored and its PDF compressed, so the stored cases are built here.
@@ -88,6 +86,7 @@ class ThumbsTest {
         assertThat(Thumbs.supportedInArchive(FileKind.PDF, "pdf", stored)).isFalse()
     }
 
+    /** Every kind is decided one way or the other; none of them throws. */
     @Test
     fun everyKindHasAnAnswer() {
         FileKind.entries.forEach { Thumbs.supported(it, "bin") }
@@ -186,9 +185,12 @@ class ThumbsTest {
         val into = ImageView(context).apply { visibility = View.GONE }
         val badge = View(context)
         Thumbs.load(context, uri, "png", into, badge)
-        val deadline = SystemClock.uptimeMillis() + 10_000
+        // Real time, not SystemClock: Robolectric's clock stands still unless a test moves it,
+        // so a deadline on that one never arrives and a thumbnail that never comes hangs the run
+        // rather than failing it.
+        val deadline = System.nanoTime() + 10_000_000_000
         while (into.visibility != View.VISIBLE) {
-            check(SystemClock.uptimeMillis() < deadline) { "no thumbnail for $uri" }
+            check(System.nanoTime() < deadline) { "no thumbnail for $uri" }
             shadowOf(Looper.getMainLooper()).idle()
             Thread.sleep(20)
         }
