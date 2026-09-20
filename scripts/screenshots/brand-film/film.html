@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gander: the film</title>
+<style>
+  @font-face { font-family: Jost; src: url(fonts/Jost.ttf); font-weight: 100 900; font-style: normal; font-display: block; }
+  @font-face { font-family: Jost; src: url(fonts/Jost-Italic.ttf); font-weight: 100 900; font-style: italic; font-display: block; }
+  html, body { margin: 0; height: 100%; background: #0d0b07; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #stage { display: block; width: min(100vw, calc((100vh - 56px) * 16 / 9)); aspect-ratio: 16 / 9; }
+  #ui { width: min(100vw, calc((100vh - 56px) * 16 / 9)); height: 56px; display: flex; gap: 16px; align-items: center;
+        color: #cfc5b2; font: 13px ui-monospace, Menlo, monospace; box-sizing: border-box; padding: 0 12px; }
+  #scrub { flex: 1; accent-color: #e2795f; }
+  body.render #ui { display: none; }
+  body.render #stage { width: 100vw; height: 100vh; }
+  text { font-kerning: normal; text-rendering: geometricPrecision; }
+</style>
+</head>
+<body>
+<svg id="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="ui"><input id="scrub" type="range" min="0" max="60" step="0.0166667" value="0"><span id="time"></span></div>
+<script src="src/core.js"></script>
+<script src="src/style.js"></script>
+<script src="src/parts.js"></script>
+<script src="src/goose.js"></script>
+<script>window.F.scenes = [];</script>
+<script src="src/scenes/open.js"></script>
+<script src="src/scenes/formats.js"></script>
+<script src="src/scenes/viewer.js"></script>
+<script src="src/scenes/acts.js"></script>
+<script src="src/scenes/close.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
