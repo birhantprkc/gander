@@ -144,6 +144,39 @@ class ZipNamesTest {
         assertThat(decode(names, "IBM437", english)).isEqualTo(names)
     }
 
+    /**
+     * The same trap with the double-byte code pages, which is worse: read two bytes to a
+     * character, a Western name's accented letter pairs with the letter beside it into a real
+     * and everyday Chinese or Japanese one. "Größe.xlsx" came out "Gr批e.xlsx" and "Año
+     * 2024.xlsx" came out "A寸 2024.xlsx", on every phone but a Turkish or Central European
+     * one, because both readings are made of characters people write and the tie went by the
+     * order of the candidates. What gives it away is again where they sit: alone against a
+     * word of English letters, where these languages are written in runs of their own.
+     */
+    @Test
+    fun aWesternNameFromWindowsIsNotReadAsChineseOrJapanese() {
+        val names = listOf(
+            "Größe.xlsx", "Crème.docx", "Año 2024.xlsx", "Mañana.txt", "Señor.docx",
+            "Björk.mp3", "Räkning.pdf", "Ação.pdf",
+        )
+        listOf(english, chinese, japanese, korean, taiwan).forEach { locale ->
+            names.forEach { name ->
+                assertThat(decode(listOf(name), "IBM850", locale)).containsExactly(name)
+            }
+        }
+    }
+
+    /** And a name that really is written in one of them still reads as itself on those phones. */
+    @Test
+    fun aNameThatIsReallyCjkStillReadsAsItself() {
+        listOf(english, chinese, japanese, korean).forEach { locale ->
+            assertThat(decode(listOf("テスト.txt"), "windows-31j", locale)).containsExactly("テスト.txt")
+            assertThat(decode(listOf("会議資料.docx"), "windows-31j", locale)).containsExactly("会議資料.docx")
+            assertThat(decode(listOf("iPhone写真.jpg"), "windows-31j", locale)).containsExactly("iPhone写真.jpg")
+            assertThat(decode(listOf("工作总结.docx"), "GBK", locale)).containsExactly("工作总结.docx")
+        }
+    }
+
     /** Not Explorer, but some Russian tools wrote zips in the Windows code page instead. */
     @Test
     fun russianInTheWindowsCodePageIsNotReadAsDos() {

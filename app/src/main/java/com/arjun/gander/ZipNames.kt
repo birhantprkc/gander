@@ -59,13 +59,21 @@ internal class DecodedNames(
  * Korean, the bytes are the syllables Korean is mostly written in, and read as Chinese, the
  * same bytes are characters Chinese rarely uses. See [COMMON_BONUS].
  *
+ * Western Europe and those same code pages are the other such pair, the other way about. An
+ * accented letter and the letter beside it are two bytes, and two bytes are one character of a
+ * language written that way, so "Größe.xlsx" reads as "Gr批e.xlsx" as readily as itself, out of
+ * characters just as everyday. What separates those two is where the character sits: see
+ * [wedgedAgainstAnAsciiWord].
+ *
  * A guess can still be wrong, most of all for an archive of one short name, so the reader
  * can also say which code page it is: [CHOICES].
  */
 internal object ZipNames {
 
-    /** What a candidate's output is judged against. */
-    private enum class Script { GB, BIG5, SJIS, KOREAN, CYRILLIC, GREEK, LATIN }
+    /** What a candidate's output is judged against. [doubleByte] is the ones written two bytes to a character. */
+    private enum class Script(val doubleByte: Boolean = false) {
+        GB(true), BIG5(true), SJIS(true), KOREAN(true), CYRILLIC, GREEK, LATIN
+    }
 
     /** One code page, under each name a runtime might know it by, preferred first. */
     private class Candidate(val script: Script, vararg names: String) {
@@ -299,19 +307,43 @@ internal object ZipNames {
             val width = Character.charCount(cp)
             if (cp >= 0x80) {
                 counted++
-                sum += when (c.script) {
-                    Script.GB -> gb(cp, encode(encoder, text, i, width))
-                    Script.BIG5 -> big5(cp, encode(encoder, text, i, width))
-                    Script.SJIS -> sjis(cp, encode(encoder, text, i, width))
-                    Script.KOREAN -> korean(cp, encode(encoder, text, i, width))
-                    Script.CYRILLIC -> letterOf(Character.UnicodeScript.CYRILLIC, cp, text, i, width)
-                    Script.GREEK -> letterOf(Character.UnicodeScript.GREEK, cp, text, i, width)
-                    Script.LATIN -> latin(cp)
+                sum += when {
+                    c.script.doubleByte && wedgedAgainstAnAsciiWord(text, i, width) -> 0.0
+                    else -> when (c.script) {
+                        Script.GB -> gb(cp, encode(encoder, text, i, width))
+                        Script.BIG5 -> big5(cp, encode(encoder, text, i, width))
+                        Script.SJIS -> sjis(cp, encode(encoder, text, i, width))
+                        Script.KOREAN -> korean(cp, encode(encoder, text, i, width))
+                        Script.CYRILLIC -> letterOf(Character.UnicodeScript.CYRILLIC, cp, text, i, width)
+                        Script.GREEK -> letterOf(Character.UnicodeScript.GREEK, cp, text, i, width)
+                        Script.LATIN -> latin(cp)
+                    }
                 }
             }
             i += width
         }
         return if (counted == 0) 0.0 else sum / counted
+    }
+
+    /**
+     * Whether the character at [at] stands alone against a word of ASCII letters.
+     *
+     * That is what a Western name's accented letter becomes when the name is read two bytes to
+     * a character: it pairs up with the letter beside it, and "Größe" comes out as "Gr批e",
+     * "Año" as "A寸". These languages are written in runs of their own characters, so one of
+     * them alone against an English word is a reading nobody wrote, however everyday the
+     * character itself is. Otherwise the two readings score the same, and the tie went to the
+     * one nobody wrote.
+     */
+    private fun wedgedAgainstAnAsciiWord(text: String, at: Int, width: Int): Boolean {
+        val before = text.getOrNull(at - 1)
+        val after = text.getOrNull(at + width)
+        // Another character outside ASCII on either side is a run of them, which is how these
+        // languages are written; the space and the dot of a name's own ending are not.
+        if (before != null && before.code >= 0x80) return false
+        if (after != null && after.code >= 0x80) return false
+        val asciiLetter = { ch: Char? -> ch != null && ch.code < 0x80 && ch.isLetter() }
+        return asciiLetter(before) || asciiLetter(after)
     }
 
     /** One character's bytes in the candidate's own code page. */
