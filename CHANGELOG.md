@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- PDFs are now drawn by pdf.js 6.3.289, up from 5.7.284, which falls inside CVE-2026-16633.
+  That flaw needs pdf.js's own scripting switched on, which Gander has never done, so it could
+  not reach Gander, and the policy every viewer page now carries closes it a second way.
+  Updating takes the version out of the range that security scanners flag.
+
 - Another app can no longer make Gander open Gander's own files, such as its list of recent
   files or the thumbnails of your documents. The viewer used to accept a file path, or an
   address on one of Gander's own storage providers, from any app, and read it with Gander's

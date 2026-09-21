@@ -937,7 +937,7 @@ function drawTile(req) {
      * is the display list run a second time, not the page read a second time.
      *
      * It is still the whole display list though, operators outside this rectangle
-     * included. 5.7.284 has what is needed to skip those, on the public API:
+     * included. 6.3.289 has what is needed to skip those, on the public API:
      * `recordOperations: true` fills PDFPageProxy.recordedBBoxes, and `operationsFilter`
      * is consulted per operator. Upstream's own detail view does exactly that, in the
      * web/ layer this file does not vendor. It is left alone because the recording has to
@@ -1146,7 +1146,7 @@ function scheduleRefine() {
 function textLayerFor(slot, page, viewport) {
   /*
    * pdf.js reads this off the container to size the glyphs. It is --total-scale-factor
-   * in 5.7.284; the older --scale-factor is not read by this build at all.
+   * in 6.3.289; the older --scale-factor is not read by this build at all.
    *
    * Times userUnit, and that factor is easy to miss. PageViewport keeps .scale as the
    * number it was handed and multiplies by userUnit only inside its own matrix, so the
