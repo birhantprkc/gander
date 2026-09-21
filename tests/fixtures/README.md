@@ -49,6 +49,7 @@ should stay obviously so.
 | `deck.pptx` | Three slides, for the PPTXjs completion poll. |
 | `notes.md` | Markdown rendering and DOMPurify: contains a `<script>` and an `onerror` that must not survive. |
 | `plain.txt` | Text viewer, UTF-8. |
+| `snapshot.json` | Issue #32. A .json file as they arrive, all on one line. Its id is 2<sup>53</sup>+1, the smallest whole number a double cannot hold, so laying it out by parsing and restringifying would round it and be caught. Carries an accent and an emoji, both inside strings the formatter copies through. |
 | `utf16le.txt`, `utf16be.txt` | `vwEncodingOf` byte order mark sniffing. The mark itself must not appear in the output. |
 | `unknown.xyz` | An extension nothing claims, so the unsupported page offers to read it as text. |
 | `legacy.doc` | Binary Word, which Gander deliberately does not open. OLE2 signature only. |

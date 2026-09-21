@@ -71,6 +71,16 @@ class ViewerFormatsTest {
         expect("plain.txt", "#content", "Plain text")
 
     /**
+     * The space after the colon is only there if the formatter ran: the fixture
+     * is written with no spacing at all. Worth a device test as well as the
+     * browser ones for the same reason the sanitiser below is, that the WebView
+     * is where it actually runs.
+     */
+    @Test
+    fun aJsonFileIsLaidOutOnTheDevice() =
+        expect("snapshot.json", "#content", "\"app\": \"com.example.reader\"")
+
+    /**
      * Markdown is untrusted input and DOMPurify is what stands between it and
      * the DOM. Worth one device test as well as the browser one, because the
      * WebView is where it would actually matter.
