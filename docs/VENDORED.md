@@ -22,7 +22,7 @@ commit.
 | `wasm/jbig2.wasm` | PDFium's JBIG2 decoder, compiled and redistributed by pdf.js | via pdf.js 5.7.284 | BSD-3-Clause and Apache-2.0 | https://pdfium.googlesource.com/pdfium/ |
 | `wasm/LICENSE_*` (4 files) | licence texts for the two decoders above | via pdf.js 5.7.284 | see above | https://github.com/mozilla/pdf.js |
 | `jszip3.min.js` | JSZip | 3.10.1 | MIT or GPL-3.0 dual | https://github.com/Stuk/jszip |
-| `docx-preview.min.js` | docx-preview | 0.3.x (jsdelivr latest, fetched 2026-07-19) | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
+| `docx-preview.min.js` | docx-preview | 0.4.0 | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
 | `xlsx.full.min.js` | SheetJS Community Edition | 0.20.3 | Apache-2.0 | https://git.sheetjs.com/sheetjs/sheetjs |
 | `marked.min.js` | marked | 15.0.12 | MIT | https://github.com/markedjs/marked |
 | `purify.min.js` | DOMPurify | 3.4.12 | Apache-2.0 or MPL-2.0 dual | https://github.com/cure53/DOMPurify |
