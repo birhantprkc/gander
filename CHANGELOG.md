@@ -2,13 +2,13 @@
 
 ## Unreleased
 
-- Rename, in the viewer's menu, renames a file you picked from your phone's storage or its
-  Downloads, whether just now or from Recents, and asks for no permission. Files picked from the
-  picker's Recent, Images, Videos, Audio or Documents sections can't be renamed, since the part
-  of Android that serves them doesn't rename files, and files in a folder you added stay
-  read-only. Gander keeps the picker's access to change a file it can rename, and removing the
-  file from Recents gives that back. Files already in Recents get Rename the next time they are
-  picked.
+- Rename, in the viewer's menu, renames a file in a folder you added, or one you picked from your
+  phone's storage or its Downloads, and asks for no permission. Files picked from the picker's
+  Recent, Images, Videos, Audio or Documents sections can't be renamed, since the part of Android
+  that serves them doesn't rename files. To do this Gander keeps the access to change files that
+  Android hands over along with the access to open them: for a folder until you remove it, and
+  for a picked file until it leaves Recents. Folders added and files picked before this version
+  get Rename once added or picked again.
 
 - On a phone whose Android System WebView is too old for PDFs, the message saying so now stays
   on screen. It was being replaced a moment later by "Something went wrong while rendering" and

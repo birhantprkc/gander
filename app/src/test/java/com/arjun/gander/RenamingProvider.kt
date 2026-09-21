@@ -132,7 +132,13 @@ internal class RenamingProvider : ContentProvider() {
         if (stableIds) return Bundle()
         docs.remove(id)
         docs[unique] = doc
-        return Bundle().apply { putParcelable(EXTRA_URI, uriFor(unique)) }
+        // Through the folder it was reached by, as DocumentsProvider answers one in a tree
+        val renamed = if (DocumentsContract.isTreeUri(uri)) {
+            DocumentsContract.buildDocumentUriUsingTree(uri, unique)
+        } else {
+            uriFor(unique)
+        }
+        return Bundle().apply { putParcelable(EXTRA_URI, renamed) }
     }
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null

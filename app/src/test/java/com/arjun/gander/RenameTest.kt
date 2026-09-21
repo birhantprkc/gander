@@ -83,17 +83,22 @@ class RenameTest {
         assertThat(canRename(picked, writable, holdsWrite = true)).isFalse()
     }
 
-    /**
-     * Folders are read-only. Android does hand over write access to one as it is added, until
-     * Gander closes, and a file in it is not offered Rename even then.
-     */
+    private val addedFolder = DocumentsContract.buildTreeDocumentUri(
+        "com.android.externalstorage.documents", "primary:Download"
+    )
+
+    /** A file in a folder the reader added, whose write access the home screen keeps. */
     @Test
-    fun notAFileBrowsedInAFolder() {
-        val tree = DocumentsContract.buildTreeDocumentUri(
-            "com.android.externalstorage.documents", "primary:Download"
-        )
-        val inFolder = DocumentsContract.buildDocumentUriUsingTree(tree, "primary:Download/report.pdf")
-        assertThat(canRename(inFolder, renamable, holdsWrite = true)).isFalse()
+    fun aFileInAnAddedFolderIsOfferedItToo() {
+        val inFolder = DocumentsContract.buildDocumentUriUsingTree(addedFolder, "primary:Download/report.pdf")
+        assertThat(canRename(inFolder, renamable, holdsWrite = true)).isTrue()
+    }
+
+    /** Never the folder itself: renaming it would end Android's grant on it. */
+    @Test
+    fun neverTheAddedFolderItself() {
+        val folder = DocumentsContract.buildDocumentUriUsingTree(addedFolder, "primary:Download")
+        assertThat(canRename(folder, renamable, holdsWrite = true)).isFalse()
     }
 
     @Test
@@ -204,13 +209,21 @@ class RenameTest {
         assertThat(view(uri).renameOffered()).isFalse()
     }
 
-    /** The document opens, flags and all, and is still not offered it: folders are read-only. */
     @Test
-    fun oneOpenedFromAFolderDoesNot() {
+    fun oneOpenedFromAFolderHasItToo() {
+        provider.add("six-pages.pdf")
+        assertThat(view(RenamingProvider.inFolder("six-pages.pdf")).renameOffered()).isTrue()
+    }
+
+    @Test
+    fun aFileInAFolderIsRenamedWhereItIs() {
         provider.add("six-pages.pdf")
         val controller = view(RenamingProvider.inFolder("six-pages.pdf"))
-        assertThat(controller.title()).isEqualTo("six-pages.pdf")
-        assertThat(controller.renameOffered()).isFalse()
+        controller.askToRename().submit("Survey.pdf")
+
+        assertThat(provider.renames).containsExactly("six-pages.pdf" to "Survey.pdf")
+        assertThat(controller.title()).isEqualTo("Survey.pdf")
+        assertThat(controller.loadedUrl()).contains("name=Survey.pdf")
     }
 
     @Test

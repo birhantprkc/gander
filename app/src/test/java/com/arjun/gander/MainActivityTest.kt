@@ -277,7 +277,7 @@ class MainActivityTest {
     // ---------------------------------------------------------------
 
     /** Grants a folder holding one subfolder and two files, and answers its tree URI. */
-    private fun grantedFolder(): android.net.Uri {
+    private fun grantedFolder(write: Boolean = false): android.net.Uri {
         FakeDocumentsProvider.install()
             .folder(
                 "root", "Documents",
@@ -288,7 +288,9 @@ class MainActivityTest {
             )
         val tree = FakeDocumentsProvider.treeUri()
         context.contentResolver.takePersistableUriPermission(
-            tree, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            tree,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                (if (write) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
         )
         return tree
     }
@@ -443,6 +445,37 @@ class MainActivityTest {
 
         assertThat(persistedUris()).contains(tree.toString())
         assertThat(controller.rowTitles()).contains("Documents")
+    }
+
+    /** What renaming a file in the folder took goes too: all of the grant, not its read half. */
+    @Test
+    fun removingAFolderGivesBackWriteAccessToo() {
+        val tree = grantedFolder(write = true)
+        val controller = home()
+        controller.longPressRow("Documents")
+
+        latestDialog()!!.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(context.mainLooper).idle()
+
+        assertThat(persistedUris()).doesNotContain(tree.toString())
+    }
+
+    /** A folder is kept with write access as well as read, which renaming a file in it takes. */
+    @Test
+    fun anAddedFolderKeepsWriteAccess() {
+        grantedFolder()
+        val controller = home()
+        controller.clickRow(context.getString(R.string.add_folder))
+        val activity = shadowOf(controller.get())
+        val request = activity.nextStartedActivityForResult
+        val added = FakeDocumentsProvider.treeUri("added")
+
+        activity.receiveResult(request.intent, android.app.Activity.RESULT_OK, Intent().setData(added))
+        shadowOf(context.mainLooper).idle()
+
+        val grant = context.contentResolver.persistedUriPermissions.single { it.uri == added }
+        assertThat(grant.isReadPermission).isTrue()
+        assertThat(grant.isWritePermission).isTrue()
     }
 
     @Test

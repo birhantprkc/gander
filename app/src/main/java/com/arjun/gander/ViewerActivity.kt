@@ -347,10 +347,11 @@ class ViewerActivity : AppCompatActivity() {
      *
      * Read, and write as well for a file that can be renamed from here: the picker hands over
      * both, and write is what Rename needs once the picker's own grant has lapsed, as it does
-     * when Gander closes. A file that cannot be renamed keeps read alone, and so Gander holds
-     * write access to nothing it has no use for. Recents gives both back when the file leaves it.
+     * when Gander closes. A file that cannot be renamed keeps read alone. Recents gives both
+     * back when the file leaves it.
      *
-     * Throws where there is nothing to keep, which is Open with and a file in a folder.
+     * Throws where there is nothing to keep: Open with, and a file in a folder, which the
+     * folder's own grant covers.
      */
     private fun keepGrant(uri: Uri, renamable: Boolean) {
         val read = Intent.FLAG_GRANT_READ_URI_PERMISSION

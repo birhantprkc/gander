@@ -27,26 +27,30 @@ import java.util.concurrent.Executor
  * and Gander holds write access to it.
  *
  * In practice that is a file picked from the phone's storage or its Downloads, then or later from
- * Recents, since the viewer keeps the write access along with the read for exactly this, and a
+ * Recents, since the viewer keeps the write access along with the read for exactly this; a file in
+ * a folder the reader added, whose write access the home screen keeps for the same reason; and a
  * file another app handed over with write access, which the system Files app does. Not one the
  * picker serves from its Recent, Images, Videos, Audio or Documents sections: those come from
- * Android's media provider, which renames nothing. Never a file browsed in a granted folder:
- * folders are read-only, and the write access Android also hands over when one is added, which
- * lasts only while Gander stays open, is left unused so that Rename does not come and go with it.
- * Never a file inside a zip either, of which nothing is written to the phone.
+ * Android's media provider, which renames nothing. Never a file inside a zip either, of which
+ * nothing is written to the phone.
  */
 
 /**
- * Whether the file at [uri] can be renamed from the viewer: a document reached on its own rather
- * than through a folder, that its provider says it can rename, going by the [flags] the provider
- * reported for it, and that Gander [holdsWrite] access to.
+ * Whether the file at [uri] can be renamed from the viewer: a document, reached on its own or
+ * through a folder the reader added, that its provider says it can rename, going by the [flags]
+ * the provider reported for it, and that Gander [holdsWrite] access to.
+ *
+ * Never an added folder itself. The viewer only shows files, and renaming the folder would end
+ * Android's grant on it, so it would drop off the home screen.
  */
-internal fun canRename(uri: Uri, flags: Int, holdsWrite: Boolean): Boolean =
-    uri.scheme == "content" &&
-        // content://<authority>/document/<id>; a folder's files are tree/<id>/document/<id>
-        uri.pathSegments.size == 2 && uri.pathSegments[0] == "document" &&
-        flags and DocumentsContract.Document.FLAG_SUPPORTS_RENAME != 0 &&
-        holdsWrite
+internal fun canRename(uri: Uri, flags: Int, holdsWrite: Boolean): Boolean {
+    if (uri.scheme != "content") return false
+    val path = uri.pathSegments
+    // content://<authority>/document/<id>, or tree/<folder id>/document/<id> for one in a folder
+    val document = (path.size == 2 && path[0] == "document") ||
+        (path.size == 4 && path[0] == "tree" && path[2] == "document" && path[3] != path[1])
+    return document && flags and DocumentsContract.Document.FLAG_SUPPORTS_RENAME != 0 && holdsWrite
+}
 
 /** What keeps a typed name from being given to a file. */
 internal enum class NameProblem { EMPTY, BAD_CHARACTER }
