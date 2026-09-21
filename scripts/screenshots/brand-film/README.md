@@ -143,7 +143,7 @@ node render.mjs --cues                      # out/cues.json: when everything in 
 .venv/bin/python audio/voice.py --phonemes  # read this first: how each line will be pronounced
 .venv/bin/python audio/voice.py --check     # the narration, and a recogniser's opinion of it
 python3 audio/score.py                      # score, sound design and mix: out/soundtrack.wav
-.venv/bin/python audio/check.py             # what can be checked without ears
+.venv/bin/python audio/check.py             # a sound on every cue, and the words through the mix
 python3 audio/octaves.py out/*.wav          # where the energy is, octave by octave
 audio/mux.sh out/gander-film.mp4 out/soundtrack.wav out/gander-film-sound.mp4
 ```
@@ -183,11 +183,11 @@ phonemes (between slashes in `LINES`) rather than a cleverer spelling.
 `audio/voice.py --voice bm_george` (or any Kokoro voice) changes the narrator;
 `out/soundtrack-no-voice.wav` is the same mix without one.
 
-**It was mixed by measurement, because it was written by something that cannot hear.** That
-is worth knowing before trusting it, and it is why the checks exist. The voice sits 11.6 dB
+**The mix is held to measurements**, and `check.py` and `octaves.py` make them again on
+every build. The voice sits 11.6 dB
 over everything else while it speaks (the first mix had it at 0.3); a speech recogniser given
 the *finished mix* returns all 78 words of the script; every one of the 81 cues that should be
 a transient has a sound starting on it; the master is -14.6 LUFS at -1.5 dB true peak; and 76%
 of the mix's energy is between 250 Hz and 4 kHz, where a phone speaker lives (the first pass
 of the music had half of its energy below that and 3% above 2 kHz). None of that says it
-sounds good. That takes a person with ears, and theirs is the opinion that counts.
+sounds good. Only listening does.

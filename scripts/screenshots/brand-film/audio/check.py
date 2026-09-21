@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What can be checked about a soundtrack without listening to it.
+"""What a script can check about a soundtrack.
 
     .venv/bin/python audio/check.py
 
@@ -11,7 +11,7 @@ stem: at each cue that ought to be a transient, either the 30 ms after it is lou
 under a second), there is at least sound there. A cue whose name the score never learned
 shows up here as silence.
 
-Neither says it sounds good. That takes a person.
+Neither says it sounds good. Only listening does.
 """
 import difflib, json, pathlib, re, sys
 import numpy as np
