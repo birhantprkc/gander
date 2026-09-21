@@ -12,6 +12,8 @@
     );
     await document.fonts.ready;
     const svg = document.getElementById("stage");
+    svg.setAttribute("viewBox", `0 0 ${F.W} ${F.H}`);
+    document.body.classList.toggle("tall", F.TALL);
     F.buildDefs(svg);
     const layer = F.g(svg);
     const scenes = F.scenes.slice().sort((a, b) => (a.z || 0) - (b.z || 0) || a.t0 - b.t0);

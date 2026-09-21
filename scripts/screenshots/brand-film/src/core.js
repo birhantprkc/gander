@@ -4,9 +4,16 @@
 // same picture the player shows.
 (function () {
   const F = (window.F = {});
-  F.W = 1920;
-  F.H = 1080;
+  // Two cuts from one film. Every scene is drawn once, in the wide film's coordinates. For a
+  // phone (?tall) nothing is redrawn: the illustration and the type are each picked up whole and
+  // set down again, type above and illustration below, inside Instagram's safe zones (its own
+  // furniture covers about the top 250 px and the bottom 340). What cannot simply be moved (a
+  // goose that comes up from the foot of the frame, a line too wide for a phone) asks F.TALL.
+  F.TALL = new URLSearchParams(location.search).has("tall");
+  F.W = F.TALL ? 1080 : 1920;
+  F.H = F.TALL ? 1920 : 1080;
   F.FPS = 60;
+  const SEAT = F.TALL ? { world: { s: 1.06, fx: 1400, fy: 624, x: 540, y: 1248 }, type: { s: 0.8, fx: 0, fy: 0, x: -33.6, y: 58 } } : null;
 
   // ---- numbers ---------------------------------------------------------------------------
   F.clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
@@ -137,6 +144,17 @@
     if (n.style.display !== want) n.style.display = want;
   };
   F.op = (n, o) => n.setAttribute("opacity", r3(F.clamp(o)));
+
+  // Seat a scene's illustration ("world") or its type in this cut. In the wide cut, where they are.
+  // `over` is for a scene with more room than most: no goose above its picture, so bigger type.
+  F.seat = (node, which, over) => {
+    const k = SEAT && Object.assign({}, SEAT[which], over);
+    if (k) node.setAttribute("transform", `translate(${r3(k.x - k.fx * k.s)} ${r3(k.y - k.fy * k.s)}) scale(${k.s})`);
+    return node;
+  };
+  // A point of the illustration as a point on this cut's stage, and back again.
+  F.toStage = (x, y) => (SEAT ? [SEAT.world.x + (x - SEAT.world.fx) * SEAT.world.s, SEAT.world.y + (y - SEAT.world.fy) * SEAT.world.s] : [x, y]);
+  F.toWorld = (x, y) => (SEAT ? [SEAT.world.fx + (x - SEAT.world.x) / SEAT.world.s, SEAT.world.fy + (y - SEAT.world.y) / SEAT.world.s] : [x, y]);
 
   let uid = 0;
   F.id = (p = "id") => `${p}${++uid}`;

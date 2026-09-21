@@ -31,13 +31,14 @@
     build(root) {
       const S = F.SET;
       const ground = F.ground(root, C.cream);
-      const world = F.g(root);
+      const camera = F.g(root); // the zoom act moves this; the seat inside it stays where it is
+      const world = F.seat(F.g(camera), "world");
       const sky = F.g(world), blobLayer = F.g(world), behind = F.g(world);
       const goose = F.goose(world, { u: 11 });
       const phone = F.phone(world, { title: "" });
       F.T(phone.root, S.px, S.py, 0, S.ps);
-      const front = F.g(world), type = F.g(root);
-      const set = { root, ground, world, sky, blobLayer, behind, goose, phone, front, type, S, T0, T1, pose: [], titles: [] };
+      const front = F.g(world), type = F.seat(F.g(root), "type");
+      const set = { root, ground, camera, world, sky, blobLayer, behind, goose, phone, front, type, S, T0, T1, pose: [], titles: [] };
 
       // ---- blob: one shape and colour per file, morphing between them ------------------------
       const blob = F.el("path", null, blobLayer);

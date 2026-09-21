@@ -9,30 +9,32 @@
     id: "facts", t0: 55.2, t1: 60.0, z: 1,
     build(root) {
       const T = 55.2, clipId = F.id("dawn");
-      const iris = F.el("circle", { cx: 1400, cy: 1200, r: 0 }, F.el("clipPath", { id: clipId }, root));
-      const g = F.g(root, { "clip-path": `url(#${clipId})` });
-      F.ground(g, C.cream);
+      const iris = F.el("circle", { cx: F.TALL ? 540 : 1400, cy: F.H + 120, r: 0 }, F.el("clipPath", { id: clipId }, root));
+      const clipped = F.g(root, { "clip-path": `url(#${clipId})` });
+      F.ground(clipped, C.cream);
+      const g = F.seat(F.g(clipped), "world"), type = F.seat(F.g(clipped), "type", { s: 0.95, x: -54.9, y: 0 });
+      const BY = F.TALL ? 1540 : 1320, DOWN = F.TALL ? 1660 : 1320; // the foot of a phone is further down
       const rays = F.g(g, { stroke: C.coral, "stroke-width": 10, "stroke-linecap": "round" });
       const ray = Array.from({ length: 13 }, (_, i) => ({ n: F.el("line", null, rays), a: Math.PI + (i / 12) * Math.PI }));
       const sun = F.g(g);
       F.wob(F.el("path", { d: "M330,0 A330,330 0 1 1 -330,0 A330,330 0 1 1 330,0 Z", fill: C.coral }, sun), { amp: 3, wl: 170, step: 8 });
       const goose = F.goose(g, { u: 13 });
-      const head = F.headline(g, {
+      const head = F.headline(type, {
         x: 142, y: 410, size: 136, lh: 148, stagger: 0.333,
         lines: [{ text: "Tiny.", fill: C.ink }, { text: "Free.", fill: C.ink }, { text: "Open source.", fill: C.red }],
       });
-      const sub = F.text(g, "MIT licensed. Every line of it is on GitHub.", { x: 148, y: 820, size: 40, weight: 500, fill: C.inkSoft });
+      const sub = F.text(type, "MIT licensed. Every line of it is on GitHub.", { x: 148, y: 820, size: 40, weight: 500, fill: C.inkSoft });
       const beats = [T + 1.0, T + 1.8, T + 2.6];
       F.cue(T, "dawn", { dur: 1.6 }); beats.forEach((b, i) => F.cue(b, "fact", { i })); F.cue(T + 3.2, "factSub"); F.cue(T + 4.0, "sunset", { dur: 0.75 });
-      const up = { bx: 1400, by: 1320, ax: 1392, ay: 470, tilt: -4 };
+      const up = { bx: 1400, by: BY, ax: 1392, ay: 470, tilt: -4 };
       const POSE = [
-        [T + 0.7, { bx: 1400, by: 1320, ax: 1400, ay: 1320 }], [T + 1.7, up, E.spring(0.6, 9)],
+        [T + 0.7, { bx: 1400, by: BY, ax: 1400, ay: DOWN }], [T + 1.7, up, E.spring(0.6, 9)],
         ...beats.slice(1).flatMap((b) => [[b + 0.1, up], [b + 0.28, Object.assign({}, up, { ay: 500, tilt: -14 }), E.soft], [b + 0.6, up, E.out]]),
-        [T + 3.9, up], [T + 4.25, Object.assign({}, up, { ax: 1400, ay: 1330 }), E.in],
+        [T + 3.9, up], [T + 4.25, Object.assign({}, up, { ax: 1400, ay: DOWN + 10 }), E.in],
       ];
       return (lt, t) => {
         iris.setAttribute("r", F.tw(t, T, 1.0, E.io) * 2400);
-        const rise = F.tw(t, T + 0.2, 1.6, E.out), set = F.tw(t, T + 4.0, 0.75, E.in), sy = F.lerp(1500, 760, rise) + set * 800;
+        const rise = F.tw(t, T + 0.2, 1.6, E.out), set = F.tw(t, T + 4.0, 0.75, E.in), sy = F.lerp(F.TALL ? 1760 : 1500, 760, rise) + set * (F.TALL ? 1100 : 800);
         F.T(sun, 1400, sy);
         ray.forEach(({ n, a }, i) => {
           const r0 = 380 + Math.sin(t * 2 + i) * 8, len = (i % 2 ? 46 : 78) * F.tw(t, T + 1.0 + i * 0.03, 0.5, E.spring(0.5, 11));
@@ -54,7 +56,8 @@
   F.scenes.push({
     id: "end", t0: 60.0, t1: 66.0,
     build(root) {
-      const T = 60.0, k = 5.7, CX = 960, CY = 318;
+      const T = 60.0, k = F.TALL ? 7 : 5.7, CX = F.W / 2, CY = F.TALL ? 640 : 318;
+      const ROWS = F.TALL ? [1190, 1304, 1440] : [760, 862, 978]; // wordmark, tagline, address
       const P = (x, y) => [CX + (x - 54) * k, CY + (y - 54) * k]; // launcher-icon units to stage
       F.ground(root, C.cream);
       const tile = F.g(root);
@@ -64,14 +67,14 @@
       const cards = [
         { col: "#1565C0", to: [43, 61, -16] }, { col: "#2E7D32", to: [67.5, 61, 14] }, { col: "#D32F2F", to: [54, 54, -2] },
       ].map((c, i) => Object.assign(c, { n: F.fileCard(root, { w: 26 * k, badge: " ", color: c.col, lines: [0.62, 0.46], shadow: i === 2 }) }));
-      const word = F.headline(root, { x: CX, y: 760, size: 196, weight: 700, ls: "-0.035em", anchor: "middle", lines: [{ text: "Gander", fill: C.ink }] });
-      const tag = F.text(root, "", { x: CX, y: 862, size: 60, weight: 500, fill: C.ink, anchor: "middle" });
+      const word = F.headline(root, { x: CX, y: ROWS[0], size: 196, weight: 700, ls: "-0.035em", anchor: "middle", lines: [{ text: "Gander", fill: C.ink }] });
+      const tag = F.text(root, "", { x: CX, y: ROWS[1], size: 60, weight: 500, fill: C.ink, anchor: "middle" });
       [["Take a gander at "], ["any", 1], [" file."]].forEach(([s, red]) => {
         const sp = F.el("tspan", red ? { fill: C.red, "font-style": "italic", "font-weight": 600 } : null, tag);
         sp.textContent = s;
       });
       tag.setAttribute("xml:space", "preserve");
-      const url = F.text(root, "arjun.maniyani.com/gander", { x: CX, y: 978, size: 34, weight: 500, fill: C.inkSoft, anchor: "middle", ls: "0.06em" });
+      const url = F.text(root, "arjun.maniyani.com/gander", { x: CX, y: ROWS[2], size: 34, weight: 500, fill: C.inkSoft, anchor: "middle", ls: "0.06em" });
       F.cue(T, "end"); F.cue(T + 0.15, "tile"); [0, 1, 2].forEach((i) => F.cue(T + 0.55 + i * 0.1, "fan", { i }));
       F.cue(T + 1.1, "gooseUp", { dur: 0.8 }); F.cue(T + 1.5, "wordmark"); F.cue(T + 2.2, "tagline"); F.cue(T + 2.8, "url");
       F.cue(T + 3.9, "stretch", { dur: 0.5 }); F.cue(T + 4.4, "turn"); F.cue(T + 4.95, "lastHonk"); F.cue(T + 5.2, "turn");

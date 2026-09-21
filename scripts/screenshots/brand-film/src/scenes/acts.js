@@ -65,7 +65,7 @@
     const down = chev("M-9,-5 l9,9 l9,-9", 164);
 
     // The lens: the same document, drawn again larger through a round hole.
-    const lens = F.g(front), LX = 1112, LY = 650, LR = 196, Z = 2.5;
+    const lens = F.g(front), LX = F.TALL ? 1156 : 1112, LY = 650, LR = 196, Z = 2.5; // a phone is narrower: keep the glass off its edge
     F.el("line", { x1: -142, y1: 142, x2: -236, y2: 236, stroke: C.ink, "stroke-width": 30, "stroke-linecap": "round" }, lens);
     F.el("circle", { r: LR, fill: "#FFFFFF" }, lens);
     const clipId = F.id("ln");
@@ -112,7 +112,7 @@
 
   // ==== ZOOM ===================================================================================
   F.acts.push((set) => {
-    const { phone, S, root, world, type } = set, AT = 33.9, PUSH = 36.5, DARK = 38.45;
+    const { phone, S, root, camera, type } = set, AT = 33.9, PUSH = 36.5, DARK = 38.45;
     const g = F.g(phone.content);
     bgRect(g, "#100F0D");
     const ph = F.g(g), land = F.landscape(ph);
@@ -149,9 +149,9 @@
       // until the phone's screen is the frame, and the photo keeps going after that.
       if (t >= PUSH && t < 38.9) {
         const f = focal(t), k = Math.exp(Math.log(5.6) * E.io(F.prog(t, PUSH, 37.9))), e = E.io(F.prog(t, PUSH, 37.6));
-        const px = S.px + f.fx * S.ps, py = S.py + f.fy * S.ps;
-        world.setAttribute("transform", `translate(${F.lerp(px, 960, e)} ${F.lerp(py, 540, e)}) scale(${k}) translate(${-px} ${-py})`);
-      } else world.removeAttribute("transform");
+        const [px, py] = F.toStage(S.px + f.fx * S.ps, S.py + f.fy * S.ps);
+        camera.setAttribute("transform", `translate(${F.lerp(px, F.W / 2, e)} ${F.lerp(py, F.H / 2, e)}) scale(${k}) translate(${-px} ${-py})`);
+      } else camera.removeAttribute("transform");
       F.op(veil, F.tw(t, DARK - 0.4, 0.4, E.lin) * (1 - F.tw(t, 39.0, 0.55, E.lin)));
       F.show(veil, t > DARK - 0.45 && t < 39.6);
     };
@@ -200,10 +200,18 @@
     const moon = F.g(sky);
     F.wob(F.el("path", { d: "M250,0 A250,250 0 1 1 -250,0 A250,250 0 1 1 250,0 Z", fill: "#F3E6C0" }, moon), { amp: 3, wl: 160, step: 8 });
     [[-90, -70, 46], [70, 40, 30], [-30, 110, 22], [120, -110, 18]].forEach(([cx, cy, r]) => F.el("circle", { cx, cy, r, fill: "#E7D7A6" }, moon));
-    const rs = F.rng(21), stars = Array.from({ length: 34 }, (_, i) => {
+    // Stars are scattered over the stage of whichever cut this is, kept off the phone, the type
+    // and the moon, and only then put into the illustration's coordinates, where the sky lives.
+    const MOON_Y = F.TALL ? 262 : 236, moonAt = F.toStage(1560, MOON_Y);
+    const clear = F.TALL
+      ? (x, y) => !(x > 300 && x < 780 && y > 770) && !(x < 800 && y > 220 && y < 860)
+      : (x, y) => !(x > 1150 && x < 1660 && y > 180) && !(x < 1000 && y > 230 && y < 880);
+    const rs = F.rng(21), stars = Array.from({ length: F.TALL ? 40 : 34 }, (_, i) => {
       const n = F.spark(sky, { size: 1, fill: i % 5 === 0 ? C.coral : C.onDark });
-      return { n, x: 60 + rs() * 1800, y: 40 + rs() * (i % 3 ? 420 : 960), s: 9 + rs() * 17, ph: rs() * 6 };
-    }).filter((s) => !(s.x > 1150 && s.x < 1660 && s.y > 180) && !(s.x < 1000 && s.y > 230 && s.y < 880) && Math.hypot(s.x - 1560, s.y - 250) > 300);
+      const sx = F.TALL ? 40 + rs() * 1000 : 60 + rs() * 1800, sy = F.TALL ? 60 + rs() * (i % 3 ? 900 : 1780) : 40 + rs() * (i % 3 ? 420 : 960);
+      const [x, y] = F.toWorld(sx, sy);
+      return { n, x, y, keep: clear(sx, sy) && Math.hypot(sx - moonAt[0], sy - moonAt[1]) > 300, s: 9 + rs() * 17, ph: rs() * 6 };
+    }).filter((s) => s.keep || (s.n.remove(), false));
     // Glare: the white page at 2am, as short rays off the phone's edges.
     const glare = F.g(behind, { stroke: "#F6E3A1", "stroke-width": 8, "stroke-linecap": "round" });
     const hw = (phone.w / 2) * S.ps, hh = (phone.h / 2) * S.ps, rays = [];
@@ -226,7 +234,7 @@
       F.show(sky, dark); F.show(glare, dark && t < FLIP + 1);
       if (!dark) return;
       const rise = F.tw(t, 39.0, 1.4, E.out);
-      F.T(moon, 1560, F.lerp(330, 236, rise) + (t > 44.9 ? (t - 44.9) * 3 : 0));
+      F.T(moon, 1560, F.lerp(330, MOON_Y, rise) + (t > 44.9 ? (t - 44.9) * 3 : 0));
       F.op(moon, F.tw(t, 39.0, 0.5, E.lin));
       stars.forEach((s, i) => { F.T(s.n, s.x, s.y, 0, s.s * (0.72 + 0.28 * Math.sin(t * 2.2 + s.ph)) * F.tw(t, 39.2 + i * 0.04, 0.5, E.spring(0.5, 11))); });
       const gl = F.tw(t, 39.3, 0.5, E.out) * (1 - F.tw(t, FLIP + 0.1, 0.6, E.io));
@@ -281,14 +289,24 @@
       return { c, cx, cy: B.y + cy + 120, rot };
     });
     set.addFile("NONET", NET, { root: net, update() {} }, "Gander", "#221C12", 95);
+    // Beside the phone on a phone: above it is where the two lines under the headline have to go.
+    const CLOUD = F.TALL ? [1040, 430] : [1064, 236], CUT = F.TALL ? [1124, 584] : [1190, 196];
     const cloud = F.g(behind);
     F.T(F.icon(cloud, "cloud", { size: 240, sw: 1.4, stroke: C.onDark }), 0, 0);
-    const link = F.el("path", { d: "M1236,262 C1204,190 1170,172 1128,204", fill: "none", stroke: C.muted, "stroke-width": 6, "stroke-linecap": "round", "stroke-dasharray": "2 20" }, behind);
+    const link = F.el("path", { d: F.TALL ? "M1204,600 C1170,600 1100,580 1070,530" : "M1236,262 C1204,190 1170,172 1128,204", fill: "none", stroke: C.muted, "stroke-width": 6, "stroke-linecap": "round", "stroke-dasharray": "2 20" }, behind);
     const cut = F.g(behind);
     F.el("path", { d: "M-32,-32 L32,32 M32,-32 L-32,32", stroke: C.coral, "stroke-width": 14, "stroke-linecap": "round", fill: "none" }, cut);
     const sub = F.g(type);
-    const s1 = F.text(sub, "No internet access, by design.", { x: 146, y: 770, size: 42, weight: 500, fill: C.onDark });
-    const s2 = F.text(sub, "Not a promise. A missing capability.", { x: 146, y: 828, size: 42, weight: 500, fill: C.coral });
+    // Two lines in the wide cut. On a phone each is broken in two and kept to the left, clear of
+    // the goose and the moon that the illustration puts to the right of them.
+    const said = F.TALL
+      ? [["No internet access,", "by design."], ["Not a promise.", "A missing capability."]]
+      : [["No internet access, by design."], ["Not a promise. A missing capability."]];
+    const [s1, s2] = said.map((rows, i) => {
+      const g = F.g(sub);
+      rows.forEach((str, j) => F.text(g, str, { x: 146, y: (F.TALL ? 760 + i * 114 : 770 + i * 58) + j * 50, size: F.TALL ? 40 : 42, weight: 500, fill: i ? C.coral : C.onDark }));
+      return g;
+    });
 
     // 3. And none of the rest.
     const rest = F.g(phone.content);
@@ -350,13 +368,13 @@
         F.T(c.root, cx, y + Math.sin(t * 1.8 + i * 2) * 4, rot + Math.sin(t * 1.3 + i) * 2, 1, sq);
       });
       const con = F.tw(t, NET + 0.35, 0.6, E.spring(0.55, 10)), off = F.tw(t, 51.35, 0.9, E.in);
-      F.T(cloud, 1064 - off * 420, 236 - off * 60 + Math.sin(t * 1.2) * 6, 0, con);
+      F.T(cloud, CLOUD[0] - off * 420, CLOUD[1] - off * 60 + Math.sin(t * 1.2) * 6, 0, con);
       F.op(cloud, 1 - off);
       F.show(cloud, t > NET + 0.3 && off < 1);
       link.setAttribute("stroke-dashoffset", -t * 40);
       F.op(link, F.tw(t, NET + 0.7, 0.3, E.lin) * (1 - F.tw(t, 50.95, 0.3, E.lin)));
       const cs = F.tw(t, 50.85, 0.45, E.spring(0.42, 13)) * (1 - F.tw(t, 51.5, 0.3, E.in));
-      F.T(cut, 1190, 196, 0, cs);
+      F.T(cut, CUT[0], CUT[1], 0, cs);
       F.show(cut, cs > 0.001);
       [s1, s2].forEach((n, i) => {
         const a = F.tw(t, NET + 0.5 + i * 1.25, 0.5, E.out), b = F.tw(t, REST - 0.35, 0.3, E.in);

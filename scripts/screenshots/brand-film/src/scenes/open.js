@@ -32,6 +32,9 @@
     id: "open", t0: 0, t1: 12.7,
     build(root) {
       F.ground(root, C.cream);
+      const stage = root;
+      root = F.seat(F.g(stage), "world"); // everything but the headlines
+      const type = F.seat(F.g(stage), "type", { s: 0.95, x: -54.9, y: -20 });
       const S = F.SET;
       const radii = F.blobRadii(S.seed, 9, 0.16), radii0 = F.blobRadii(5, 9, 0.2);
       const blob = F.el("path", { fill: F.tint(C.fmt.XLS, 0.3) }, root);
@@ -53,9 +56,9 @@
       const rays = [-52, -34, -16, 2, 20, 38, 56].map((deg) => ({ deg, n: F.el("line", null, burst) }));
       const honk = F.text(root, "HONK!", { size: 128, weight: 800, italic: true, fill: C.coral, anchor: "middle", ls: "0.01em" });
 
-      const h1 = F.headline(root, { x: 146, y: 500, size: 124, lines: [{ text: "Someone sent", fill: C.ink }, { text: "you a file.", fill: C.red }] });
-      const h2 = F.headline(root, { x: 146, y: 500, size: 116, lines: [{ text: "All you wanted", fill: C.ink }, { text: "was to open it.", fill: C.red }] });
-      const h3 = F.headline(root, { x: 146, y: 500, size: 164, lines: [{ text: "Take a", fill: C.ink }, { text: "gander.", fill: C.red }] });
+      const h1 = F.headline(type, { x: 146, y: 500, size: 124, lines: [{ text: "Someone sent", fill: C.ink }, { text: "you a file.", fill: C.red }] });
+      const h2 = F.headline(type, { x: 146, y: 500, size: 116, lines: [{ text: "All you wanted", fill: C.ink }, { text: "was to open it.", fill: C.red }] });
+      const h3 = F.headline(type, { x: 146, y: 500, size: 164, lines: [{ text: "Take a", fill: C.ink }, { text: "gander.", fill: C.red }] });
 
       F.cue(0.3, "drop"); F.cue(0.62, "land"); F.cue(0.9, "headline"); F.cue(TAP, "tap");
       POP_AT.forEach((t, i) => F.cue(t, "dialog", { i }));
@@ -79,6 +82,11 @@
         [11.95, { bx: 776, by: 1300, ax: 930, ay: 520, flip: 1, tilt: -12, bend: 30 }],
         [12.5, { bx: 776, by: 1300, ax: 880, ay: 1300, flip: 1 }, E.in],
       ];
+
+      // On a phone there is no room beside the pile, so the goose comes up in front of it, from
+      // further down, and the honk is written across the top of it rather than beside it.
+      const HONK_AT = F.TALL ? [1400, 107] : [905, 218];
+      if (F.TALL) new Set(POSE.map((k) => k[1])).forEach((p) => { p.bx += 200; p.ax += 200; p.by = 1560; if (p.ay > 1200) p.ay = 1780; });
 
       return (t) => {
         // The blob comes in with the file, and by the end has become the next scene's blob.
@@ -132,7 +140,7 @@
         });
         F.op(burst, hp > 0 && hp < 1 ? 1 - hp * hp : 0);
         const hs = F.tw(t, HONK, 0.4, E.spring(0.42, 13));
-        F.T(honk, 905, 218 - 20 * hs, -9 + Math.sin(t * 40) * 1.2 * (1 - F.prog(t, HONK, HONK + 0.6)), hs);
+        F.T(honk, HONK_AT[0], HONK_AT[1] - 20 * hs, -9 + Math.sin(t * 40) * 1.2 * (1 - F.prog(t, HONK, HONK + 0.6)), hs);
         F.op(honk, F.tw(t, HONK, 0.06, E.lin) * (1 - F.tw(t, HONK + 0.62, 0.2, E.lin)));
 
         h1.update(F.prog(t, 0.9, 1.9), F.prog(t, 2.55, 3.05));

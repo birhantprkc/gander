@@ -23,7 +23,12 @@ node render.mjs                         # a quicker one, drawn at 1080p
 node render.mjs --from 28.9 --to 34     # part of it
 node render.mjs --stills 8.52,47.6      # single frames into out/stills/
 node render.mjs --sheet 0,13,16         # sixteen small frames from 0s to 13s as one picture
+
+open 'film.html?tall'                   # the phone cut, live
+node render.mjs --tall --fps 30 --scale 2 --keyframes 60    # the phone cut: 1080x1920 for Instagram
 ```
+
+`--tall` goes with any of the others (`--tall --check`, `--tall --stills 47.6`).
 
 Needs Node 22 (for its built-in WebSocket), Google Chrome and ffmpeg, and nothing from npm.
 `CHROME=/path/to/chrome` points it at a different browser. `out/` is gitignored.
@@ -70,6 +75,27 @@ listing's warm near-black; the accents are the site's red and the listing's cora
 colours are `WELCOME_BADGES` in `Listing.kt`, and the pastel behind each file is that format's
 colour let down into the cream. A new format colour in the app should be changed here too.
 
+## The phone cut
+
+The same film at 1080x1920, for Reels and Stories. It is not the wide film with bars, and it
+is not a second film: `?tall` re-seats the one there is. Every scene is still drawn in the
+wide film's coordinates, and `F.seat()` picks its illustration and its type up whole and sets
+them down again, type above and picture below. Only what cannot simply be moved asks
+`F.TALL`: the goose in the opening comes up in front of the pile because on a phone there is
+no beside; the cloud sits next to the phone instead of above it, where the two lines under
+"Takes nothing." now have to go, broken into four; the stars are scattered over whichever
+stage this is before being put into the picture's coordinates. The timeline is identical, so
+`out/cues.json` and the soundtrack are the same ones and `audio/mux.sh` puts them on as is.
+
+Instagram covers about the top 250 px with its own furniture and the bottom 340 with the
+caption, so the type starts under the one and the phone ends above the other, and the bare
+band at the foot of every frame is theirs, not an oversight.
+
+30 fps because that is what Instagram plays: given 60 it drops every other frame, and since a
+frame here is just a time, asking for thirty a second draws exactly the thirty it would have
+kept. `./stories.sh` then cuts the result at 60.0 s without re-encoding, which is where
+Instagram would cut a Story anyway and, not by accident, where the end card begins.
+
 ## The files
 
 | | |
@@ -90,6 +116,7 @@ colour let down into the cream. A new format colour in the app should be changed
 | `audio/check.py` | Sound on every cue, and the script still intelligible through the full mix. |
 | `audio/octaves.py` | Energy per octave, for anything that will be heard on a phone. |
 | `audio/mux.sh` | Puts a soundtrack on a rendered film without re-encoding the picture. |
+| `stories.sh` | Cuts the phone cut at 60 s, where Instagram would, which is where the end card starts. |
 
 ## What it claims
 

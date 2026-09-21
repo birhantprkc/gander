@@ -11,6 +11,7 @@
 //   node render.mjs --sheet 0,8,12          twelve small frames from 0s to 8s as one picture
 //   node render.mjs --check                 prove that a frame depends on nothing but its time
 //   node render.mjs --cues                  write out/cues.json, the timeline the soundtrack is cut to
+//   node render.mjs --tall --fps 30 --scale 2 --keyframes 60   the phone cut, 1080x1920, for Instagram
 //
 // Options: --fps 60  --workers 6  --crf 14  --out path.mp4  --keep (leave the frames behind)
 
@@ -31,9 +32,11 @@ const FPS = Number(opt("fps", 60));
 const SCALE = Number(opt("scale", 1));
 const WORKERS = Number(opt("workers", 6));
 const CRF = String(opt("crf", 14));
-const OUT = resolve(String(opt("out", join(HERE, "out", "gander-film.mp4"))));
+const TALL = Boolean(opt("tall"));
+const VW = TALL ? 1080 : 1920, VH = TALL ? 1920 : 1080;
+const OUT = resolve(String(opt("out", join(HERE, "out", TALL ? "gander-film-tall.mp4" : "gander-film.mp4"))));
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const PAGE = pathToFileURL(join(HERE, "film.html")).href + "?render" + (opt("nograin") ? "&nograin" : "") + (opt("nofx") ? "&nofx" : "");
+const PAGE = pathToFileURL(join(HERE, "film.html")).href + "?render" + (TALL ? "&tall" : "") + (opt("nograin") ? "&nograin" : "") + (opt("nofx") ? "&nofx" : "");
 
 if (!existsSync(join(HERE, "fonts", "Jost.ttf"))) {
   console.error("fonts/Jost.ttf is missing. See README.md: the film will not render in a fallback face.");
@@ -112,7 +115,7 @@ async function openTab(cdp, scale) {
   const s = (m, p) => cdp.send(m, p, sessionId);
   await s("Page.enable");
   await s("Runtime.enable");
-  await s("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: scale, mobile: false });
+  await s("Emulation.setDeviceMetricsOverride", { width: VW, height: VH, deviceScaleFactor: scale, mobile: false });
   await s("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 255 } });
   await s("Page.navigate", { url: PAGE });
   for (let i = 0; ; i++) {
@@ -214,7 +217,7 @@ try {
     const frames = mktemp("gander-frames-");
     const tabs = [first];
     while (tabs.length < Math.min(WORKERS, total)) tabs.push(await openTab(cdp, SCALE));
-    console.log(`${total} frames at ${FPS} fps, ${1920 * SCALE}x${1080 * SCALE}, ${tabs.length} tabs`);
+    console.log(`${total} frames at ${FPS} fps, ${VW * SCALE}x${VH * SCALE}, ${tabs.length} tabs`);
     const began = Date.now();
     let next = 0, done = 0;
     await Promise.all(tabs.map(async (tab) => {
@@ -235,15 +238,17 @@ try {
     const encode = (w, h, level, out) => run("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(FPS), "-i", join(frames, "%06d.png"),
       "-vf", `scale=${w}:${h}:flags=lanczos:in_range=full:out_range=tv:out_color_matrix=bt709,format=yuv420p`,
       "-c:v", "libx264", "-preset", "slow", "-crf", CRF, "-profile:v", "high", "-level", level,
+      // A keyframe where a cut is wanted later, so that the film can be split there without re-encoding.
+      ...(opt("keyframes") ? ["-force_key_frames", String(opt("keyframes"))] : []),
       "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
       "-movflags", "+faststart", "-an", out]);
-    await encode(1920, 1080, "4.2", OUT);
+    await encode(VW, VH, "4.2", OUT);
     console.log(OUT);
     // The same frames at full size, for anywhere that re-encodes what it is given: a 4K
     // upload gets a better 1080p stream out of YouTube than a 1080p upload does.
     if (opt("uhd") && SCALE >= 2) {
       const uhd = OUT.replace(/\.mp4$/, "-2160p.mp4");
-      await encode(3840, 2160, "5.2", uhd);
+      await encode(VW * 2, VH * 2, "5.2", uhd);
       console.log(uhd);
     }
     if (opt("keep")) { temps.splice(temps.indexOf(frames), 1); console.log("frames kept in " + frames); }
