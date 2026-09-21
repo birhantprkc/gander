@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Script inside a document can no longer run. Every viewer page now carries a Content Security
+  Policy that allows only Gander's own code. Before this, a Word file could embed a web page
+  whose script ran as soon as the document opened, and a link in one could run script when
+  tapped. It could not send anything anywhere, since Gander has no internet permission, but it
+  ran. Links in Word, PowerPoint and Excel files that lead anywhere but a website, an email
+  address, a phone number or another place in the document are now plain text.
+
 - Anything a document's page asks for that Gander does not serve is now answered with nothing
   inside the app. Before, it was handed to Android's network stack and stopped only by Gander
   having no internet permission, so that one missing permission was the whole of the

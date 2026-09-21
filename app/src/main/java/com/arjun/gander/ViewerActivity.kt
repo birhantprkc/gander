@@ -1464,7 +1464,7 @@ class ViewerActivity : AppCompatActivity() {
                 ) {
                     return docResponse(uri, mime, total, request.requestHeaders["Range"])
                 }
-                return assetLoader.shouldInterceptRequest(url) ?: when (url.scheme) {
+                return assetLoader.shouldInterceptRequest(url)?.withViewerPolicy() ?: when (url.scheme) {
                     // Anything else a page asks the network for is answered here, with
                     // nothing, instead of being handed on to the network stack. The missing
                     // INTERNET permission would stop it there, but that would make one
@@ -1584,8 +1584,13 @@ class ViewerActivity : AppCompatActivity() {
             // threshold one bulk read wins; above it, reading the lot dominates.
             val rangeable = useRanges(total)
             val span = if (rangeable) range?.let { parseRange(it, total) } else null
+            // The document is on the pages' own host, which ViewerPolicy trusts for
+            // scripts and styles. nosniff means the browser will only run it as either
+            // if its type says it is one, so markup that a renderer let slip cannot load
+            // a crafted file as the script that script-src 'self' would otherwise allow.
+            val nosniff = "X-Content-Type-Options" to "nosniff"
             if (span == null) {
-                val headers = mutableMapOf<String, String>()
+                val headers = mutableMapOf(nosniff)
                 if (rangeable) headers["Accept-Ranges"] = "bytes"
                 if (total >= 0) headers["Content-Length"] = total.toString()
                 WebResourceResponse(
@@ -1597,6 +1602,7 @@ class ViewerActivity : AppCompatActivity() {
                 WebResourceResponse(
                     mime, null, 206, "Partial Content",
                     mapOf(
+                        nosniff,
                         "Accept-Ranges" to "bytes",
                         "Content-Range" to "bytes $start-$end/$total",
                         "Content-Length" to (end - start + 1).toString()
@@ -1607,6 +1613,11 @@ class ViewerActivity : AppCompatActivity() {
         } catch (e: Exception) {
             notFound()
         }
+    }
+
+    /** See [ViewerPolicy]: the header is what carries the policy into the pdf.js worker. */
+    private fun WebResourceResponse.withViewerPolicy(): WebResourceResponse = apply {
+        responseHeaders = responseHeaders.orEmpty() + ("Content-Security-Policy" to ViewerPolicy.CSP)
     }
 
     private fun notFound(): WebResourceResponse = WebResourceResponse(

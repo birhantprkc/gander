@@ -1,3 +1,21 @@
+/*
+ * docx-preview draws a Word file's embedded HTML part, an altChunk, which some tools that
+ * turn web pages into Word files write, in an iframe whose srcdoc is that HTML, and gives
+ * the frame no sandbox. Unsandboxed, a srcdoc frame shares this page's origin, so script
+ * in the part would run as the page the moment the file opened. The page's policy carries
+ * into the frame and forbids that already; the sandbox takes script, forms and navigation
+ * away from the frame outright, whatever any policy says. It is set as the element is
+ * made because a frame's sandbox is fixed when its document loads, and docx-preview fills
+ * in srcdoc a moment later. The library stays as upstream ships it (docs/VENDORED.md), so
+ * the change is made from here.
+ */
+var vwMakeElement = document.createElement;
+document.createElement = function (name, options) {
+  var el = vwMakeElement.call(document, name, options);
+  if (String(name).toLowerCase() === "iframe") el.setAttribute("sandbox", "");
+  return el;
+};
+
 /* Word bullet lists use Symbol/Wingdings private-use characters (U+F000 range)
    that Android has no glyphs for. Swap them for Unicode equivalents. */
 function fixSymbolChars(root) {
@@ -87,6 +105,7 @@ if (!vwWebViewTooOld("Word documents")) {
       });
     })
     .then(function () {
+      vwDisarmLinks(document.getElementById("container"));
       fixSymbolChars(document.getElementById("container"));
       /* Width first: it decides whether the document still overflows 980, which is the
          one thing that moves the height vwFitHeight is about to read. */

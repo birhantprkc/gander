@@ -19,6 +19,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
 import java.util.concurrent.Executor
 import org.junit.After
@@ -262,6 +263,40 @@ class ViewerActivityTest {
         val response = open("six-pages.pdf").serve("/assets/viewer/app.js")
         assertThat(response).isNotNull()
         assertThat(response!!.data.readBytes().decodeToString()).contains("vwDocUrl")
+    }
+
+    /**
+     * The pages name the policy themselves, and the header says it again for the one thing
+     * a meta tag cannot reach: the pdf.js worker, which takes its policy from its own
+     * script's response rather than from the page that started it.
+     */
+    @Test
+    fun everyAssetIsServedUnderTheViewerPolicy() {
+        val controller = open("six-pages.pdf")
+        listOf(
+            "/assets/viewer/pdf.html",
+            "/assets/viewer/pdf.mjs",
+            "/assets/viewer/lib/pdf.worker.min.mjs",
+        ).forEach { path ->
+            val policy = controller.serve(path)!!.responseHeaders["Content-Security-Policy"]
+            assertWithMessage(path).that(policy).isEqualTo(ViewerPolicy.CSP)
+        }
+    }
+
+    /**
+     * The document is on the pages' own host, which the policy trusts for scripts, so it is
+     * marked as never to be read as anything but the type it is served as, whole or in part.
+     */
+    @Test
+    fun theDocumentIsNeverTakenForAScript() {
+        assertThat(open("six-pages.pdf").serve("/doc/file.pdf")!!.responseHeaders["X-Content-Type-Options"])
+            .isEqualTo("nosniff")
+
+        val big = Fixtures.sized("sniffed.pdf", (RANGE_THRESHOLD_BYTES + 512).toInt())
+        val ranged = view(FixtureProvider.install().add("sniffed.pdf", big), "application/pdf")
+            .serve("/doc/file.pdf", "bytes=0-99")!!
+        assertThat(ranged.statusCode).isEqualTo(206)
+        assertThat(ranged.responseHeaders["X-Content-Type-Options"]).isEqualTo("nosniff")
     }
 
     // ---------------------------------------------------------------

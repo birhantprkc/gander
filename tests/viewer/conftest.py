@@ -26,6 +26,42 @@ def pytest_configure(config):
         "visual: compares against a reference screenshot; Linux only, because "
         "text rasterises differently on macOS.",
     )
+    config.addinivalue_line(
+        "markers",
+        "refusals_expected: the test provokes the page's policy on purpose, so the "
+        "check that nothing was refused is left to the test.",
+    )
+
+
+# Every page runs under the Content Security Policy in ViewerPolicy.kt. When a renderer
+# needs something the policy forbids, nothing fails loudly: the browser refuses it,
+# reports it to this event, and the page carries on without it, a picture short or the
+# pdf.js worker gone. So every test that drives a page also fails if anything at all was
+# refused, which makes the whole suite the check that the policy and the renderers agree.
+POLICY_WATCH = """
+window.__vwRefused = [];
+document.addEventListener("securitypolicyviolation", function (e) {
+  window.__vwRefused.push(e.effectiveDirective + " " + e.blockedURI);
+});
+"""
+
+
+@pytest.fixture(autouse=True)
+def nothing_refused(request):
+    if "page" not in request.fixturenames:
+        yield
+        return
+    page = request.getfixturevalue("page")
+    page.add_init_script(POLICY_WATCH)
+    yield
+    if request.node.get_closest_marker("refusals_expected"):
+        return
+    try:
+        refused = page.evaluate("window.__vwRefused || []")
+    except Exception:
+        # The page is gone or mid-navigation; the test has already said what it saw.
+        return
+    assert refused == [], f"the page's policy refused {refused}"
 
 
 @pytest.fixture(scope="session")

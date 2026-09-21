@@ -7,6 +7,7 @@ vwFetchDoc("buffer")
     function show(idx) {
       var ws = wb.Sheets[wb.SheetNames[idx]];
       sheetDiv.innerHTML = XLSX.utils.sheet_to_html(ws, { editable: false });
+      vwDisarmLinks(sheetDiv);
       var btns = tabs.querySelectorAll("button");
       for (var i = 0; i < btns.length; i++) btns[i].className = i === idx ? "active" : "";
     }
