@@ -351,10 +351,10 @@ class ViewerActivity : AppCompatActivity() {
     private fun setUpNightMode(toolbar: MaterialToolbar, kind: FileKind) {
         val item = toolbar.menu.findItem(R.id.action_night_mode)
         // The last test is the card pdf.html shows instead of a document when the
-        // WebView is too old for the renderer: pdfjsFloorParams is non-empty exactly
+        // WebView is too old for the renderer: webViewFloorParams is non-empty exactly
         // then, and turning a card that says "update your WebView" dark is not a
         // feature. Same standard as the two above, and as action_search.
-        val blocked = pdfjsFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
+        val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
         if (kind != FileKind.PDF || !canPortSearch() || blocked) {
             item.isVisible = false
             return
@@ -966,7 +966,7 @@ class ViewerActivity : AppCompatActivity() {
         val searchItem = toolbar.menu.findItem(R.id.action_search)
 
         val web = webView
-        val blocked = pdfjsFloorParamsFor(kind, web?.settings?.userAgentString).isNotEmpty()
+        val blocked = webViewFloorParamsFor(kind, web?.settings?.userAgentString).isNotEmpty()
         if (web == null || (kind == FileKind.PDF && !canPortSearch()) || blocked) {
             // No WebView at all, or a WebView too old to carry a message channel. The
             // second is close to unreachable: message channels landed long before the
@@ -974,9 +974,10 @@ class ViewerActivity : AppCompatActivity() {
             // what PDF did in every release up to this one, so it is a known-good
             // place to land rather than a new failure.
             //
-            // Or a PDF under the card saying the WebView is too old, which has no
-            // document to search. The button stayed on that card until issue #31
-            // showed it there, though night mode already hid itself from it.
+            // Or a PDF, Word or Markdown file under the card saying the WebView is too
+            // old, which has no document to search. The button stayed on that card
+            // until issue #31 showed it there, though night mode already hid itself
+            // from it.
             searchItem.isVisible = false
             return
         }
@@ -1492,7 +1493,7 @@ class ViewerActivity : AppCompatActivity() {
                 "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
                 "&night=$night" +
                 (if (resumeAt > 1) "&resume=$resumeAt" else "") +
-                pdfjsFloorParamsFor(kind, web.settings.userAgentString)
+                webViewFloorParamsFor(kind, web.settings.userAgentString)
         )
     }
 
@@ -1601,12 +1602,13 @@ class ViewerActivity : AppCompatActivity() {
     }.getOrDefault(false)
 
     /**
-     * The engine's own answers, resolved before [pdfjsFloorParams] reads them, and
-     * only for a PDF: no other page needs them, so opening anything else asks nothing.
+     * The engine's own answers, resolved before [webViewFloorParams] reads them, and
+     * only for a format with a floor: no other page needs them, so opening anything
+     * else asks nothing.
      */
-    private fun pdfjsFloorParamsFor(kind: FileKind, userAgent: String?): String {
-        if (kind != FileKind.PDF) return ""
-        return pdfjsFloorParams(kind, webViewChromiumMajor(userAgent), webViewProviderIsLocked())
+    private fun webViewFloorParamsFor(kind: FileKind, userAgent: String?): String {
+        if (minChromiumMajor(kind) == null) return ""
+        return webViewFloorParams(kind, webViewChromiumMajor(userAgent), webViewProviderIsLocked())
     }
 
     /** Length in bytes, or -1 when the provider declines to say. */

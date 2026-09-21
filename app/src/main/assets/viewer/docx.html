@@ -159,25 +159,30 @@ function fitPageWidth() {
   if (room > 0 && widest > 0) wrap.style.setProperty("--vw-page-zoom", room / widest);
 }
 
-vwFetchDoc("buffer")
-  .then(function (buf) {
-    return docx.renderAsync(buf, document.getElementById("container"), null, {
-      inWrapper: true,
-      breakPages: true,
-      renderHeadersFooters: true,
-      ignoreLastRenderedPageBreak: true,
-      experimental: true
-    });
-  })
-  .then(function () {
-    fixSymbolChars(document.getElementById("container"));
-    /* Width first: it decides whether the document still overflows 980, which is the
-       one thing that moves the height vwFitHeight is about to read. */
-    fitPageWidth();
-    vwFitHeight();
-    vwStatusDone();
-  })
-  .catch(function (e) { vwError("Could not render this Word document", String(e)); });
+/* Nothing is read below docx-preview's floor. The card is already up, and the library
+   in the head may not even have parsed, which below Chromium 80 it cannot: issue #31,
+   where this said "docx is not defined" instead. See vwWebViewTooOld in app.js. */
+if (!vwWebViewTooOld("Word documents")) {
+  vwFetchDoc("buffer")
+    .then(function (buf) {
+      return docx.renderAsync(buf, document.getElementById("container"), null, {
+        inWrapper: true,
+        breakPages: true,
+        renderHeadersFooters: true,
+        ignoreLastRenderedPageBreak: true,
+        experimental: true
+      });
+    })
+    .then(function () {
+      fixSymbolChars(document.getElementById("container"));
+      /* Width first: it decides whether the document still overflows 980, which is the
+         one thing that moves the height vwFitHeight is about to read. */
+      fitPageWidth();
+      vwFitHeight();
+      vwStatusDone();
+    })
+    .catch(function (e) { vwError("Could not render this Word document", String(e)); });
+}
 </script>
 </body>
 </html>

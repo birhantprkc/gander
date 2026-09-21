@@ -495,70 +495,16 @@
  * of. Checked in headless Chrome by importing a module with syntax it rejects.
  * So whatever says "your WebView is too old" cannot itself live in the module.
  *
- * Kotlin adds webview=<major>&needs=<floor> only when the engine about to render
- * is older than the vendored pdf.js supports. That is a version read from the
- * system rather than a timeout or a feature sniff, so the same phone gets the
- * same answer every time. See PDFJS_MIN_CHROMIUM_MAJOR in WebViewFloor.kt for
- * where the number comes from.
+ * The module is fetched whatever happens here, and below Chromium 94, which added
+ * the class static blocks pdf.js uses, it cannot even be parsed. That failure lands
+ * after the card is drawn, which is why vwWebViewTooOld takes window.onerror away
+ * with it: on the WebView 64 of issue #31 it swapped the card for "Unexpected
+ * token .". The card itself, and what Kotlin sends it, is described in app.js.
  *
- * It adds locked=1 when the reader has no way to update the WebView, which is
- * the case on a phone whose manufacturer supplies it and allows no replacement.
- * Telling those readers to go and update it is the one thing the card must not
- * do. On such a phone the version sometimes cannot be read at all, and then
- * locked=1 arrives without a major beside it, which is why what follows gates on
- * either parameter rather than on the version.
- *
- * Neither card says the other formats still work, because below Chromium 92 some
- * do not: docx-preview needs 80 and marked needs 92, so on the WebView 64 of issue
- * #31 a .docx and a .md fail as well.
+ * Global on purpose: the module below reads it, and it has to be set by a script
+ * that is guaranteed to have parsed.
  */
-function vwNeedsNewerWebView(have, needs, locked) {
-  if (locked) {
-    vwError(
-      "PDFs cannot be shown on this phone",
-      // No floor is written here. The number arrives in the query string so that
-      // raising PDFJS_MIN_CHROMIUM_MAJOR stays a one-constant edit, which means
-      // the sentence has to work without it too.
-      (needs
-        ? "PDFs need the browser engine built into your phone to be version " +
-          needs + " or newer, and this one is " + (have || "older") + ". "
-        : "PDFs need a newer browser engine than the one built into your phone. ") +
-      "On this phone that engine comes from the manufacturer and cannot be " +
-      "updated or replaced, so installing Android System WebView will not help."
-    );
-    return;
-  }
-  vwError(
-    "Android System WebView is too old to show PDFs",
-    "Gander draws PDFs using Android System WebView, the browser engine built " +
-    "into your phone. " +
-    (have && needs
-      ? "This one is version " + have + " and the PDF renderer needs " +
-        needs + " or newer. "
-      : "This one is too old to run the PDF renderer. ") +
-    "Updating Android System WebView and reopening the file will fix it."
-  );
-}
-
-/* Global on purpose: the module below reads it, and it has to be set by a
-   script that is guaranteed to have parsed. */
-var vwPdfBlocked = !!(vwParams.get("webview") || vwParams.get("locked"));
-if (vwPdfBlocked) {
-  vwNeedsNewerWebView(
-    vwParams.get("webview"),
-    vwParams.get("needs"),
-    vwParams.get("locked")
-  );
-  /*
-   * And nothing may replace it. The module below is fetched whatever happens here,
-   * and below Chromium 94, which added the class static blocks pdf.js uses, it
-   * cannot even be parsed. That failure reaches app.js's window.onerror after the
-   * card is drawn, and it swapped the card for "Unexpected token .": issue #31, on
-   * WebView 64. Anything else that goes wrong below the floor is a symptom of what
-   * the card has already said.
-   */
-  window.onerror = null;
-}
+var vwPdfBlocked = vwWebViewTooOld("PDFs");
 
 /*
  * Night mode, and set here rather than in the module for the same reason as everything
@@ -577,7 +523,7 @@ if (vwNight) document.documentElement.classList.add("vw-night");
  * can, the check above has already said the same thing with the numbers filled
  * in. Six lines of belt and braces that any module-capable engine skips.
  */
-if (!vwPdfBlocked) vwNeedsNewerWebView(null, null, vwParams.get("locked"));
+if (!vwPdfBlocked) vwNeedsNewerWebView("PDFs", null, null, vwParams.get("locked"));
 </script>
 <script type="module">
 import * as pdfjsLib from "./lib/pdf.min.mjs";

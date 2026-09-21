@@ -1,5 +1,7 @@
 """md.html: Markdown through marked, then DOMPurify, then into the DOM."""
 
+from helpers import status_text
+
 
 def wait_for_render(page, timeout=20000):
     page.wait_for_function(
@@ -52,3 +54,53 @@ def test_the_prose_after_the_injected_markup_survives(viewer, page):
     viewer("md.html", "notes.md")
     wait_for_render(page)
     assert "Text after the injected markup" in page.text_content("#content")
+
+
+# ---------------------------------------------------------------------------
+# The too-old-WebView card, which Kotlin decides and app.js words
+# ---------------------------------------------------------------------------
+
+def test_an_engine_too_old_for_marked_is_told_to_update_it(viewer, page, server):
+    viewer("md.html", "notes.md", webview=64, needs=92)
+    page.wait_for_selector(".vw-error", timeout=15000)
+    page.wait_for_load_state("networkidle")
+    said = status_text(page)
+    assert "too old to show Markdown files" in said
+    assert "64" in said and "92" in said
+    assert "updating android system webview" in said.lower()
+    # The card is the whole page: the document is never read
+    assert server.full_requests() == []
+
+
+def test_the_card_is_all_that_shows_when_marked_cannot_parse(viewer, page):
+    """
+    Below Chromium 80, which is issue #31's WebView 64: marked could not parse and
+    the reader was told "marked is not defined". The browser here parses it, so the
+    file is swapped for one that no engine can.
+    """
+    page.route(
+        "**/assets/viewer/lib/marked.min.js",
+        lambda route: route.fulfill(content_type="text/javascript", body="var x = ;"),
+    )
+    with page.expect_event("pageerror"):
+        viewer("md.html", "notes.md", webview=64, needs=92)
+    page.wait_for_load_state("networkidle")
+    said = status_text(page)
+    assert "too old to show Markdown files" in said
+    assert "not defined" not in said
+
+
+def test_the_card_is_all_that_shows_where_marked_parses_but_cannot_run(viewer, page):
+    """
+    From Chromium 80 to 91 marked parses, and then fails on the first document it
+    is given, because its lexer calls Array.prototype.at, which arrived in 92. So
+    the floor is 92, not the 80 its syntax alone would suggest. Taking .at away
+    here is that engine.
+    """
+    page.add_init_script("delete Array.prototype.at; delete String.prototype.at;")
+    viewer("md.html", "notes.md", webview=91, needs=92)
+    page.wait_for_selector(".vw-error", timeout=15000)
+    page.wait_for_load_state("networkidle")
+    said = status_text(page)
+    assert "too old to show Markdown files" in said
+    assert "is not a function" not in said
