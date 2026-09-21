@@ -58,7 +58,10 @@ one that is held for a few frames looks traced.
 **The goose is the launcher icon.** Its head is the outline from `ic_launcher_foreground.xml`
 moved so the origin is the top of the neck, and split at the beak so it can open. The neck
 is rebuilt each frame as a ribbon along a curve. A scene animates a base, a head position and
-a few numbers (`tilt`, `bend`, `open`, `blink`, `brow`, `flip`) and the rig does the rest. The
+a few numbers (`tilt`, `bend`, `open`, `blink`, `brow`, `flip`) and the rig does the rest.
+When it turns, the profile narrows over a front view of the head that is as wide as the neck,
+because a head on a neck is never narrower than the neck: narrowing it over nothing opened a
+notch of background at the chin and left a sliver on a post at the midpoint. The
 end card puts the same rig over three file cards at the icon's own coordinates, which is
 why it lands on the real icon rather than on a drawing of it.
 
@@ -106,6 +109,7 @@ play it. The soundtrack is for everybody who then turns it on.
 
 ```sh
 node render.mjs --cues                      # out/cues.json: when everything in the film happens
+.venv/bin/python audio/voice.py --phonemes  # read this first: how each line will be pronounced
 .venv/bin/python audio/voice.py --check     # the narration, and a recogniser's opinion of it
 python3 audio/score.py                      # score, sound design and mix: out/soundtrack.wav
 .venv/bin/python audio/check.py             # what can be checked without ears
@@ -136,6 +140,14 @@ mkdir -p models && cd models
 curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
 curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
 ```
+
+**Read the phonemes; do not rely on the recogniser for pronunciation.** A recogniser writes
+"PDFs" whether it heard pee-dee-effs or pee-dee-eff-ess, and "2am" whether it heard two-ay-em
+or two-uh-em. The first cut of this narration said the wrong one of each, passed every check,
+and was caught by a person listening. `--phonemes` prints what the model is about to be given,
+which is text and can be read. Both mistakes were respellings meant to help, so the rule is to
+give the model the plain line unless the phonemes show it going wrong, and then to give it
+phonemes (between slashes in `LINES`) rather than a cleverer spelling.
 
 `audio/voice.py --voice bm_george` (or any Kokoro voice) changes the narrator;
 `out/soundtrack-no-voice.wav` is the same mix without one.

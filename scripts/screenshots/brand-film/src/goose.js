@@ -14,6 +14,11 @@
   const UPPER = "M-7.6,-10.9 L-9.05,-10.4 L-14.75,-8.6 C-15.2,-8.45 -15.38,-8.2 -15.27,-8 L-7.6,-8 Z";
   const LOWER = "M-7.6,-8 L-15.27,-8 C-15.32,-7.75 -15.1,-7.55 -14.75,-7.45 L-8.95,-6.1 L-7.6,-5.8 Z";
   const HINGE = [-8.7, -8];
+  // The head seen from in front: as wide as the neck, and its sides are the back of the
+  // profile head, mirrored, so that in profile it is wholly inside the head and never shows.
+  const FRONT =
+    "M3.15,0 L3.15,-4.4 C3.15,-8.8 2.55,-11.8 1.05,-13.3 C0.7,-13.62 0.35,-13.9 0,-13.9 " +
+    "C-0.35,-13.9 -0.7,-13.62 -1.05,-13.3 C-2.55,-11.8 -3.15,-8.8 -3.15,-4.4 L-3.15,0 Z";
 
   const REST = {
     bx: 0, by: 400,   // where the neck comes from, in stage pixels
@@ -31,6 +36,8 @@
     const u = o.u || 10;
     const root = F.g(parent);
     const neck = F.el("path", { fill: o.fill || C.goose }, root);
+    const front = F.g(root);
+    const frontShape = F.el("path", { d: FRONT, fill: o.fill || C.goose, transform: `scale(${u})` }, front);
     const head = F.g(root);
     const hs = F.g(head, { transform: `scale(${u})` });
     const mouth = F.el("path", { fill: C.coral }, hs);
@@ -57,12 +64,16 @@
       root, extras, u,
       pose(p) {
         p = Object.assign({}, REST, p);
-        // flip runs 0..1 and the head turns like a paper puppet on a stick: it narrows to
-        // nothing at the halfway point and opens out again facing the other way. The neck
-        // is worked out as if facing left and mirrored once the turn is past halfway.
+        // flip runs 0..1 and the head turns: the profile narrows to nothing at the halfway
+        // point and opens out again facing the other way. It narrows over the front view,
+        // though, not over nothing. A head on a neck is never narrower than the neck, and
+        // without this the turn opened a notch of background between chin and neck and left
+        // the head, at the midpoint, as a sliver on a flat-topped post. The neck is worked
+        // out as if facing left and mirrored once the turn is past halfway, and the tilt it
+        // arrives at goes through level at the midpoint, so that mirroring it moves nothing.
         const f = 1 - 2 * F.clamp(p.flip), sgn = f < 0 ? -1 : 1;
         const B = [(p.bx - p.ax) * sgn, p.by - p.ay];
-        const th = (p.tilt * Math.PI) / 180;
+        const th = (p.tilt * Math.abs(f) * Math.PI) / 180;
         const L = Math.hypot(B[0], B[1]);
         const down = [-Math.sin(th), Math.cos(th)]; // the head's own "down", after tilt
         const c2 = [down[0] * L * 0.38 - p.bend * 0.6, down[1] * L * 0.38];
@@ -92,6 +103,15 @@
         neck.setAttribute("d", "M" + pts.map((q) => q[0].toFixed(2) + "," + q[1].toFixed(2)).join(" L") + " Z");
 
         F.T(root, p.ax, p.ay);
+        const turning = Math.abs(f) < 0.985;
+        F.show(front, turning);
+        if (turning) {
+          front.setAttribute("transform", `rotate(${(p.tilt * f).toFixed(3)})`);
+          // The profile is a little taller than the front view, so the front view grows to
+          // meet it as the turn comes edge on, and is its own height again where it hands over.
+          frontShape.setAttribute("transform", `scale(${u} ${(u * (1 + 0.09 * (1 - Math.abs(f)))).toFixed(3)})`);
+        }
+        F.show(head, Math.abs(f) >= 0.08); // edge on, the profile is a sliver taller than the front view; leave it out
         const fx = Math.abs(f) < 0.04 ? 0.04 * sgn : f;
         head.setAttribute("transform", `scale(${fx.toFixed(4)} 1) rotate(${p.tilt.toFixed(3)})`);
         const up = -p.open * 17, lo = p.open * 27;

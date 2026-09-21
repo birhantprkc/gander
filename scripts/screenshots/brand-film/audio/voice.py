@@ -5,6 +5,12 @@
     .venv/bin/python audio/voice.py --voice bm_george
     .venv/bin/python audio/voice.py --check         # and transcribe each line back, if
                                                     # faster-whisper is installed
+    .venv/bin/python audio/voice.py --phonemes      # what each line will actually be said as
+    .venv/bin/python audio/voice.py --phonemes "PDFs.|P D Fs.|pee dee effs."   # or any candidates
+
+Read the phonemes before trusting the recogniser. It writes down "PDFs" whether it heard
+pee-dee-effs or pee-dee-eff-ess, and the first cut of this film said the second: the line had
+been spelled "P D Fs." to force the letters apart, and the s was taken for a letter too.
 
 Not the Mac's own `say` voices: Apple licenses those for personal, non-commercial use, which
 a film about an app is not. Kokoro's weights are Apache-2.0 and nothing leaves the machine,
@@ -12,7 +18,11 @@ which is the only kind of voice a film about Gander could decently use.
 
 Each line is pinned to a cue from out/cues.json, never to a number typed here, so a line
 moves with the picture it belongs to. `after` is how long after the cue it starts. `say` is
-what the synthesiser is given when that differs from what a person would write.
+what the synthesiser is given when that differs from what a person would write, and between
+slashes it is phonemes, given to the model as they are. Leave it empty unless --phonemes shows
+the plain text going wrong: both mistakes this narration has had were respellings that were
+meant to help ("P D Fs." for PDFs, "two A M" for 2am, which came out as "two uh em"), and the
+plain text of the second was right all along.
 """
 import argparse, json, pathlib, re, sys
 import numpy as np
@@ -27,7 +37,8 @@ LINES = [
     ("wanted",   "dialog",   2, 0.15, "All you wanted was to open it.", None),
     ("gander",   "title",    0, 0.10, "Take a gander.", None),
     ("opens",    "file",     0, 0.10, "Gander opens everything.", None),
-    ("pdf",      "file",     1, 0.12, "PDFs.", "P D Fs."),
+    # As text this loses its plural ("pee dee eff"), and spelled out it gains a letter.
+    ("pdf",      "file",     1, 0.12, "PDFs.", "/pˌiːdˌiːˈɛfs./"),
     ("word",     "file",     2, 0.12, "Word.", None),
     ("slides",   "file",     3, 0.12, "Slides.", None),
     ("photos",   "file",     4, 0.12, "Photos.", None),
@@ -38,7 +49,7 @@ LINES = [
     ("else",     "file",     9, 0.15, "And practically anything else.", None),
     ("finds",    "find",     0, 0.30, "It finds anything.", None),
     ("pixel",    "photo",    0, 0.35, "It zooms in on every last pixel.", None),
-    ("night",    "night",    0, 0.75, "It reads at 2am.", "It reads at two A M."),
+    ("night",    "night",    0, 0.75, "It reads at 2am.", None),
     ("nothing",  "nothing",  0, 0.30, "And it takes nothing.", None),
     ("perms",    "strike",   1, 0.10, "No permissions.", None),
     ("net",      "noNet",    0, 0.18, "No internet access.", None),
@@ -71,6 +82,7 @@ def main():
     ap.add_argument("--voice", default="af_heart")
     ap.add_argument("--speed", type=float, default=1.0)
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--phonemes", nargs="?", const="", default=None)
     args = ap.parse_args()
 
     import tempfile
@@ -93,12 +105,22 @@ def main():
     kokoro = Kokoro(str(HERE / "models" / "kokoro-v1.0.onnx"), str(HERE / "models" / "voices-v1.0.bin"), espeak_config=espeak)
     OUT.mkdir(parents=True, exist_ok=True)
 
+    if args.phonemes is not None:
+        texts = [t for t in args.phonemes.split("|") if t] or [say or text for _, _, _, _, text, say in LINES]
+        for t in texts:
+            given = t.startswith("/") and t.endswith("/")
+            print(f"{t!r:44} {t.strip('/') if given else kokoro.tokenizer.phonemize(t, 'en-us')}")
+        return
+
     manifest = []
     for lid, cue, nth, after, text, say in LINES:
         hits = [c for c in cues if c["name"] == cue]
         if nth >= len(hits):
             sys.exit(f"{lid}: the film has no cue {cue}[{nth}]")
-        y, sr = kokoro.create(say or text, voice=args.voice, speed=args.speed * SPEED.get(lid, 1.0), lang="en-us")
+        spoken = say or text
+        as_phonemes = spoken.startswith("/") and spoken.endswith("/")
+        y, sr = kokoro.create(spoken.strip("/") if as_phonemes else spoken, voice=args.voice,
+                              speed=args.speed * SPEED.get(lid, 1.0), lang="en-us", is_phonemes=as_phonemes)
         y = trim(np.asarray(y, dtype=np.float64), sr)
         sf.write(OUT / f"{lid}.wav", y, sr, subtype="PCM_24")
         manifest.append({"id": lid, "text": text, "at": round(hits[nth]["t"] + after, 3), "dur": round(len(y) / sr, 3)})
