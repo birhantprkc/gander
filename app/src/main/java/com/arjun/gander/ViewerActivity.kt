@@ -966,12 +966,17 @@ class ViewerActivity : AppCompatActivity() {
         val searchItem = toolbar.menu.findItem(R.id.action_search)
 
         val web = webView
-        if (web == null || (kind == FileKind.PDF && !canPortSearch())) {
+        val blocked = pdfjsFloorParamsFor(kind, web?.settings?.userAgentString).isNotEmpty()
+        if (web == null || (kind == FileKind.PDF && !canPortSearch()) || blocked) {
             // No WebView at all, or a WebView too old to carry a message channel. The
             // second is close to unreachable: message channels landed long before the
             // Chromium 125 pdf.html already refuses to run below. Hiding the button is
             // what PDF did in every release up to this one, so it is a known-good
             // place to land rather than a new failure.
+            //
+            // Or a PDF under the card saying the WebView is too old, which has no
+            // document to search. The button stayed on that card until issue #31
+            // showed it there, though night mode already hid itself from it.
             searchItem.isVisible = false
             return
         }
