@@ -23,6 +23,7 @@ import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
+import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -1138,8 +1139,10 @@ class ViewerActivity : AppCompatActivity() {
                 }
             })
         searchPort = mine
+        // Addressed to Gander's own origin rather than to "*", so the port is only ever
+        // handed to a page served from it, whatever the WebView is showing by then.
         WebViewCompat.postWebMessage(
-            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), Uri.parse("*"))
+            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), Uri.parse("https://$ASSET_HOST"))
         // Anything typed while there was nowhere to send it.
         if (pendingQuery.isNotEmpty()) mine.postMessage(WebMessageCompat(PortCommand.query(pendingQuery)))
         // And any night mode tapped in the same window. Compared against what the URL
@@ -1351,7 +1354,11 @@ class ViewerActivity : AppCompatActivity() {
 
         with(web.settings) {
             javaScriptEnabled = true
-            domStorageEnabled = true
+            // Off, which is also the default, and said here so it stays off. Nothing
+            // Gander ships reads or writes it, and on a page that renders an untrusted
+            // document it is only a place for script that should never have run to leave
+            // something behind for the next document to find.
+            domStorageEnabled = false
             builtInZoomControls = true
             displayZoomControls = false
             setSupportZoom(true)
@@ -1388,6 +1395,14 @@ class ViewerActivity : AppCompatActivity() {
              * than to change five viewers on the strength of one.
              */
             if (kind == FileKind.PDF) minimumFontSize = 1
+        }
+
+        // Cookies go for the same reason as DOM storage. Nothing here ever sets one, since
+        // every response comes from this app, so the jar could only hold what a document's
+        // own script put there.
+        CookieManager.getInstance().apply {
+            setAcceptCookie(false)
+            setAcceptThirdPartyCookies(web, false)
         }
 
         val assetLoader = WebViewAssetLoader.Builder()
@@ -1440,21 +1455,32 @@ class ViewerActivity : AppCompatActivity() {
                 view: WebView,
                 request: WebResourceRequest
             ): WebResourceResponse? {
+                val url = request.url
                 // The document is served here rather than through WebViewAssetLoader
                 // because a PathHandler is only given the path, and answering range
                 // requests needs the Range header off the request itself.
-                if (request.url.host == ASSET_HOST &&
-                    request.url.path?.startsWith("/doc/") == true
+                if (url.scheme == "https" && url.host == ASSET_HOST &&
+                    url.path?.startsWith("/doc/") == true
                 ) {
                     return docResponse(uri, mime, total, request.requestHeaders["Range"])
                 }
-                return assetLoader.shouldInterceptRequest(request.url)
+                return assetLoader.shouldInterceptRequest(url) ?: when (url.scheme) {
+                    // Anything else a page asks the network for is answered here, with
+                    // nothing, instead of being handed on to the network stack. The missing
+                    // INTERNET permission would stop it there, but that would make one
+                    // control the whole of the guarantee; this is a second one, and it
+                    // holds even for a request from script that should never have run.
+                    "http", "https" -> notFound()
+                    // data: is bytes the page already holds. file: and content: are
+                    // refused by allowFileAccess and allowContentAccess above.
+                    else -> null
+                }
             }
 
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
-            ): Boolean = request.url.host != ASSET_HOST
+            ): Boolean = !isViewerPage(request.url)
         }
 
         // Any scroll at all is what brings the readout up; the number in it comes from
@@ -1579,11 +1605,27 @@ class ViewerActivity : AppCompatActivity() {
                 )
             }
         } catch (e: Exception) {
-            WebResourceResponse(
-                "text/plain", "utf-8", 404, "Not Found",
-                null, ByteArrayInputStream(ByteArray(0))
-            )
+            notFound()
         }
+    }
+
+    private fun notFound(): WebResourceResponse = WebResourceResponse(
+        "text/plain", "utf-8", 404, "Not Found",
+        null, ByteArrayInputStream(ByteArray(0))
+    )
+
+    /**
+     * Gander's own pages, which is everything a viewer may navigate to: unsupported.html
+     * hands a file on to text.html, and a link inside a document may jump to a heading in
+     * the page it is on. Nothing off this host is opened, in the viewer or anywhere else,
+     * so a link cannot hand the browser a URL either. Nor the document at /doc/, the one
+     * thing on the host that is not Gander's: opened as a page, a file would be rendered
+     * as whatever its type says rather than by the viewer that makes it safe to look at.
+     */
+    private fun isViewerPage(url: Uri): Boolean {
+        val path = url.path ?: return false
+        return url.scheme == "https" && url.host == ASSET_HOST &&
+            path.startsWith("/assets/viewer/") && path.endsWith(".html") && ".." !in path
     }
 
     /**

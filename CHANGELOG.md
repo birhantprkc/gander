@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Anything a document's page asks for that Gander does not serve is now answered with nothing
+  inside the app. Before, it was handed to Android's network stack and stopped only by Gander
+  having no internet permission, so that one missing permission was the whole of the
+  guarantee; now there are two. The viewer also keeps no cookies or page storage, and cannot be
+  sent to any page but Gander's own.
+
 - Moving to a new phone no longer copies Gander's list of recent files across. Backups were
   already off, but from Android 12 a phone-to-phone transfer follows rules of its own, and
   Gander had set none. Gander also opts out of the usage reports Android System WebView sends

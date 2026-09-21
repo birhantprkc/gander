@@ -10,6 +10,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -302,6 +303,72 @@ class ViewerActivityTest {
         val settings = open("six-pages.pdf").webView()!!.settings
         assertThat(settings.allowFileAccess).isFalse()
         assertThat(settings.allowContentAccess).isFalse()
+    }
+
+    private fun ActivityController<ViewerActivity>.request(url: String): WebResourceResponse? {
+        val web = webView()!!
+        return web.webViewClient.shouldInterceptRequest(web, Request(Uri.parse(url), emptyMap()))
+    }
+
+    /**
+     * The missing INTERNET permission stops all of these at the socket. This is the
+     * second wall: nothing a page asks for is handed to the network stack at all, so the
+     * guarantee does not rest on the permission alone. A null here would mean "go and
+     * fetch it".
+     */
+    @Test
+    fun anythingThePageAsksForThatGanderDoesNotServeIsAnsweredWithNotFound() {
+        val controller = open("six-pages.pdf")
+        listOf(
+            "https://example.com/pixel.png",
+            "http://example.com/",
+            "https://appassets.androidplatform.net.example.com/assets/viewer/app.js",
+            "http://appassets.androidplatform.net/assets/viewer/app.js",
+            "http://appassets.androidplatform.net/doc/file.pdf",
+            "https://appassets.androidplatform.net/elsewhere",
+        ).forEach { url ->
+            val status = controller.request(url)?.statusCode
+            assertThat("$url answered $status").isEqualTo("$url answered 404")
+        }
+    }
+
+    /** Bytes the page already holds, which never leave it. */
+    @Test
+    fun dataUrlsAreLeftToThePage() {
+        assertThat(open("six-pages.pdf").request("data:image/png;base64,iVBORw0KGgo=")).isNull()
+    }
+
+    /**
+     * On the asset host, only Gander's own pages. The document itself is on that host
+     * too, at /doc/, and opened as a page it would be rendered as whatever its type says
+     * instead of by the viewer that makes it safe to look at.
+     */
+    @Test
+    fun theOnlyPagesThePageMayNavigateToAreGandersOwn() {
+        val web = open("six-pages.pdf").webView()!!
+        listOf(
+            "https://appassets.androidplatform.net/doc/file.pdf",
+            "https://appassets.androidplatform.net/assets/licences.md",
+            "https://appassets.androidplatform.net/assets/viewer/app.js",
+            "https://appassets.androidplatform.net/assets/viewer/../../doc/file.html",
+            "http://appassets.androidplatform.net/assets/viewer/text.html",
+        ).forEach { url ->
+            val blocked = web.webViewClient.shouldOverrideUrlLoading(
+                web, Request(Uri.parse(url), emptyMap())
+            )
+            assertThat("$url blocked: $blocked").isEqualTo("$url blocked: true")
+        }
+    }
+
+    /**
+     * Neither is anything Gander uses, and on a page showing an untrusted document both
+     * are only a place for a document's script to leave something for the next one.
+     */
+    @Test
+    fun thePageKeepsNeitherDomStorageNorCookies() {
+        val web = open("six-pages.pdf").webView()!!
+        assertThat(web.settings.domStorageEnabled).isFalse()
+        assertThat(CookieManager.getInstance().acceptCookie()).isFalse()
     }
 
     // ---------------------------------------------------------------
