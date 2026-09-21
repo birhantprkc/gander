@@ -1,5 +1,5 @@
 """
-padRows() in pdf.html: the hit boxes a finger drags a selection through. Issue #22.
+padRows() in pdf.mjs: the hit boxes a finger drags a selection through. Issue #22.
 
 pdf.js sizes a text span to its glyphs, so a line box is the height of the type and
 no wider than the words on it. The leading between lines, the white beside a short

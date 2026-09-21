@@ -1077,7 +1077,7 @@ class ViewerActivity : AppCompatActivity() {
      */
     private var pendingQuery: String = ""
 
-    /** One letter of command, then the payload. Read by onCommand() in pdf.html. */
+    /** One letter of command, then the payload. Read by onCommand() in pdf.mjs. */
     private inner class PortFinder : Finder {
         private fun send(s: String) {
             searchPort?.postMessage(WebMessageCompat(s))
@@ -1108,7 +1108,7 @@ class ViewerActivity : AppCompatActivity() {
      * an untrusted document and lets it call methods on it; this passes strings, in
      * the same direction the query parameters on the URL already go. Nothing on
      * either side is evaluated, and what comes back is read as three integers and
-     * dropped if it is anything else. See the note beside vwAskPassword in pdf.html
+     * dropped if it is anything else. See the note beside vwAskPassword in pdf.mjs
      * about why that boundary is most of what keeps a document away from the app.
      *
      * Posted on page finished rather than at load, because the listener that takes it

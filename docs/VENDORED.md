@@ -57,7 +57,7 @@ silently for whatever was trimmed.
 `wasm/` holds the two image decoders pdf.js keeps in WebAssembly rather than in
 its bundle. Since pdf.js 4 the JPEG 2000 decoder (`openjpeg.wasm`, 252 KB) and
 the JBIG2 one (`jbig2.wasm`, 105 KB) are fetched by the worker at the moment it
-meets an image that needs one, and the `wasmUrl` option in `pdf.html` is the
+meets an image that needs one, and the `wasmUrl` option in `pdf.mjs` is the
 only way to say where they are.
 
 They fail exactly the way the CMaps do. The worker warns to the console, returns
@@ -204,11 +204,12 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
   figures spent 684 ms deciding what they were and nothing on the desktop said so.
 
 Bumping pdf.js means editing together the two `pdf.*.mjs` rows above, `PDFJS` in
-`scripts/fetch-viewer-libs.sh`, and `PDFJS_MIN_CHROMIUM_MAJOR`. The card's wording
-lives in `pdf.html` and reads both version numbers out of the query string, so it
-needs no edit. It also reads `locked`, which says the reader has no way to update
-the WebView and selects wording that does not ask them to; that flag is about the
-phone rather than about pdf.js, so a version bump does not affect it either.
+`scripts/fetch-viewer-libs.sh`, and `PDFJS_MIN_CHROMIUM_MAJOR`. The card's
+wording lives in `app.js`, called from `pdf-setup.js`, and reads both version
+numbers out of the query string, so it needs no edit. It also reads `locked`,
+which says the reader has no way to update the WebView and selects wording that
+does not ask them to; that flag is about the phone rather than about pdf.js, so
+a version bump does not affect it either.
 
 Notes for packagers (F-Droid and friends): the minified files are unmodified
 upstream distribution artifacts. If unminified sources are required, every

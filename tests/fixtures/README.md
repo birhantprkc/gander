@@ -34,7 +34,7 @@ should stay obviously so.
 |---|---|
 | `six-pages.pdf` | Base rendering, six pages, base-14 fonts. Contains "tenancy" exactly three times in three cases, which is what the search tests count. |
 | `forty-pages.pdf` | Page virtualisation and go-to-page: long enough that only a band is ever drawn. |
-| `embedded-font.pdf` | `embedFonts` in `pdf.html`. Carries its own Vera face, so the text layer must name that face and not a generic. |
+| `embedded-font.pdf` | `embedFonts` in `pdf.mjs`. Carries its own Vera face, so the text layer must name that face and not a generic. |
 | `cjk.pdf` | Issue #21. Names a CID font without embedding it, so it renders only if `lib/cmaps/` ships and `vwWithAssets` is applied. Fails silently when it is not. |
 | `jpx.pdf` | Issue #24. A JPEG 2000 image, the encoding the reported file was made of. Renders only if `lib/wasm/openjpeg.wasm` ships and `vwWithAssets` sets `wasmUrl`. Fails silently when it does not. |
 | `jbig2.pdf` | Issue #24. An embedded JBIG2 stream, hand-built as a generic region with MMR coding so no JBIG2 encoder is needed to regenerate it. |

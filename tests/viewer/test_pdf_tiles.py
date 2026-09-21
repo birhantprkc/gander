@@ -136,7 +136,7 @@ def test_a_page_scrolled_out_of_view_loses_its_patch(viewer, page):
     Note there is no test for MAX_TILES. It cannot bind: at the zoom the gate
     opens, at most about one page height is visible on any real screen, so the
     list it truncates never has three pages in it. See the note beside the
-    constant in pdf.html.
+    constant in pdf.mjs.
     """
     viewer("pdf.html", "forty-pages.pdf")
     wait_for_pdf(page)
