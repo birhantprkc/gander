@@ -52,7 +52,7 @@ It cannot phone home because it does not even hold the INTERNET permission.
 - **Select and copy text in a PDF**, and read one with a screen reader
 - **Picks up where you left off**: a PDF reopens at the page you were reading, however you open it
 - **Night mode for PDFs**: turns the page over for reading in the dark, keeping each colour's hue, turning scans and figures over with the text, and leaving photographs exactly as they were printed
-- **Share and locate**: send the open file to any app, or jump to its folder in the file manager
+- **Share, rename and locate**: send the open file to any app, rename one picked from the phone's storage or Downloads, or jump to its folder in the file manager
 - **Private by construction**: no permissions, no INTERNET, no analytics, no accounts, nothing leaves the phone
 - **Checks its own promise**: the About screen asks Android what the app requests and shows you the answer, next to the full licence text for every bundled library
 - **Modern Android**: Material 3, dark mode, edge to edge, works on Android 8.0+
@@ -135,6 +135,11 @@ not declare the INTERNET permission, so there is nothing to audit or trust.
 Folder browsing uses `ACTION_OPEN_DOCUMENT_TREE` grants. Note that Android itself
 refuses to grant the Downloads root to any app; grant Documents, DCIM or a
 subfolder of Downloads instead.
+
+Rename uses the grant the picker hands over with each file, which covers changing
+it as well as reading it. Gander keeps that for a file it can rename, so one in
+Recents can be renamed later, and gives it back when the file leaves Recents.
+Folder grants are kept read-only.
 
 ## Build from source
 

@@ -430,7 +430,7 @@ internal class ArchiveBrowser(
         // Material keeps 80dp clear above and below a dialog, which with the keyboard up leaves a
         // phone of ordinary height no room for this one, and the field was squeezed to 43dp to
         // fit: under the 48 anything tapped needs. The same inset as its sides is room enough.
-        val inset = activity.resources.getDimensionPixelSize(R.dimen.password_box_inset)
+        val inset = activity.resources.getDimensionPixelSize(R.dimen.field_box_inset)
         val box = MaterialAlertDialogBuilder(activity)
             .setTitle(R.string.password_title)
             .setMessage(R.string.password_message)

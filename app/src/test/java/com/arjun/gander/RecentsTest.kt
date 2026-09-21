@@ -109,6 +109,36 @@ class RecentsTest {
         assertThat(names()).containsExactly("First")
     }
 
+    private fun kept(uri: Uri) =
+        context.contentResolver.persistedUriPermissions.any { it.uri == uri }
+
+    /**
+     * Nothing else opens a file by its grant, so an entry that goes gives it back, write access
+     * included, which the viewer keeps for a file it can rename.
+     */
+    @Test
+    fun removingAnEntryGivesBackItsAccess() {
+        val uri = FixtureProvider.uriFor("a.pdf")
+        context.contentResolver.takePersistableUriPermission(
+            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        Recents.add(context, uri, "First")
+        val other = granted("b.pdf")
+        Recents.add(context, other, "Second")
+
+        Recents.remove(context, uri.toString())
+
+        assertThat(kept(uri)).isFalse()
+        assertThat(kept(other)).isTrue()
+    }
+
+    @Test
+    fun anEntryPushedOffTheEndGivesBackItsAccess() {
+        val uris = (1..26).map { granted("f$it.pdf").also { uri -> Recents.add(context, uri, "File") } }
+        assertThat(kept(uris.first())).isFalse()
+        assertThat(uris.drop(1).all(::kept)).isTrue()
+    }
+
     // ---------------------------------------------------------------
     // The grant filter
     // ---------------------------------------------------------------

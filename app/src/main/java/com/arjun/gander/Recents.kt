@@ -1,13 +1,20 @@
 package com.arjun.gander
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import androidx.core.net.toUri
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
  * Recently opened files, limited to URIs whose read grant was persisted
  * (picker selections). Stored as JSON in SharedPreferences.
+ *
+ * The grant goes when the entry does, whether it is removed or pushed off the
+ * end: nothing else opens a file by it, and for a file the viewer kept write
+ * access to, so that it can be renamed, it would be write access held for
+ * nothing.
  */
 object Recents {
 
@@ -30,10 +37,26 @@ object Recents {
         val items = load(context).filter { it.uri != key }.toMutableList()
         items.add(0, Entry(key, name, System.currentTimeMillis()))
         save(context, items.take(MAX))
+        items.drop(MAX).forEach { release(context, it.uri) }
     }
 
     fun remove(context: Context, uri: String) {
         save(context, load(context).filter { it.uri != uri })
+        release(context, uri)
+    }
+
+    /**
+     * Gives back what the grant on [uri] allowed, read and write alike. Android
+     * throws for a grant that is already gone, a renamed file's old one say,
+     * and that is the same outcome.
+     */
+    private fun release(context: Context, uri: String) {
+        runCatching {
+            context.contentResolver.releasePersistableUriPermission(
+                uri.toUri(),
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
     }
 
     private fun load(context: Context): List<Entry> = runCatching {
