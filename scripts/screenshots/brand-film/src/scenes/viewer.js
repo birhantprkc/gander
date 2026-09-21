@@ -7,16 +7,17 @@
 
   // [kind, opens at, what the kicker calls it, the file's name]
   const SLOTS = [
+    // Four beats, then three at a time, then four: every cut is on a beat of the score.
     ["XLS", 12.9, "Spreadsheets", "Q3 budget.xlsx"],
-    ["PDF", 15.1, "PDF documents", "Tenancy agreement.pdf"],
-    ["DOC", 16.9, "Word documents", "Field survey report.docx"],
-    ["PPT", 18.5, "Slides", "Willowmere kickoff.pptx"],
-    ["IMG", 20.0, "Photos", "IMG_2041.jpg"],
-    ["VID", 21.4, "Video", "Walkthrough.mp4"],
-    ["AUD", 22.7, "Audio", "Voice memo.m4a"],
+    ["PDF", 14.9, "PDF documents", "Tenancy agreement.pdf"],
+    ["DOC", 16.4, "Word documents", "Field survey report.docx"],
+    ["PPT", 17.9, "Slides", "Willowmere kickoff.pptx"],
+    ["IMG", 19.4, "Photos", "IMG_2041.jpg"],
+    ["VID", 20.9, "Video", "Walkthrough.mp4"],
+    ["AUD", 22.4, "Audio", "Voice memo.m4a"],
     ["MD", 23.9, "Markdown", "Notes.md"],
-    ["ZIP", 25.3, "Zip archives", "Site pack.zip"],
-    ["HOME", 26.7, "And practically anything else", "Gander"],
+    ["ZIP", 25.4, "Zip archives", "Site pack.zip"],
+    ["HOME", 26.9, "And practically anything else", "Gander"],
   ];
   const FORMATS_END = (F.FORMATS_END = 28.9);
   const CHIPS = [
@@ -74,6 +75,7 @@
       const pips = [[-58, -50, 15], [-72, -8, 9], [-30, -72, 8]].map(([dx, dy, size]) => ({ n: F.spark(type, { size: 1 }), dx, dy, size }));
 
       // ---- the chips that come out at the end of the parade ----------------------------------
+      const HOME_AT = SLOTS[9][1], AUD_AT = SLOTS[6][1];
       const r = F.rng(4);
       const chips = CHIPS.map(([ext, fam], i) => {
         const g = F.g(behind);
@@ -84,7 +86,7 @@
         F.el("circle", { cx: -w / 2 + 28, cy: 0, r: 9, fill: C.fmt[fam] }, g);
         g.appendChild(tx);
         const left = i % 2 === 0, row = Math.floor(i / 2);
-        return { g, x: (left ? 1082 : 1748) + (r() - 0.5) * 90, y: 258 + row * 92 + (r() - 0.5) * 22 + (left ? 0 : 40), rot: (r() - 0.5) * 14, at: 26.95 + i * 0.05 };
+        return { g, x: (left ? 1082 : 1748) + (r() - 0.5) * 90, y: 258 + row * 92 + (r() - 0.5) * 22 + (left ? 0 : 40), rot: (r() - 0.5) * 14, at: HOME_AT + 0.25 + i * 0.05 };
       });
 
       // ---- the goose's track through the parade ----------------------------------------------
@@ -96,9 +98,13 @@
         set.pose.push([at - 0.08, null], [at + 0.13, rest({ ay: 214, tilt: -21 }), E.soft], [at + 0.5, settle, E.out]);
       });
       set.pose.push(
-        [26.75, null], [27.15, rest({ ay: 214, tilt: 12 }), E.out], [27.7, rest({ ay: 212, tilt: 8 })],
-        [28.0, rest({ ay: 210, tilt: 4, flip: 1 })], [28.45, rest({ ay: 212, tilt: 8, flip: 1 })], [28.78, rest()]
+        [HOME_AT + 0.05, null], [HOME_AT + 0.45, rest({ ay: 214, tilt: 12 }), E.out], [HOME_AT + 0.9, rest({ ay: 212, tilt: 8 })],
+        [HOME_AT + 1.15, rest({ ay: 210, tilt: 4, flip: 1 })], [HOME_AT + 1.6, rest({ ay: 212, tilt: 8, flip: 1 })], [HOME_AT + 1.9, rest()]
       );
+      F.cue(T0, "phone");
+      SLOTS.forEach(([kind, at]) => F.cue(at, "file", { kind }));
+      chips.forEach((c) => F.cue(c.at, "chip"));
+      F.cue(HOME_AT + 1.15, "turn"); F.cue(HOME_AT + 1.75, "turn");
 
       const acts = F.acts.map((a) => a(set));
       // A null pose means "wherever the track had got to": it holds the key before it.
@@ -150,8 +156,8 @@
         });
 
         const pose = F.poseKeys(t, set.pose);
-        if (t > 22.7 && t < 23.9) { // nodding along, twice a second
-          const n = Math.sin((t - 22.7) * Math.PI * 4) * F.tw(t, 22.85, 0.3, E.lin) * (1 - F.tw(t, 23.6, 0.25, E.lin));
+        if (t > AUD_AT && t < AUD_AT + 1.5) { // nodding along, twice a second, which is the beat
+          const n = Math.sin((t - AUD_AT) * Math.PI * 4) * F.tw(t, AUD_AT + 0.15, 0.3, E.lin) * (1 - F.tw(t, AUD_AT + 1.15, 0.25, E.lin));
           pose.tilt += n * 7; pose.ay += Math.abs(n) * 10;
         }
         pose.blink = Math.max(pose.blink || 0, F.blinks(t, [14.2, 16.3, 17.9, 19.6, 21.0, 24.6, 26.2, 27.5, 30.2, 32.6, 36.2, 40.4, 43.6, 46.8, 49.5, 52.6, 54.8]));

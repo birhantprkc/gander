@@ -23,6 +23,7 @@
       });
       const sub = F.text(g, "MIT licensed. Every line of it is on GitHub.", { x: 148, y: 820, size: 40, weight: 500, fill: C.inkSoft });
       const beats = [T + 1.0, T + 1.8, T + 2.6];
+      F.cue(T, "dawn", { dur: 1.6 }); beats.forEach((b, i) => F.cue(b, "fact", { i })); F.cue(T + 3.2, "factSub"); F.cue(T + 4.0, "sunset", { dur: 0.75 });
       const up = { bx: 1400, by: 1320, ax: 1392, ay: 470, tilt: -4 };
       const POSE = [
         [T + 0.7, { bx: 1400, by: 1320, ax: 1400, ay: 1320 }], [T + 1.7, up, E.spring(0.6, 9)],
@@ -71,6 +72,9 @@
       });
       tag.setAttribute("xml:space", "preserve");
       const url = F.text(root, "arjun.maniyani.com/gander", { x: CX, y: 978, size: 34, weight: 500, fill: C.inkSoft, anchor: "middle", ls: "0.06em" });
+      F.cue(T, "end"); F.cue(T + 0.15, "tile"); [0, 1, 2].forEach((i) => F.cue(T + 0.55 + i * 0.1, "fan", { i }));
+      F.cue(T + 1.1, "gooseUp", { dur: 0.8 }); F.cue(T + 1.5, "wordmark"); F.cue(T + 2.2, "tagline"); F.cue(T + 2.8, "url");
+      F.cue(T + 3.9, "stretch", { dur: 0.5 }); F.cue(T + 4.4, "turn"); F.cue(T + 4.95, "lastHonk"); F.cue(T + 5.2, "turn");
       const home = P(57.85, 37.4), base = P(57.85, 66);
       const at = (ay, o) => Object.assign({ bx: base[0], by: base[1], ax: home[0], ay }, o);
       const POSE = [

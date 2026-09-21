@@ -22,8 +22,10 @@
     { title: "Upgrade to Premium", icon: "card", col: "ZIP", yes: "Upgrade", at: [20, 130, 2] },
     { title: "Allow microphone access?", icon: "mic", col: "AUD", yes: "Allow", at: [-60, -90, -5] },
   ];
-  // They start on the beat and then stop waiting for it.
-  const POP_AT = [2.3, 2.8, 3.3, 3.7, 4.05, 4.35, 4.6, 4.8, 5.0, 5.15, 5.3, 5.45];
+  // The film runs at 120 to the minute from 0.4 s, and the dialogs arrive in time with it:
+  // three on the beat, four on the half beat, five on the quarter. Impatience, in notation.
+  const POP_AT = [2.4, 2.9, 3.4, 3.9, 4.15, 4.4, 4.65, 4.9, 5.025, 5.15, 5.275, 5.4];
+  const TAP = 1.9;
   const HONK = 8.4;
 
   F.scenes.push({
@@ -55,6 +57,11 @@
       const h2 = F.headline(root, { x: 146, y: 500, size: 116, lines: [{ text: "All you wanted", fill: C.ink }, { text: "was to open it.", fill: C.red }] });
       const h3 = F.headline(root, { x: 146, y: 500, size: 164, lines: [{ text: "Take a", fill: C.ink }, { text: "gander.", fill: C.red }] });
 
+      F.cue(0.3, "drop"); F.cue(0.62, "land"); F.cue(0.9, "headline"); F.cue(TAP, "tap");
+      POP_AT.forEach((t, i) => F.cue(t, "dialog", { i }));
+      F.cue(6.4, "gooseRise", { dur: 0.9 }); F.cue(7.95, "inhale", { dur: 0.4 }); F.cue(HONK, "honk");
+      F.cue(HONK + 0.04, "scatter", { dur: 0.9 }); F.cue(9.5, "title"); F.cue(10.15, "turn"); F.cue(11.2, "turn");
+      F.cue(11.95, "duck", { dur: 0.55 }); F.cue(12.05, "morph", { dur: 0.65 });
       const hidden = { bx: 776, by: 1300, ax: 860, ay: 1300, flip: 1 };
       const POSE = [
         [6.4, hidden],
@@ -90,7 +97,7 @@
         F.op(phone.root, F.tw(t, 12.3, 0.32, E.lin));
         F.show(phone.root, t > 12.25);
         F.op(label, F.tw(t, 1.2, 0.4, E.lin) * (1 - F.tw(t, 2.5, 0.4, E.lin)) + F.tw(t, 9.3, 0.4, E.lin) * (1 - F.tw(t, 11.9, 0.3, E.lin)));
-        const rp = F.prog(t, 2.0, 2.55);
+        const rp = F.prog(t, TAP, TAP + 0.55);
         ring.setAttribute("r", 10 + E.cubicOut(rp) * 120);
         F.op(ring, rp > 0 && rp < 1 ? 0.55 * (1 - rp) : 0);
 

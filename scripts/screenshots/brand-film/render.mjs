@@ -10,6 +10,7 @@
 //   node render.mjs --stills 3.2,9.5        single full-size frames into out/stills/
 //   node render.mjs --sheet 0,8,12          twelve small frames from 0s to 8s as one picture
 //   node render.mjs --check                 prove that a frame depends on nothing but its time
+//   node render.mjs --cues                  write out/cues.json, the timeline the soundtrack is cut to
 //
 // Options: --fps 60  --workers 6  --crf 14  --out path.mp4  --keep (leave the frames behind)
 
@@ -128,7 +129,8 @@ async function openTab(cdp, scale) {
   };
   await shot(0); // a throwaway, so the grain image and the fonts are decoded before frame one
   const dur = (await s("Runtime.evaluate", { expression: "F.DUR", returnByValue: true })).result.value;
-  return { shot, dur };
+  const evaluate = async (expression) => (await s("Runtime.evaluate", { expression, returnByValue: true })).result.value;
+  return { shot, dur, evaluate };
 }
 
 function run(cmd, argv) {
@@ -152,6 +154,12 @@ try {
       writeFileSync(f, await tab.shot(t));
       console.log(f);
     }
+  } else if (opt("cues")) {
+    const tab = await openTab(cdp, 1);
+    const json = await tab.evaluate("JSON.stringify({ fps: F.FPS, duration: F.DUR, cues: F.cues.slice().sort((a, b) => a.t - b.t) }, null, 1)");
+    mkdirSync(join(HERE, "out"), { recursive: true });
+    writeFileSync(join(HERE, "out", "cues.json"), json + "\n");
+    console.log(`${JSON.parse(json).cues.length} cues in out/cues.json`);
   } else if (opt("check")) {
     // Two tabs, each loaded fresh, draw the same times in opposite orders. If any frame
     // differs between them, something on the page is carrying state from one frame to the

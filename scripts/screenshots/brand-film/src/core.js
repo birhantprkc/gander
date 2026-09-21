@@ -141,6 +141,13 @@
   let uid = 0;
   F.id = (p = "id") => `${p}${++uid}`;
 
+  // ---- cues ------------------------------------------------------------------------------
+  // The film's own account of when things happen, for the soundtrack to be cut to. A scene
+  // calls F.cue with the same constant that drives the picture, never a copy of it, so a
+  // sound cannot drift from the thing it belongs to. `node render.mjs --cues` writes them out.
+  F.cues = [];
+  F.cue = (t, name, data) => F.cues.push(Object.assign({ t: Math.round(t * 1000) / 1000, name }, data));
+
   // A rounded rectangle as a path, centred on the origin unless told otherwise.
   F.rr = (w, h, r, x = -w / 2, y = -h / 2) => {
     r = Math.min(r, w / 2, h / 2);

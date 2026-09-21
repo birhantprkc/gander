@@ -78,6 +78,10 @@
       lines: ["Finds", "anything."], at: [AT + 0.1, 33.35],
       kickers: [{ icon: "search", label: "Find in document", tint: F.mixHex(C.cream, "#E9B93A", 0.5), at: [AT + 0.25, 33.3] }],
     });
+    F.cue(AT, "find");
+    for (let i = 0; i < 6; i++) F.cue(29.75 + i * 0.09, "key");
+    hits.forEach((_, i) => F.cue(30.35 + i * 0.07, "hit", { i }));
+    F.cue(30.95, "lens"); F.cue(31.0, "next"); F.cue(32.3, "next"); F.cue(33.3, "lensOut");
     const rest = set.rest;
     set.pose.push([AT + 0.1, null], [AT + 0.5, rest({ tilt: -18, ay: 208 }), E.out], [30.9, null],
       [31.4, rest({ ax: 1486, ay: 194, tilt: -25, bend: 30 }), E.io], [33.0, rest({ ax: 1480, ay: 196, tilt: -27, bend: 30 })], [33.6, rest(), E.io]);
@@ -130,6 +134,7 @@
         touch.forEach((c, i) => { const sg = i ? 1 : -1; c.setAttribute("cx", f.fx + sg * d * 0.62); c.setAttribute("cy", f.fy - sg * d * 0.78); F.op(c, o); });
       },
     }, "IMG_2041.jpg", F.tint(C.fmt.IMG, 0.3), 77);
+    F.cue(AT, "photo"); F.cue(35.0, "pinch", { dur: 1.0 }); F.cue(PUSH, "push", { dur: DARK - PUSH }); F.cue(DARK, "dark");
     const veil = F.ground(root, C.dark);
     root.insertBefore(veil, type);
     set.veil = veil;
@@ -206,6 +211,7 @@
       const a = (i / 22) * Math.PI * 2 + 0.14, dx = Math.cos(a), dy = Math.sin(a), k = Math.min(hw / Math.abs(dx || 1e-6), hh / Math.abs(dy || 1e-6));
       rays.push({ n: F.el("line", null, glare), x: S.px + dx * k, y: S.py + dy * k, dx, dy, i });
     }
+    F.cue(AT, "night"); F.cue(39.3, "glare", { dur: FLIP - 39.3 }); F.cue(FLIP, "nightMode", { dur: 0.75 }); F.cue(42.9, "content");
     const head = title(set, {
       dark: true, lines: ["Reads", "at 2am."], at: [39.35, 44.3],
       kickers: [{ icon: "moon", label: "Night mode for PDFs", at: [39.5, 44.25] }],
@@ -264,7 +270,7 @@
       F.wob(F.el("path", { d: F.rr(156, 156, 78), fill: "#3A3022" }, g), { amp: 1.8, wl: 80, step: 5 });
       F.T(F.icon(g, icon, { size: 80, sw: 1.8, stroke: C.onDark }), 0, 0);
       const strike = F.el("line", { x1: -62, y1: 62, x2: -62, y2: 62, stroke: C.coral, "stroke-width": 11, "stroke-linecap": "round" }, g);
-      return { g, strike, x, y, in: 45.55 + i * 0.11, out: 46.9 + i * 0.34 };
+      return { g, strike, x, y, in: 45.55 + i * 0.11, out: 46.9 + i / 3 }; // six across one bar of the score, as triplets
     });
 
     // 2. No way out: files that cannot get to the cloud.
@@ -292,7 +298,7 @@
       F.el("circle", { cx: B.x + 74, cy, r: 34, fill: C.coral }, g);
       F.el("path", { d: `M${B.x + 58},${cy + 1} l11,11 l22,-24`, fill: "none", stroke: SURF, "stroke-width": 7, "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
       F.text(g, s, { x: B.x + 134, y: cy + 14, size: 40, weight: 600, fill: C.onDark });
-      return { g, at: REST + 0.45 + i * 0.42 };
+      return { g, at: REST + 0.4 + i * 0.5 }; // one to a beat
     });
     set.addFile("CHECKS", REST, { root: rest, update() {} }, "Gander", "#221C12", 97);
 
@@ -304,6 +310,12 @@
         { icon: "check", label: "None of the rest, either", at: [REST + 0.1, 54.95] },
       ],
     });
+    F.cue(AT, "nothing");
+    bubbles.forEach((b, i) => { F.cue(b.in, "bubble", { i }); F.cue(b.out, "strike", { i }); });
+    F.cue(NET, "noNet"); F.cue(NET + 0.35, "cloud");
+    cards.forEach((_, i) => [49.95, 50.75].forEach((at) => F.cue(at + i * 0.13 + 0.34, "bump", { i })));
+    F.cue(50.85, "cut"); F.cue(51.35, "cloudOff", { dur: 0.9 }); F.cue(REST, "rest");
+    checks.forEach((c, i) => F.cue(c.at, "check", { i }));
     // Night has reached the system too: the app bar goes dark with the page under it.
     const barInk = phone.bar.querySelectorAll("g[stroke]");
     const r = set.rest;

@@ -82,6 +82,11 @@ colour let down into the cream. A new format colour in the app should be changed
 | `src/scenes/viewer.js` | 0:12.7 One phone in one place: the parade of formats. |
 | `src/scenes/acts.js` | 0:28.9 Find, deep zoom, night mode, and "Takes nothing." on that same phone. |
 | `src/scenes/close.js` | 0:55.2 Three facts at sunrise, and the end card. |
+| `audio/voice.py` | The narration, one line per cue, from Kokoro. `--check` transcribes it back. |
+| `audio/score.py` | Every instrument and effect (numpy only), the score, the mix and the master. |
+| `audio/check.py` | Sound on every cue, and the script still intelligible through the full mix. |
+| `audio/octaves.py` | Energy per octave, for anything that will be heard on a phone. |
+| `audio/mux.sh` | Puts a soundtrack on a rendered film without re-encoding the picture. |
 
 ## What it claims
 
@@ -94,5 +99,52 @@ and **MIT licensed**; that Gander requests **no permissions** and has **no inter
 video, audio, Markdown and `.zip`, find in document, deep zoom and night mode for PDFs. If
 one of those stops being true, the film has to change with it.
 
-It has no soundtrack. It is built to be read, and works with the sound off, which is how
-most places will play it.
+It is built to be read, and works with the sound off, which is how most places will first
+play it. The soundtrack is for everybody who then turns it on.
+
+## Sound
+
+```sh
+node render.mjs --cues                      # out/cues.json: when everything in the film happens
+.venv/bin/python audio/voice.py --check     # the narration, and a recogniser's opinion of it
+python3 audio/score.py                      # score, sound design and mix: out/soundtrack.wav
+.venv/bin/python audio/check.py             # what can be checked without ears
+python3 audio/octaves.py out/*.wav          # where the energy is, octave by octave
+audio/mux.sh out/gander-film.mp4 out/soundtrack.wav out/gander-film-sound.mp4
+```
+
+**The soundtrack is cut to the film's own timeline, not to a copy of it.** Scenes call
+`F.cue(time, name)` with the same constant that moves the picture, `--cues` writes them out,
+and nothing in `audio/` contains a time. Move a scene and its sounds move with it; rename a
+cue and `check.py` reports the silence.
+
+**It is written to picture, which is the point of it.** Music laid under a film sounds like
+music laid under a film. Here every dialog that pops up is the next note of a pentatonic
+scale, and they arrive as quarters, then eighths, then sixteenths of the score's own bar; the
+format cuts fall on its beats, three at a time against four; the honk gets a bar of silence
+to land in; the zip opens with a zip; the phone plays a tune when it opens an audio file, and
+the goose nods to it at the tempo of the score, which is 120; the night is in D minor with
+crickets and a too-bright page humming, and the morning is back in F with birds. The three
+notes under "Take a gander." at the start are the three under the wordmark at the end.
+
+**The narrator is Kokoro**, an 82M-parameter model whose weights are Apache-2.0, run locally.
+Not the Mac's `say` voices: Apple licenses those for personal, non-commercial use. Setup:
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install kokoro-onnx soundfile faster-whisper
+mkdir -p models && cd models
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+```
+
+`audio/voice.py --voice bm_george` (or any Kokoro voice) changes the narrator;
+`out/soundtrack-no-voice.wav` is the same mix without one.
+
+**It was mixed by measurement, because it was written by something that cannot hear.** That
+is worth knowing before trusting it, and it is why the checks exist. The voice sits 11.6 dB
+over everything else while it speaks (the first mix had it at 0.3); a speech recogniser given
+the *finished mix* returns all 78 words of the script; every one of the 81 cues that should be
+a transient has a sound starting on it; the master is -14.6 LUFS at -1.5 dB true peak; and 76%
+of the mix's energy is between 250 Hz and 4 kHz, where a phone speaker lives (the first pass
+of the music had half of its energy below that and 3% above 2 kHz). None of that says it
+sounds good. That takes a person with ears, and theirs is the opinion that counts.

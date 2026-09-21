@@ -6,3 +6,7 @@ out/
 # and could legally live here; it stays out because this repo has never carried a font file
 # and a clone can get it back with the two curl lines in README.md.
 fonts/
+
+# The narrator's model (325 MB, Apache-2.0, fetched: see README.md) and the venv that runs it.
+models/
+.venv/
