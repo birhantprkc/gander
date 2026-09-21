@@ -45,7 +45,7 @@ internal class EntryRef(val archive: Uri, val name: String, val location: EntryL
  *
  * Not exported. Share passes one file's URI on with a one-off read grant, the way the
  * FileProvider does, and ViewerActivity turns these URIs away from anything but Gander's own
- * list, see [ViewerActivity.ENTRY_VIEWER]: whoever holds one can have Gander read whatever
+ * list, see [ViewerActivity.INTERNAL_VIEWER]: whoever holds one can have Gander read whatever
  * archive it names.
  */
 class ArchiveProvider : ContentProvider() {

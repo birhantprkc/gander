@@ -84,7 +84,7 @@ class ArchiveDeviceTest {
     private fun openEntry(archive: String, path: String): ActivityScenario<ViewerActivity> =
         ActivityScenario.launch(
             Intent()
-                .setComponent(ComponentName(target, ViewerActivity.ENTRY_VIEWER))
+                .setComponent(ComponentName(target, ViewerActivity.INTERNAL_VIEWER))
                 .setData(entryUri(archive, path))
         )
 
@@ -417,7 +417,7 @@ class ArchiveDeviceTest {
         }
     }
 
-    /** Only Gander's own list can open one of these. See ViewerActivity.ENTRY_VIEWER. */
+    /** Only Gander's own list can open one of these. See ViewerActivity.INTERNAL_VIEWER. */
     @Test
     fun aFileInsideAZipIsRefusedFromOutsideTheList() {
         val intent = Intent(target, ViewerActivity::class.java)

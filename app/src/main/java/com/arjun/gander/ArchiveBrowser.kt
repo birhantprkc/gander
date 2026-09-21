@@ -363,7 +363,7 @@ internal class ArchiveBrowser(
     private fun view(entry: ArchiveEntry) {
         activity.startActivity(
             Intent()
-                .setClassName(activity, ViewerActivity.ENTRY_VIEWER)
+                .setClassName(activity, ViewerActivity.INTERNAL_VIEWER)
                 .setData(ArchiveProvider.uriFor(activity, archive, entry))
         )
     }

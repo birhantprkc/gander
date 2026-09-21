@@ -73,8 +73,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <!-- content only. A file:// path from another app would be read with Gander's
+                     access rather than the sender's, and with no storage permission the only
+                     paths Gander can read are its own private ones. -->
                 <data android:scheme="content" />
-                <data android:scheme="file" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />
                 <data android:mimeType="audio/*" />
@@ -110,12 +112,12 @@
             </intent-filter>
         </activity>
 
-        <!-- The viewer again, for a file inside a zip. Not exported, so only Gander can start
-             it, and ViewerActivity refuses an archive URI that arrives any other way: see
-             ViewerActivity.ENTRY_VIEWER for why. Declared after the activity it names, which
-             an alias has to be. -->
+        <!-- The viewer again, under the name Gander's own screens open it by. Not exported, so
+             only Gander can start it, which is how the viewer tells a file Gander chose from
+             one another app handed it: see ViewerActivity.INTERNAL_VIEWER for why that
+             matters. Declared after the activity it names, which an alias has to be. -->
         <activity-alias
-            android:name=".ArchiveEntryViewer"
+            android:name=".InternalViewer"
             android:exported="false"
             android:targetActivity=".ViewerActivity" />
 

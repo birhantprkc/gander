@@ -72,6 +72,15 @@ class ViewerActivityTest {
     private fun open(fixture: String): ActivityController<ViewerActivity> =
         view(FixtureProvider.uriFor(fixture))
 
+    /** The same, the way Gander's own screens open it: by the viewer's internal name. */
+    private fun viewFromGander(uri: Uri, type: String? = null): ActivityController<ViewerActivity> {
+        val intent = Intent()
+            .setClassName(context, ViewerActivity.INTERNAL_VIEWER)
+            .setAction(Intent.ACTION_VIEW)
+            .setDataAndType(uri, type ?: context.contentResolver.getType(uri))
+        return Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+    }
+
     private fun ActivityController<ViewerActivity>.container(): FrameLayout =
         get().findViewById(R.id.container)
 
@@ -433,13 +442,59 @@ class ViewerActivityTest {
         assertThat(controller.loadedUrl()).contains("viewer/pdf.html")
     }
 
-    /** The path extra, which only the bundled licence viewer uses. */
+    /** The path extra, which only the bundled licence viewer uses, from inside Gander. */
     @Test
-    fun aPlainPathIsOpenedAsAFile() {
-        val intent = Intent(context, ViewerActivity::class.java)
+    fun aPlainPathFromGanderIsOpenedAsAFile() {
+        val intent = Intent()
+            .setClassName(context, ViewerActivity.INTERNAL_VIEWER)
             .putExtra(ViewerActivity.EXTRA_PATH, Fixtures.file("notes.md").absolutePath)
         val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
         assertThat(controller.loadedUrl()).contains("viewer/md.html")
+    }
+
+    /**
+     * A path is read with Gander's access, not the sender's, and without a storage permission
+     * the only paths that reaches are Gander's own: the Recents file, say, or /dev/zero, which
+     * never ends. So another app naming one, by the extra or as a file:// URI, gets nothing.
+     */
+    @Test
+    fun anotherAppCannotHaveGanderOpenAPath() {
+        val recents = File(context.dataDir, "shared_prefs/recents.xml")
+        listOf(
+            Intent(context, ViewerActivity::class.java)
+                .putExtra(ViewerActivity.EXTRA_PATH, recents.absolutePath),
+            Intent(context, ViewerActivity::class.java)
+                .putExtra(ViewerActivity.EXTRA_PATH, "/dev/zero"),
+            Intent(context, ViewerActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setDataAndType(Uri.fromFile(recents), "text/xml"),
+            Intent(context, ViewerActivity::class.java)
+                .setAction(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_STREAM, Uri.parse("file:///dev/zero")),
+        ).forEach { intent ->
+            val activity = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup().get()
+            assertWithMessage(intent.toUri(0)).that(activity.isFinishing).isTrue()
+        }
+    }
+
+    /**
+     * Nor one of Gander's own content URIs, which read with Gander's access too: the
+     * FileProvider covers the cache, where the thumbnails of the reader's documents are. By
+     * host, so the 0@ spelling of the same authority is refused as well, as for zips.
+     */
+    @Test
+    fun anotherAppCannotHaveGanderOpenItsOwnProviders() {
+        val own = "${context.packageName}.fileprovider"
+        listOf(
+            "content://$own/cache/thumbs/0.png",
+            "content://0@$own/cache/thumbs/0.png",
+            "content://${own.uppercase()}/cache/thumbs/0.png",
+            "content://${context.packageName}/anything",
+        ).forEach { url ->
+            val activity = view(Uri.parse(url), "image/png").get()
+            assertWithMessage(url).that(activity.isFinishing).isTrue()
+        }
     }
 
     /** Nothing to show is not a blank screen; it is not a screen at all. */
@@ -458,8 +513,21 @@ class ViewerActivityTest {
     fun openingAPickedFileRemembersIt() {
         context.getSharedPreferences("recents", Context.MODE_PRIVATE).edit().clear().commit()
         val uri = FixtureProvider.uriNamed("six-pages.pdf", "Alder Court.pdf")
-        view(uri)
+        viewFromGander(uri)
         assertThat(Recents.all(context).map { it.name }).containsExactly("Alder Court.pdf")
+    }
+
+    /**
+     * Recents fills from Gander's own screens, which is where the picker is. Another app
+     * offering a grant Gander could keep would otherwise put an entry there, under a name of
+     * its own choosing, for the reader to tap later.
+     */
+    @Test
+    fun aFileAnotherAppHandsOverIsNotRemembered() {
+        context.getSharedPreferences("recents", Context.MODE_PRIVATE).edit().clear().commit()
+        val controller = view(FixtureProvider.uriNamed("six-pages.pdf", "Your statement.pdf"))
+        assertThat(controller.loadedUrl()).contains("viewer/pdf.html")
+        assertThat(Recents.all(context)).isEmpty()
     }
 
     /**
@@ -566,7 +634,7 @@ class ViewerActivityTest {
         val controller = zip()
         controller.tap("plain.txt")
         val started = shadowOf(controller.get()).nextStartedActivity
-        assertThat(started.component?.className).isEqualTo(ViewerActivity.ENTRY_VIEWER)
+        assertThat(started.component?.className).isEqualTo(ViewerActivity.INTERNAL_VIEWER)
         assertThat(started.data?.authority).isEqualTo(ArchiveProvider.authority(context))
         assertThat(ArchiveProvider.parse(started.data!!)?.name).isEqualTo("plain.txt")
     }
@@ -666,7 +734,7 @@ class ViewerActivityTest {
         box.type("gander")
         assertThat(box.isShowing).isFalse()
         val first = shadowOf(controller.get()).nextStartedActivity
-        assertThat(first.component?.className).isEqualTo(ViewerActivity.ENTRY_VIEWER)
+        assertThat(first.component?.className).isEqualTo(ViewerActivity.INTERNAL_VIEWER)
         assertThat(ArchiveProvider.parse(first.data!!)?.name).isEqualTo("zipcrypto.txt")
 
         controller.tap("aes256-deflate64.md")
@@ -888,7 +956,7 @@ class ViewerActivityTest {
             ArchiveEntry("plain.txt", false, 0, EntryLocation(0, 8, 1, 1, 0)),
         )
         val intent = Intent()
-            .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+            .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
             .setData(entry)
         val activity = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup().get()
         activity.findViewById<MaterialToolbar>(R.id.toolbar).menu
@@ -933,7 +1001,7 @@ class ViewerActivityTest {
             ZipReader.entries(it, java.util.Locale.US).single { e -> e.path == "big.pdf" }
         }
         val intent = Intent()
-            .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+            .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
             .setData(ArchiveProvider.uriFor(context, archive, entry))
         val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
 
@@ -976,7 +1044,7 @@ class ViewerActivityTest {
         Positions.save(context, Positions.keyFor(context.contentResolver, uri, length)!!, 4, 6)
 
         val intent = Intent()
-            .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+            .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
             .setData(uri)
         val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
         assertThat(controller.loadedUrl()).contains("viewer/pdf.html")
@@ -991,7 +1059,7 @@ class ViewerActivityTest {
             ArchiveEntry("plain.txt", false, 0, EntryLocation(0, 8, 1, 1, 0)),
         )
         val intent = Intent()
-            .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+            .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
             .setData(entry)
         val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
         assertThat(controller.get().isFinishing).isFalse()

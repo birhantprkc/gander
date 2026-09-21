@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Another app can no longer make Gander open Gander's own files, such as its list of recent
+  files or the thumbnails of your documents. The viewer used to accept a file path, or an
+  address on one of Gander's own storage providers, from any app, and read it with Gander's
+  access. It now takes only what the other app is sharing itself, and only files opened from
+  Gander's own screens are added to Recents.
+
 - Script inside a document can no longer run. Every viewer page now carries a Content Security
   Policy that allows only Gander's own code. Before this, a Word file could embed a web page
   whose script ran as soon as the document opened, and a link in one could run script when

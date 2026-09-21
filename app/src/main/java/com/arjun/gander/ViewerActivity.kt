@@ -80,16 +80,27 @@ class ViewerActivity : AppCompatActivity() {
         private const val ASSET_HOST = "appassets.androidplatform.net"
 
         /**
-         * This activity again, under the name the manifest gives it for a file inside a zip.
+         * This activity again, under the name Gander's own screens open it by.
          *
          * An alias, so that it can be declared not exported and nothing outside Gander can
-         * start it. That matters because ArchiveProvider reads whatever archive its URI
-         * names, with Gander's access: a folder the reader granted, or a file in Recents. So
-         * an archive URI arriving any other way than from Gander's own list is turned away
-         * rather than opened. Nothing would leave the phone if it were not, since nothing can,
-         * but another app has no business deciding what Gander shows.
+         * start it, which lets the activity tell a file Gander chose from one another app
+         * handed it. The exported name is the door for other apps, and through it only a
+         * content URI from someone else's provider comes in, the grant that came with it
+         * being the whole of what Gander may read. Gander's own URIs and paths are refused
+         * there, because each reads with Gander's access rather than the sender's:
+         * - a file:// path or the path extra, anything Gander's own storage holds, such as
+         *   the Recents file, or /dev/zero, which never ends;
+         * - its FileProvider, which covers the cache and the thumbnails of the reader's
+         *   documents in it;
+         * - ArchiveProvider, which reads whatever archive its URI names: a folder the reader
+         *   granted, or a file in Recents.
+         * And only a file opened from Gander's own screens goes into Recents, so another app
+         * cannot plant an entry there under a name of its choosing.
+         *
+         * Nothing would leave the phone either way, since nothing can, but another app has
+         * no business deciding what Gander shows.
          */
-        const val ENTRY_VIEWER = "com.arjun.gander.ArchiveEntryViewer"
+        const val INTERNAL_VIEWER = "com.arjun.gander.InternalViewer"
 
         /**
          * How long the page readout stays up after the last scroll, and how long it
@@ -250,18 +261,21 @@ class ViewerActivity : AppCompatActivity() {
         toolbar.setNavigationOnClickListener { finish() }
         val container = findViewById<FrameLayout>(R.id.container)
 
-        // Files arrive via VIEW (data), the share sheet (EXTRA_STREAM),
-        // a plain path extra, or as shared text (EXTRA_TEXT).
-        val uri = intent.data
+        // Files arrive via VIEW (data), the share sheet (EXTRA_STREAM), a plain path extra
+        // from Gander itself, or as shared text (EXTRA_TEXT). Who sent them decides which
+        // of those may be opened: see INTERNAL_VIEWER.
+        val fromGander = componentName.className == INTERNAL_VIEWER
+        val handed = intent.data
             ?: IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
             ?: intent.getStringExtra(EXTRA_PATH)?.let { Uri.fromFile(File(it)) }
-            ?: sharedTextUri()
-        if (uri == null) {
+        if (handed != null && !fromGander && !mayOpenFromOutside(handed)) {
             finish()
             return
         }
-        // A file inside a zip, from anywhere but Gander's own list. See ENTRY_VIEWER.
-        if (ArchiveProvider.isEntry(this, uri) && componentName.className != ENTRY_VIEWER) {
+        // The shared-text file is written here, from text the sender handed over, so it
+        // is Gander's own URI but never one another app chose.
+        val uri = handed ?: sharedTextUri()
+        if (uri == null) {
             finish()
             return
         }
@@ -274,8 +288,10 @@ class ViewerActivity : AppCompatActivity() {
         // Picker selections carry a persistable grant; keep those in Recents.
         // Open-with and folder-browsed URIs throw here and are simply skipped. A file
         // inside a zip would too, but is kept out by name rather than by that: nothing
-        // in a zip is written to the phone, and Recents is on the phone.
-        if (uri.scheme == "content" && !ArchiveProvider.isEntry(this, uri)) {
+        // in a zip is written to the phone, and Recents is on the phone. Only from
+        // Gander's own screens, which is where the picker is: another app offering a
+        // persistable grant would otherwise get an entry, under a name of its choosing.
+        if (fromGander && uri.scheme == "content" && !ArchiveProvider.isEntry(this, uri)) {
             runCatching {
                 contentResolver.takePersistableUriPermission(
                     uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -388,9 +404,9 @@ class ViewerActivity : AppCompatActivity() {
             .setType(mime ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*")
             .putExtra(Intent.EXTRA_STREAM, shareUri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        // Not to Gander itself, as the home screen's share is not: a file from a zip
-        // would be turned away at the door (see ENTRY_VIEWER), which looks like a
-        // crash, and any other file is already open right here.
+        // Not to Gander itself, as the home screen's share is not: a file from a zip or
+        // the shared-text file would be turned away at the door (see INTERNAL_VIEWER),
+        // which looks like a crash, and any other file is already open right here.
         val chooser = Intent.createChooser(send, getString(R.string.share_file))
             .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(ComponentName(this, ViewerActivity::class.java)))
         // Some Android versions refuse to delegate a tree-derived grant and
@@ -1181,6 +1197,21 @@ class ViewerActivity : AppCompatActivity() {
             f.writeText(text)
             Uri.fromFile(f)
         }.getOrNull()
+    }
+
+    /**
+     * What the exported viewer takes from another app: a content URI on somebody else's
+     * provider, read with the grant that came with it. Never a path, and never one of
+     * Gander's own providers, all of which are named under its package and read with
+     * Gander's access rather than the sender's. The host rather than the authority, as
+     * ArchiveProvider.isEntry does: content://0@... names the same provider, the 0 being
+     * the phone's own user, and Android strips it before the provider sees the URI.
+     */
+    private fun mayOpenFromOutside(uri: Uri): Boolean {
+        val host = uri.host ?: return false
+        return uri.scheme == "content" &&
+            !host.equals(packageName, ignoreCase = true) &&
+            !host.startsWith("$packageName.", ignoreCase = true)
     }
 
     private fun resolveDisplayName(uri: Uri): String {

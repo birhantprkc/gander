@@ -1,8 +1,10 @@
 package com.arjun.gander
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.XmlResourceParser
+import android.net.Uri
 import android.os.Bundle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -111,5 +113,25 @@ class PrivacyManifestTest {
     @Test
     fun safeBrowsingIsOff() {
         assertThat(metaData().getBoolean("android.webkit.WebView.EnableSafeBrowsing", true)).isFalse()
+    }
+
+    /**
+     * A file:// path from another app is read with Gander's access rather than the sender's,
+     * and with no storage permission the only paths that reaches are Gander's own, so Gander
+     * is not offered for one. The viewer refuses one anyway (ViewerActivity.INTERNAL_VIEWER);
+     * this keeps it out of the chooser. The content:// line is what stops this passing because
+     * nothing resolves at all.
+     */
+    @Test
+    fun theViewerIsOfferedForContentButNotForPaths() {
+        fun offered(uri: String): Boolean {
+            val intent = Intent(Intent.ACTION_VIEW)
+                .addCategory(Intent.CATEGORY_DEFAULT)
+                .setDataAndType(Uri.parse(uri), "application/pdf")
+            return context.packageManager.queryIntentActivities(intent, 0)
+                .any { it.activityInfo.name == ViewerActivity::class.java.name }
+        }
+        assertThat(offered("content://some.files.app/document/1")).isTrue()
+        assertThat(offered("file:///sdcard/Download/report.pdf")).isFalse()
     }
 }

@@ -39,9 +39,14 @@ object DeviceFixtures {
         )
     }
 
-    /** The intent a file manager sends when the reader taps a document. */
+    /**
+     * The intent the home screen sends when the reader taps a document. By the viewer's
+     * internal name, because these URIs are on Gander's own FileProvider, which the exported
+     * name refuses: see ViewerActivity.INTERNAL_VIEWER.
+     */
     fun viewIntent(name: String): Intent =
-        Intent(target, ViewerActivity::class.java)
+        Intent()
+            .setClassName(target, ViewerActivity.INTERNAL_VIEWER)
             .setAction(Intent.ACTION_VIEW)
             .setDataAndType(uriFor(name), target.contentResolver.getType(uriFor(name)))
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

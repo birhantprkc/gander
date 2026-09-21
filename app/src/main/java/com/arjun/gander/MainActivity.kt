@@ -258,8 +258,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openInViewer(uri: Uri) {
+        // By the viewer's internal name, which is what lets it trust the URI and file it
+        // in Recents. See ViewerActivity.INTERNAL_VIEWER.
         startActivity(
-            Intent(this, ViewerActivity::class.java)
+            Intent()
+                .setClassName(this, ViewerActivity.INTERNAL_VIEWER)
                 .setData(uri)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         )
@@ -349,7 +352,8 @@ class MainActivity : AppCompatActivity() {
                 file.outputStream().use { input.copyTo(it) }
             }
             startActivity(
-                Intent(this, ViewerActivity::class.java)
+                Intent()
+                    .setClassName(this, ViewerActivity.INTERNAL_VIEWER)
                     .putExtra(ViewerActivity.EXTRA_PATH, file.absolutePath)
             )
         }.isSuccess
