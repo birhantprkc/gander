@@ -547,6 +547,15 @@ if (vwPdfBlocked) {
     vwParams.get("needs"),
     vwParams.get("locked")
   );
+  /*
+   * And nothing may replace it. The module below is fetched whatever happens here,
+   * and below Chromium 94, which added the class static blocks pdf.js uses, it
+   * cannot even be parsed. That failure reaches app.js's window.onerror after the
+   * card is drawn, and it swapped the card for "Unexpected token .": issue #31, on
+   * WebView 64. Anything else that goes wrong below the floor is a symptom of what
+   * the card has already said.
+   */
+  window.onerror = null;
 }
 
 /*
