@@ -507,12 +507,15 @@
  * do. On such a phone the version sometimes cannot be read at all, and then
  * locked=1 arrives without a major beside it, which is why what follows gates on
  * either parameter rather than on the version.
+ *
+ * Neither card says the other formats still work, because below Chromium 92 some
+ * do not: docx-preview needs 80 and marked needs 92, so on the WebView 64 of issue
+ * #31 a .docx and a .md fail as well.
  */
 function vwNeedsNewerWebView(have, needs, locked) {
   if (locked) {
     vwError(
       "PDFs cannot be shown on this phone",
-      "Every other format Gander opens still works. " +
       // No floor is written here. The number arrives in the query string so that
       // raising PDFJS_MIN_CHROMIUM_MAJOR stays a one-constant edit, which means
       // the sentence has to work without it too.
@@ -533,8 +536,7 @@ function vwNeedsNewerWebView(have, needs, locked) {
       ? "This one is version " + have + " and the PDF renderer needs " +
         needs + " or newer. "
       : "This one is too old to run the PDF renderer. ") +
-    "Updating Android System WebView and reopening the file will fix it. " +
-    "Every other format Gander opens still works."
+    "Updating Android System WebView and reopening the file will fix it."
   );
 }
 
