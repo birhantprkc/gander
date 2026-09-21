@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Moving to a new phone no longer copies Gander's list of recent files across. Backups were
+  already off, but from Android 12 a phone-to-phone transfer follows rules of its own, and
+  Gander had set none. Gander also opts out of the usage reports Android System WebView sends
+  Google about the apps it runs in, and turns off Safe Browsing, which has nothing to check
+  when the only pages loaded are Gander's own.
+
 - On a phone whose Android System WebView is too old for PDFs, the message saying so now stays
   on screen. It was being replaced a moment later by "Something went wrong while rendering" and
   an unexpected-token error that explained nothing (thanks @XZY123lol, who brought this over

@@ -15,15 +15,35 @@
          survive a restore, so a restored list renders empty however faithfully it was
          backed up. Leaving it on sent file names and timestamps to the user's Drive to
          buy nothing, and put an asterisk on the one claim the app is built around.
-         Thumbnails were never affected: cacheDir is excluded from backup already. -->
+         Thumbnails were never affected: cacheDir is excluded from backup already.
+         From Android 12 allowBackup covers cloud backup only, so the transfer to a new
+         phone has rules of its own: see data_extraction_rules.xml, and backup_rules.xml
+         for the same answer on Android 11 and older. -->
     <application
         android:name=".GanderApp"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Gander">
+        android:theme="@style/Theme.Gander"
+        tools:targetApi="31">
+
+        <!-- The WebView provider uploads usage and diagnostic metrics for every app that
+             embeds it, package name included, from its own process, which has the network
+             access Gander does not. Documented opt-out, taken. -->
+        <meta-data
+            android:name="android.webkit.WebView.MetricsOptOut"
+            android:value="true" />
+
+        <!-- Safe Browsing checks URLs a WebView loads against Google's lists, and on a
+             match asks Google about it from outside this app. The only URLs here are
+             Gander's own pages with the file's name in them, which no list is about. -->
+        <meta-data
+            android:name="android.webkit.WebView.EnableSafeBrowsing"
+            android:value="false" />
 
         <!-- Lets the Share action hand out the shared-text temp file; grants are
              per-share and read-only, so the zero-permission story is unchanged -->
