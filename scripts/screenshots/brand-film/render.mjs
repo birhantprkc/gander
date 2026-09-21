@@ -11,7 +11,7 @@
 //   node render.mjs --sheet 0,8,12          twelve small frames from 0s to 8s as one picture
 //   node render.mjs --check                 prove that a frame depends on nothing but its time
 //   node render.mjs --cues                  write out/cues.json, the timeline the soundtrack is cut to
-//   node render.mjs --tall --fps 30 --scale 2 --keyframes 60   the phone cut, 1080x1920, for Instagram
+//   node render.mjs --tall --scale 2 --keyframes 60            the phone cut, 1080x1920, for Instagram
 //
 // Options: --fps 60  --workers 6  --crf 14  --out path.mp4  --keep (leave the frames behind)
 

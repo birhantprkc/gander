@@ -25,7 +25,7 @@ node render.mjs --stills 8.52,47.6      # single frames into out/stills/
 node render.mjs --sheet 0,13,16         # sixteen small frames from 0s to 13s as one picture
 
 open 'film.html?tall'                   # the phone cut, live
-node render.mjs --tall --fps 30 --scale 2 --keyframes 60    # the phone cut: 1080x1920 for Instagram
+node render.mjs --tall --scale 2 --keyframes 60   # the phone cut: 1080x1920 at 60 fps, for Instagram
 ```
 
 `--tall` goes with any of the others (`--tall --check`, `--tall --stills 47.6`).
@@ -91,10 +91,14 @@ Instagram covers about the top 250 px with its own furniture and the bottom 340 
 caption, so the type starts under the one and the phone ends above the other, and the bare
 band at the foot of every frame is theirs, not an oversight.
 
-30 fps because that is what Instagram plays: given 60 it drops every other frame, and since a
-frame here is just a time, asking for thirty a second draws exactly the thirty it would have
-kept. `./stories.sh` then cuts the result at 60.0 s without re-encoding, which is where
-Instagram would cut a Story anyway and, not by accident, where the end card begins.
+60 fps, like the wide film. It was first rendered at 30 on the reasoning that Instagram plays
+30 and would only throw the rest away, which was an assumption about somebody else's
+transcoder stated as a fact, and the wrong way round even if true: since a frame here is just
+a time, `--fps 30` draws exactly every other frame of this, so a clean halving of the 60 loses
+nothing that 30 would have had, and everything that does play 60 gets it. Give a platform the
+best master and let it do its own worst. `./stories.sh` then cuts the result at 60.0 s without
+re-encoding, which is where Instagram would cut a Story anyway and, not by accident, where the
+end card begins.
 
 ## The files
 
