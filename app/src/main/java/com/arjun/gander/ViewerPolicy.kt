@@ -14,8 +14,11 @@ package com.arjun.gander
  *
  * Directive by directive:
  * - Scripts only from Gander's own files. No inline script, no event-handler
- *   attributes, no javascript: URLs, no eval. 'wasm-unsafe-eval' is for pdf.js's image
- *   decoders, which are WebAssembly, and allows compiling that and nothing else.
+ *   attributes, no javascript: URLs, no eval. pdf.js itself has not needed eval since it
+ *   began drawing glyphs as Path2D objects. 'wasm-unsafe-eval' allows compiling
+ *   WebAssembly and nothing else, which the pdf.js worker does twice: for its JPEG 2000
+ *   and JBIG2 decoders, and for each PostScript function a PDF carries, which it turns
+ *   into a small module on the spot.
  * - Styles from Gander's files and inline, because docx-preview, PPTXjs, SheetJS and
  *   pdf.js's text layer all write style attributes. A style cannot reach anything
  *   either: every url() in one is held to img-src and font-src.

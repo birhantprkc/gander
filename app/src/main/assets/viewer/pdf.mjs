@@ -2297,11 +2297,6 @@ function vwWithAssets(opts) {
   opts.cMapUrl = vwAssetUrl("./lib/cmaps/");
   opts.cMapPacked = true;
   opts.wasmUrl = vwAssetUrl("./lib/wasm/");
-  // pdf.js compiles each font's glyph outlines into a function with new Function when
-  // it may, which is a little faster and is exactly the kind of code a crafted font has
-  // turned into script before (CVE-2024-4367). The page's policy forbids eval anyway;
-  // saying so here means pdf.js never tries, and draws the outlines the other way.
-  opts.isEvalSupported = false;
   return opts;
 }
 
