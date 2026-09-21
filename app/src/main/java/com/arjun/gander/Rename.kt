@@ -26,12 +26,14 @@ import java.util.concurrent.Executor
  * offered where the file came from a document provider, the provider says it can be renamed,
  * and Gander holds write access to it.
  *
- * In practice that is a file opened through the picker, then or later from Recents, since the
- * viewer keeps the write access along with the read for exactly this, and a file another app
- * handed over with write access, which the system Files app does. Never a file browsed in a
- * granted folder: folders are read-only, and the write access Android also hands over when one
- * is added, which lasts only while Gander stays open, is left unused so that Rename does not come
- * and go with it. Never a file inside a zip either, of which nothing is written to the phone.
+ * In practice that is a file picked from the phone's storage or its Downloads, then or later from
+ * Recents, since the viewer keeps the write access along with the read for exactly this, and a
+ * file another app handed over with write access, which the system Files app does. Not one the
+ * picker serves from its Recent, Images, Videos, Audio or Documents sections: those come from
+ * Android's media provider, which renames nothing. Never a file browsed in a granted folder:
+ * folders are read-only, and the write access Android also hands over when one is added, which
+ * lasts only while Gander stays open, is left unused so that Rename does not come and go with it.
+ * Never a file inside a zip either, of which nothing is written to the phone.
  */
 
 /**
