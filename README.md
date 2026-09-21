@@ -91,9 +91,10 @@ faithful and small enough to bundle); the app explains this and suggests re-savi
 
 Runs on **Android 8.0 (API 26) and up**.
 
-Viewing PDFs also needs Android System WebView 125 or newer (May 2024). Any phone
-still receiving WebView updates is well past that; if yours is not, Gander says so
-when you open a PDF rather than failing quietly.
+Viewing PDFs also needs Android System WebView 125 or newer (May 2024), Markdown
+files 92 and Word documents 80. Any phone still receiving WebView updates is well
+past all three; if yours is not, Gander says so when you open the file rather than
+failing quietly.
 
 1. Download the latest APK from [Releases](../../releases/latest):
    `Gander-x.y.apk` runs on every architecture, since the app ships no native libraries.

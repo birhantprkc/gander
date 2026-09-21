@@ -1,8 +1,8 @@
 package com.arjun.gander
 
 /**
- * Whether the WebView about to render a PDF is new enough to do it, and what
- * to tell the page when it is not.
+ * Whether the WebView about to render a document is new enough for the library
+ * that draws it, and what to tell the page when it is not.
  *
  * Split out of ViewerActivity because deciding this is string parsing against
  * a table of vendor quirks, and the quirks are the part worth testing. The
@@ -21,6 +21,42 @@ package com.arjun.gander
  * good. docs/VENDORED.md carries the same warning next to the version fetched.
  */
 internal const val PDFJS_MIN_CHROMIUM_MAJOR = 125
+
+/**
+ * Chromium major version docx-preview needs, which draws .docx files. Measured
+ * rather than published, since upstream names no minimum: the bundle is full of
+ * `??` and `?.`, so an older engine cannot even parse it, and Chromium 80 shipped
+ * both. Nothing it calls at run time is newer.
+ *
+ * Measured with scripts/js-floor.mjs on the exact file VendoredLibsTest pins by
+ * hash, as docs/VENDORED.md describes. Any other file fails that test until this
+ * has been measured again.
+ */
+internal const val DOCX_PREVIEW_MIN_CHROMIUM_MAJOR = 80
+
+/**
+ * Chromium major version marked needs, which lays out .md files. Measured the same
+ * way: it parses from Chromium 80, but its lexer calls Array.prototype.at on the
+ * paths every document takes, and that arrived in 92. DOMPurify, loaded beside it,
+ * needs nothing newer. The fetch script takes the newest marked 15, so a refetch is
+ * the likeliest way for that test to fail.
+ */
+internal const val MARKED_MIN_CHROMIUM_MAJOR = 92
+
+/**
+ * The floor of whatever draws [kind], or null for a format with none. Every other
+ * viewer's scripts parse as ES2015, and each of them opened its files on WebView 66.
+ *
+ * No else branch, so a format added later does not compile until someone has
+ * decided whether the library drawing it has a floor.
+ */
+internal fun minChromiumMajor(kind: FileKind): Int? = when (kind) {
+    FileKind.PDF -> PDFJS_MIN_CHROMIUM_MAJOR
+    FileKind.DOCX -> DOCX_PREVIEW_MIN_CHROMIUM_MAJOR
+    FileKind.MD -> MARKED_MIN_CHROMIUM_MAJOR
+    FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.XLSX, FileKind.PPTX,
+    FileKind.TEXT, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> null
+}
 
 /**
  * Below this, a parsed major is treated as unreadable rather than as ancient.
@@ -48,9 +84,10 @@ internal val CHROME_TOKEN = Regex("""Chrome/(\d+)""")
  * package: Chrome and Android System WebView are both rejected, because they are
  * signed against a certificate chain the device does not carry. Two consequences.
  * The card must not tell these users to update Android System WebView, since they
- * cannot. And a version we failed to read is old rather than unknown, because no
- * Huawei build reaches the pdf.js floor, so this is the one case where an
- * unreadable version blocks instead of being waved through.
+ * cannot. And for a PDF, a version we failed to read is old rather than unknown,
+ * because no Huawei build reaches the pdf.js floor, so this is the one case where
+ * an unreadable version blocks instead of being waved through. Nothing says the
+ * same of the Word and Markdown floors, which are far lower.
  */
 internal val LOCKED_WEBVIEW_PACKAGES = setOf("com.huawei.webview")
 
@@ -66,9 +103,9 @@ internal val LOCKED_WEBVIEW_PACKAGES = setOf("com.huawei.webview")
  * a throw must not cost a version the user agent already gave.
  *
  * Null when neither source answers, or when both are too low to be a Chromium
- * version. A null is treated as new enough unless the provider is locked: refusing
- * PDFs on a WebView that works would be the worse mistake, and pdf.html's nomodule
- * fallback still covers the oldest engines a null could hide.
+ * version. A null is treated as new enough unless the file is a PDF and the provider
+ * is locked: refusing files on a WebView that works would be the worse mistake, and
+ * pdf.html's nomodule fallback still covers the oldest engines a null could hide.
  */
 internal fun chromiumMajor(userAgent: String?, packageVersionName: () -> String?): Int? {
     val fromUa = userAgent
@@ -83,26 +120,27 @@ internal fun chromiumMajor(userAgent: String?, packageVersionName: () -> String?
 }
 
 /**
- * The parameters telling pdf.html it cannot render, and empty otherwise, including
- * for every other format. Not because the others have no floor: docx-preview needs
- * Chromium 80 and marked needs 92, and below those a .docx or a .md fails with an
- * error that says nothing about the WebView, as on the WebView 64 of issue #31.
- * Only PDF is checked.
+ * The parameters telling a viewer page its library cannot run here, and empty
+ * otherwise, which includes every format without a floor. Before issue #31 only
+ * PDFs were checked, and on WebView 64 a .docx and a .md failed with an error
+ * that said nothing about the WebView.
  *
- * "&webview=<major>&needs=<floor>" when the engine is older than the vendored
- * pdf.js supports. Both numbers are passed so the floor lives only in Kotlin rather
- * than being repeated as a literal inside a user-facing sentence in the page.
+ * "&webview=<major>&needs=<floor>" when the engine is older than the format's
+ * library supports. Both numbers are passed so each floor lives only in Kotlin
+ * rather than being repeated as a literal inside a user-facing sentence in the page.
  *
  * "&locked=1" is added when updating the WebView is not something the reader can
  * do, so the page can drop the advice to go and update it. On a locked provider
- * whose version would not parse, that flag goes out on its own with no major beside
- * it, which is why the page gates on either parameter rather than on the version.
+ * whose version would not parse, a PDF gets that flag on its own with no major
+ * beside it, which is why the page gates on either parameter rather than on the
+ * version. A Word or Markdown file there is let through: see
+ * [LOCKED_WEBVIEW_PACKAGES].
  */
-internal fun pdfjsFloorParams(kind: FileKind, major: Int?, locked: Boolean): String {
-    if (kind != FileKind.PDF) return ""
+internal fun webViewFloorParams(kind: FileKind, major: Int?, locked: Boolean): String {
+    val floor = minChromiumMajor(kind) ?: return ""
     if (major == null) {
-        return if (locked) "&needs=$PDFJS_MIN_CHROMIUM_MAJOR&locked=1" else ""
+        return if (locked && kind == FileKind.PDF) "&needs=$floor&locked=1" else ""
     }
-    if (major >= PDFJS_MIN_CHROMIUM_MAJOR) return ""
-    return "&webview=$major&needs=$PDFJS_MIN_CHROMIUM_MAJOR" + if (locked) "&locked=1" else ""
+    if (major >= floor) return ""
+    return "&webview=$major&needs=$floor" + if (locked) "&locked=1" else ""
 }

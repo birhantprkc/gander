@@ -4,7 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * Reading the engine version, and deciding what the PDF page is told about it.
+ * Reading the engine version, and deciding what each viewer page is told about it.
  *
  * Every case here is a device that actually behaves this way; the reasoning
  * is in the KDoc beside each constant in WebViewFloor.kt.
@@ -92,38 +92,67 @@ class WebViewFloorTest {
     }
 
     // ---------------------------------------------------------------
-    // pdfjsFloorParams
+    // webViewFloorParams
     // ---------------------------------------------------------------
 
     /**
-     * Only pdf.html is an ES module. Every other page is a classic script that
-     * any engine can parse, so none of them is ever blocked.
+     * Only PDF, Word and Markdown are drawn by a library with a floor. Every other
+     * page's scripts parse as ES2015, so none of them is ever blocked.
      */
     @Test
-    fun noOtherFormatIsEverBlocked() {
-        FileKind.entries.filter { it != FileKind.PDF }.forEach { kind ->
-            assertThat(pdfjsFloorParams(kind, 60, locked = true)).isEmpty()
-            assertThat(pdfjsFloorParams(kind, null, locked = true)).isEmpty()
+    fun noFormatWithoutAFloorIsEverBlocked() {
+        val floorless = FileKind.entries.filter { minChromiumMajor(it) == null }
+        assertThat(floorless).containsNoneOf(FileKind.PDF, FileKind.DOCX, FileKind.MD)
+        floorless.forEach { kind ->
+            assertThat(webViewFloorParams(kind, 60, locked = true)).isEmpty()
+            assertThat(webViewFloorParams(kind, null, locked = true)).isEmpty()
         }
     }
 
     @Test
     fun anEngineAtOrAboveTheFloorAddsNothing() {
-        assertThat(pdfjsFloorParams(FileKind.PDF, PDFJS_MIN_CHROMIUM_MAJOR, false)).isEmpty()
-        assertThat(pdfjsFloorParams(FileKind.PDF, 138, false)).isEmpty()
+        assertThat(webViewFloorParams(FileKind.PDF, PDFJS_MIN_CHROMIUM_MAJOR, false)).isEmpty()
+        assertThat(webViewFloorParams(FileKind.PDF, 138, false)).isEmpty()
+        assertThat(webViewFloorParams(FileKind.DOCX, DOCX_PREVIEW_MIN_CHROMIUM_MAJOR, false)).isEmpty()
+        assertThat(webViewFloorParams(FileKind.MD, MARKED_MIN_CHROMIUM_MAJOR, false)).isEmpty()
     }
 
     @Test
     fun anOldEngineIsNamedAlongsideTheFloorItMisses() {
-        assertThat(pdfjsFloorParams(FileKind.PDF, 110, locked = false))
+        assertThat(webViewFloorParams(FileKind.PDF, 110, locked = false))
             .isEqualTo("&webview=110&needs=125")
+    }
+
+    /**
+     * Each format against its own library's floor, not the highest one. WebView
+     * 110 is too old for pdf.js and fine for the other two; the WebView 64 of
+     * issue #31 is too old for all three.
+     */
+    @Test
+    fun eachFormatIsMeasuredAgainstItsOwnFloor() {
+        assertThat(webViewFloorParams(FileKind.DOCX, 110, locked = false)).isEmpty()
+        assertThat(webViewFloorParams(FileKind.MD, 110, locked = false)).isEmpty()
+        assertThat(webViewFloorParams(FileKind.DOCX, 64, locked = false))
+            .isEqualTo("&webview=64&needs=80")
+        assertThat(webViewFloorParams(FileKind.MD, 64, locked = false))
+            .isEqualTo("&webview=64&needs=92")
+    }
+
+    /** marked parses from 80, so between there and 92 only running it fails. */
+    @Test
+    fun markdownIsBlockedWhereMarkedParsesButCannotRun() {
+        assertThat(webViewFloorParams(FileKind.MD, 91, locked = false))
+            .isEqualTo("&webview=91&needs=92")
+        assertThat(webViewFloorParams(FileKind.DOCX, 91, locked = false)).isEmpty()
     }
 
     /** On a locked provider the page drops the advice to go and update. */
     @Test
     fun aLockedProviderIsFlagged() {
-        assertThat(pdfjsFloorParams(FileKind.PDF, 110, locked = true))
+        assertThat(webViewFloorParams(FileKind.PDF, 110, locked = true))
             .isEqualTo("&webview=110&needs=125&locked=1")
+        assertThat(webViewFloorParams(FileKind.DOCX, 64, locked = true))
+            .isEqualTo("&webview=64&needs=80&locked=1")
     }
 
     /**
@@ -134,18 +163,31 @@ class WebViewFloorTest {
      */
     @Test
     fun anUnreadableVersionOnALockedProviderStillBlocks() {
-        assertThat(pdfjsFloorParams(FileKind.PDF, null, locked = true))
+        assertThat(webViewFloorParams(FileKind.PDF, null, locked = true))
             .isEqualTo("&needs=125&locked=1")
     }
 
     /**
+     * But only for a PDF. That rests on no Huawei build reaching 125, and nothing
+     * says the same of 80 or 92, so a Word or Markdown file there is let through.
+     */
+    @Test
+    fun anUnreadableLockedVersionBlocksOnlyPdfs() {
+        assertThat(webViewFloorParams(FileKind.DOCX, null, locked = true)).isEmpty()
+        assertThat(webViewFloorParams(FileKind.MD, null, locked = true)).isEmpty()
+    }
+
+    /**
      * And the opposite: unreadable on a provider the reader could replace is
-     * waved through. Refusing PDFs on a WebView that works is the worse
-     * mistake, and pdf.html's nomodule fallback still catches a true ancient.
+     * waved through, for every format. Refusing files on a WebView that works is
+     * the worse mistake, and pdf.html's nomodule fallback still catches a true
+     * ancient.
      */
     @Test
     fun anUnreadableVersionOnAnOrdinaryProviderIsWavedThrough() {
-        assertThat(pdfjsFloorParams(FileKind.PDF, null, locked = false)).isEmpty()
+        FileKind.entries.forEach { kind ->
+            assertThat(webViewFloorParams(kind, null, locked = false)).isEmpty()
+        }
     }
 
     // ---------------------------------------------------------------
@@ -158,6 +200,17 @@ class WebViewFloorTest {
     @Test
     fun theFloorIsStillOneTwentyFive() {
         assertThat(PDFJS_MIN_CHROMIUM_MAJOR).isEqualTo(125)
+    }
+
+    /**
+     * Measured rather than published, on the files VendoredLibsTest pins by hash.
+     * Moving either number means those files moved and were measured again, the
+     * way docs/VENDORED.md describes.
+     */
+    @Test
+    fun theWordAndMarkdownFloorsAreEightyAndNinetyTwo() {
+        assertThat(DOCX_PREVIEW_MIN_CHROMIUM_MAJOR).isEqualTo(80)
+        assertThat(MARKED_MIN_CHROMIUM_MAJOR).isEqualTo(92)
     }
 
     @Test

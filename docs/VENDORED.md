@@ -84,6 +84,31 @@ licences whose notices have to travel with the binaries, which is why they are
 fetched into `wasm/` beside them and repeated in
 `app/src/main/assets/licences.md`.
 
+## The Word and Markdown floors
+
+`docx.html` and `md.html` show the same card as `pdf.html` when the WebView is too
+old for the library that draws them: below Chromium 80 for docx-preview and 92 for
+marked, which are `DOCX_PREVIEW_MIN_CHROMIUM_MAJOR` and `MARKED_MIN_CHROMIUM_MAJOR`
+in `app/src/main/java/com/arjun/gander/WebViewFloor.kt`. Until issue #31 they had no
+floor, and on WebView 64 a .docx said "docx is not defined" and a .md "marked is not
+defined".
+
+Neither library publishes a minimum, so both numbers are measurements, and a
+measurement is of one file. `VendoredLibsTest` pins the SHA-256 of every file the
+two pages load, JSZip and DOMPurify included, and fails when a refetch changes one,
+which the newest-in-the-major fetches of marked and DOMPurify make likely. Measure
+the new file before updating its fingerprint:
+
+    node scripts/js-floor.mjs app/src/main/assets/viewer/lib/marked.min.js
+
+It lists every construct newer than ES2015 with the Chromium that shipped it, which
+is exact, and the newer runtime names the file mentions, which are only candidates:
+a name in the file is not a call every document makes. marked's
+`Array.prototype.at` is one that counts. Without it a single line of prose fails,
+which is why its floor is 92 rather than the 80 its syntax alone would give. JSZip
+and DOMPurify parse as ES2015 and reach for newer names only behind `typeof` checks,
+so neither sets a floor today.
+
 ## Before upgrading pdf.js
 
 `pdf.html` is the only viewer loaded as an ES module, and a module the WebView

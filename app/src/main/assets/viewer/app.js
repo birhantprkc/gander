@@ -43,6 +43,71 @@ function vwError(title, detail) {
 }
 
 /*
+ * The card a viewer shows instead of its document when the WebView is too old for the
+ * library that draws it, and whether it showed it. Called before the viewer reads a
+ * byte, and a true answer means stop: the card is the whole page.
+ *
+ * Kotlin decides, and says so on the URL. webview=<major>&needs=<floor> arrive only when
+ * the engine about to render is older than the library supports; PDFs, Word documents
+ * and Markdown each have a floor, and WebViewFloor.kt says where each number comes from.
+ * That is a version read from the system rather than a timeout or a feature sniff, so
+ * the same phone gets the same answer every time.
+ *
+ * locked=1 arrives when the reader has no way to update the WebView, which is the case on
+ * a phone whose manufacturer supplies it and allows no replacement. Telling those readers
+ * to go and update it is the one thing the card must not do. On such a phone the version
+ * sometimes cannot be read at all, and then locked=1 arrives without a major beside it,
+ * which is why this gates on either parameter rather than on the version.
+ *
+ * Once the card is up nothing may replace it, which is why window.onerror goes. pdf.html
+ * fetches its renderer after this file whatever happens, an engine that old often cannot
+ * parse it, and that failure would land in the handler at the foot of this file and swap
+ * the card for the parser's complaint. That is what issue #31 was, on WebView 64. The
+ * Word and Markdown libraries load ahead of this file, so their failures never reach it.
+ */
+function vwWebViewTooOld(what) {
+  var have = vwParams.get("webview");
+  var locked = vwParams.get("locked");
+  if (!have && !locked) return false;
+  vwNeedsNewerWebView(what, have, vwParams.get("needs"), locked);
+  window.onerror = null;
+  return true;
+}
+
+/*
+ * what is the format as the sentences need it, plural and capitalised: "PDFs", "Word
+ * documents", "Markdown files". No floor is written here. The number arrives in the query
+ * string so that raising one stays a one-constant edit in Kotlin, which means every
+ * sentence has to work without it too.
+ *
+ * No card says what else still opens. On the oldest engines that see one, other formats
+ * fail as well: on the WebView 64 of issue #31, PDFs, Word documents and Markdown all did.
+ */
+function vwNeedsNewerWebView(what, have, needs, locked) {
+  if (locked) {
+    vwError(
+      what + " cannot be shown on this phone",
+      (needs
+        ? what + " need the browser engine built into your phone to be version " +
+          needs + " or newer, and this one is " + (have || "older") + ". "
+        : what + " need a newer browser engine than the one built into your phone. ") +
+      "On this phone that engine comes from the manufacturer and cannot be " +
+      "updated or replaced, so installing Android System WebView will not help."
+    );
+    return;
+  }
+  vwError(
+    "Android System WebView is too old to show " + what,
+    "Gander opens " + what + " using Android System WebView, the browser engine built " +
+    "into your phone. " +
+    (have && needs
+      ? what + " need version " + needs + " or newer, and this one is " + have + ". "
+      : "") +
+    "Updating Android System WebView and reopening the file will fix it."
+  );
+}
+
+/*
  * Publish the height the reader can actually see as --vw-fit, for the viewers that
  * centre a document short enough to fit on the screen.
  *

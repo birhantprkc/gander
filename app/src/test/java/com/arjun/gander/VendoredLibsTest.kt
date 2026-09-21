@@ -1,7 +1,9 @@
 package com.arjun.gander
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
+import java.security.MessageDigest
 import org.junit.Test
 
 /**
@@ -30,6 +32,19 @@ class VendoredLibsTest {
         /** The pdf.js release the script pins, read out of the script itself. */
         val PDFJS_VER: String =
             Regex("""PDFJS_VER="([^"]+)"""").find(FETCH_SCRIPT)!!.groupValues[1]
+
+        /**
+         * The files the Word and Markdown floors in WebViewFloor.kt were measured
+         * on, as `shasum -a 256 <file>` prints each from the lib directory. Neither
+         * docx-preview nor marked publishes a minimum, so those floors are
+         * measurements, and a measurement is of one file.
+         */
+        val FLOORS_MEASURED_ON = mapOf(
+            "docx-preview.min.js" to "051ef503f2677d53159a388b7384e950eda41ea4e47a103e5e36f124d7faea40",
+            "jszip3.min.js" to "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e",
+            "marked.min.js" to "3e7e7d7feb3e5d58cb6c804f68ab5c24cc7e5eb6270fd6e5cbb9124739217d0c",
+            "purify.min.js" to "c45ba939765574f96cbf35ee9b6d89f73756a17921814425e74b82f7c54603ce",
+        )
     }
 
     @Test
@@ -82,6 +97,31 @@ class VendoredLibsTest {
         shipped.forEach { name ->
             assertThat("$name in VENDORED.md: ${VENDORED_MD.contains(name)}")
                 .isEqualTo("$name in VENDORED.md: true")
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // The files the Word and Markdown floors were measured on
+    // ---------------------------------------------------------------
+
+    /**
+     * docx.html loads docx-preview and JSZip, md.html marked and DOMPurify, and
+     * the floors in WebViewFloor.kt were measured on exactly these four files.
+     * The fetch script takes the newest marked 15 and DOMPurify 3, so a refetch
+     * can hand over a library that needs a newer engine than its floor says, and
+     * a reader on that engine is back to an error naming a missing part instead
+     * of the card that says why: issue #31.
+     */
+    @Test
+    fun theWordAndMarkdownFloorsWereMeasuredOnTheseFiles() {
+        FLOORS_MEASURED_ON.forEach { (name, measured) ->
+            val digest = MessageDigest.getInstance("SHA-256").digest(File(LIB, name).readBytes())
+            val fingerprint = digest.joinToString("") { "%02x".format(it) }
+            assertWithMessage(
+                "$name is not the file the floors in WebViewFloor.kt were measured on. Measure it " +
+                    "as docs/VENDORED.md describes, set the floor from what that finds, then put " +
+                    "the new fingerprint in FLOORS_MEASURED_ON",
+            ).that(fingerprint).isEqualTo(measured)
         }
     }
 
