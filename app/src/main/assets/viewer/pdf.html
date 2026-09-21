@@ -498,7 +498,7 @@
  * Kotlin adds webview=<major>&needs=<floor> only when the engine about to render
  * is older than the vendored pdf.js supports. That is a version read from the
  * system rather than a timeout or a feature sniff, so the same phone gets the
- * same answer every time. See PDFJS_MIN_CHROMIUM_MAJOR in ViewerActivity.kt for
+ * same answer every time. See PDFJS_MIN_CHROMIUM_MAJOR in WebViewFloor.kt for
  * where the number comes from.
  *
  * It adds locked=1 when the reader has no way to update the WebView, which is
@@ -507,12 +507,15 @@
  * do. On such a phone the version sometimes cannot be read at all, and then
  * locked=1 arrives without a major beside it, which is why what follows gates on
  * either parameter rather than on the version.
+ *
+ * Neither card says the other formats still work, because below Chromium 92 some
+ * do not: docx-preview needs 80 and marked needs 92, so on the WebView 64 of issue
+ * #31 a .docx and a .md fail as well.
  */
 function vwNeedsNewerWebView(have, needs, locked) {
   if (locked) {
     vwError(
       "PDFs cannot be shown on this phone",
-      "Every other format Gander opens still works. " +
       // No floor is written here. The number arrives in the query string so that
       // raising PDFJS_MIN_CHROMIUM_MAJOR stays a one-constant edit, which means
       // the sentence has to work without it too.
@@ -533,8 +536,7 @@ function vwNeedsNewerWebView(have, needs, locked) {
       ? "This one is version " + have + " and the PDF renderer needs " +
         needs + " or newer. "
       : "This one is too old to run the PDF renderer. ") +
-    "Updating Android System WebView and reopening the file will fix it. " +
-    "Every other format Gander opens still works."
+    "Updating Android System WebView and reopening the file will fix it."
   );
 }
 
@@ -547,6 +549,15 @@ if (vwPdfBlocked) {
     vwParams.get("needs"),
     vwParams.get("locked")
   );
+  /*
+   * And nothing may replace it. The module below is fetched whatever happens here,
+   * and below Chromium 94, which added the class static blocks pdf.js uses, it
+   * cannot even be parsed. That failure reaches app.js's window.onerror after the
+   * card is drawn, and it swapped the card for "Unexpected token .": issue #31, on
+   * WebView 64. Anything else that goes wrong below the floor is a symptom of what
+   * the card has already said.
+   */
+  window.onerror = null;
 }
 
 /*

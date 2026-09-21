@@ -84,8 +84,10 @@ internal fun chromiumMajor(userAgent: String?, packageVersionName: () -> String?
 
 /**
  * The parameters telling pdf.html it cannot render, and empty otherwise, including
- * for every other format: pdf.html is the only viewer loaded as an ES module, and
- * the rest are classic scripts that any engine can parse.
+ * for every other format. Not because the others have no floor: docx-preview needs
+ * Chromium 80 and marked needs 92, and below those a .docx or a .md fails with an
+ * error that says nothing about the WebView, as on the WebView 64 of issue #31.
+ * Only PDF is checked.
  *
  * "&webview=<major>&needs=<floor>" when the engine is older than the vendored
  * pdf.js supports. Both numbers are passed so the floor lives only in Kotlin rather

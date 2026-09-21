@@ -363,6 +363,24 @@ def test_an_old_engine_is_told_to_update_it(viewer, page):
     assert "updating android system webview" in said.lower()
 
 
+def test_the_card_outlasts_the_renderer_failing_to_parse(viewer, page):
+    """
+    Issue #31, WebView 64. The module is fetched even with the card up, and an
+    engine that old cannot parse it. The failure lands after the card is drawn,
+    and it replaced the card with "Unexpected token .". The browser here parses
+    pdf.js, so the file is swapped for one that no engine can.
+    """
+    page.route(
+        "**/assets/viewer/lib/pdf.min.mjs",
+        lambda route: route.fulfill(content_type="text/javascript", body="export const x = ;"),
+    )
+    with page.expect_event("pageerror"):
+        viewer("pdf.html", "six-pages.pdf", webview=64, needs=125)
+    said = status_text(page)
+    assert "64" in said and "125" in said
+    assert "updating android system webview" in said.lower()
+
+
 def test_a_locked_engine_is_not_told_to_update_what_it_cannot(viewer, page):
     """
     On a Huawei device the provider cannot be replaced. Telling those readers

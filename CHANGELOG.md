@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- On a phone whose Android System WebView is too old for PDFs, the message saying so now stays
+  on screen. It was being replaced a moment later by "Something went wrong while rendering" and
+  an unexpected-token error that explained nothing (thanks @XZY123lol, who brought this over
+  from 4PDA in #31). It no longer says every other format still works, since on the oldest
+  WebViews Word and Markdown files do not open either, and the search button, which could find
+  nothing behind it, is hidden.
+
 - A .json file opens laid out, indented and one field to a line, rather than as the single
   unbroken line most of them are written as (thanks @Chris-z-su, who asked for this in #32).
   Only the spacing between values is rewritten, so numbers, key order and duplicate keys come

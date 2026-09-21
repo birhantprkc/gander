@@ -92,8 +92,8 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
 
 - The legacy build of 5.7.284 supports **Chromium 125 and newer** (Mozilla's
   pdf.js FAQ). That number is `PDFJS_MIN_CHROMIUM_MAJOR` in
-  `app/src/main/java/com/arjun/gander/ViewerActivity.kt`, compared against the
-  WebView package actually in use. Below it, `pdf.html` shows a card explaining
+  `app/src/main/java/com/arjun/gander/WebViewFloor.kt`, compared against the
+  WebView actually in use. Below it, `pdf.html` shows a card explaining
   that Android System WebView needs updating instead of loading the renderer.
 - **Chromium 138 is the ceiling on Android 8.0, 8.1 and 9.0.** Chromium 139
   requires Android 10, so those releases will never receive a newer WebView, and
