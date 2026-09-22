@@ -4,8 +4,8 @@
 
 - In night mode, everything around a PDF goes dark with the page, on a phone set to light as
   well: the bar with the file's name, the strips at the top and bottom of the screen, the search
-  bar, the menu, and the Go to page and Rename boxes. They used to stay light, which put
-  bright bars around a black page.
+  bar, the menu, and the Go to page box. They used to stay light, which put bright bars around a
+  black page.
 
 - Go to page no longer comes up short with the keyboard open, which could leave its Go and Cancel
   buttons cut to a sliver, and its field is 48dp tall, the smallest Android recommends for
@@ -27,14 +27,8 @@
   files show their text without formatting, a picture in a Windows metafile shows a box
   saying it cannot be drawn, and a password-protected file says so.
 
-- Rename, in the viewer's menu, renames a file in a folder you added, or one you picked from your
-  phone's storage or its Downloads, and asks for no permission. It checks with you before giving
-  a file a name another file already has, or changing the part after the dot. Files picked from
-  the picker's Recent, Images, Videos, Audio or Documents sections can't be renamed, since the
-  part of Android that serves them doesn't rename files. To do this Gander keeps the access to
-  change files that Android hands over along with the access to open them: for a folder until you
-  remove it, and for a picked file until it leaves Recents. Folders added and files picked before
-  this version get Rename once added or picked again.
+- A file you remove from Recents, or that drops off the end of the list, now takes Gander's access
+  to it along with it. Android used to go on letting Gander open it until the app was uninstalled.
 
 - On a phone whose Android System WebView is too old for PDFs, the message saying so now stays
   on screen. It was being replaced a moment later by "Something went wrong while rendering" and

@@ -12,9 +12,7 @@ import org.json.JSONObject
  * (picker selections). Stored as JSON in SharedPreferences.
  *
  * The grant goes when the entry does, whether it is removed or pushed off the
- * end: nothing else opens a file by it, and for a file the viewer kept write
- * access to, so that it can be renamed, it would be write access held for
- * nothing.
+ * end, since nothing else opens a file by it.
  */
 object Recents {
 
@@ -46,15 +44,13 @@ object Recents {
     }
 
     /**
-     * Gives back what the grant on [uri] allowed, read and write alike. Android
-     * throws for a grant that is already gone, a renamed file's old one say,
-     * and that is the same outcome.
+     * Gives back the grant on [uri]. Android throws for a grant that is already
+     * gone, and that is the same outcome.
      */
     private fun release(context: Context, uri: String) {
         runCatching {
             context.contentResolver.releasePersistableUriPermission(
-                uri.toUri(),
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                uri.toUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         }
     }

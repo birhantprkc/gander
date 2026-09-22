@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.InsetDrawable
-import android.net.Uri
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
@@ -22,7 +21,6 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.common.truth.Truth.assertThat
-import java.util.concurrent.Executor
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -43,13 +41,11 @@ import org.robolectric.shadows.ShadowDialog
 class NightChromeTest {
 
     private lateinit var context: Context
-    private lateinit var provider: RenamingProvider
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         FixtureProvider.install()
-        provider = RenamingProvider.install()
         Thumbs.resetForTests()
         Settings.setNight(context, false)
     }
@@ -212,13 +208,6 @@ class NightChromeTest {
     // Dialogs, opened one after another as a reader opens them
     // ---------------------------------------------------------------
 
-    private fun open(uri: Uri): ViewerActivity {
-        val intent = Intent(context, ViewerActivity::class.java)
-            .setAction(Intent.ACTION_VIEW)
-            .setDataAndType(uri, context.contentResolver.getType(uri))
-        return Robolectric.buildActivity(ViewerActivity::class.java, intent).setup().get()
-    }
-
     /** A dialog as a reader sees it: the box, its title, and the words in its field if it has one. */
     private data class Seen(val box: Int?, val title: Int, val field: Int?)
 
@@ -229,9 +218,10 @@ class NightChromeTest {
         field = nightText,
     )
 
-    private fun ViewerActivity.openRename(): AlertDialog {
-        renameWorker = Executor { it.run() }
-        findViewById<MaterialToolbar>(R.id.toolbar).menu.performIdentifierAction(R.id.action_rename, 0)
+    /** Go to page, the box a PDF has. Only a real WebView says how many pages there are. */
+    private fun ViewerActivity.openGoToPage(): AlertDialog {
+        pageTotal = 6
+        findViewById<MaterialToolbar>(R.id.toolbar).menu.performIdentifierAction(R.id.action_go_to_page, 0)
         return ShadowDialog.getLatestDialog() as AlertDialog
     }
 
@@ -262,19 +252,19 @@ class NightChromeTest {
     /** What the tests below hold night mode to. */
     @Test
     @Config(qualifiers = "night")
-    fun onAPhoneSetToDarkTheRenameBoxIsDark() {
+    fun onAPhoneSetToDarkGoToPageIsDark() {
         val dark = asDarkPhone()
-        assertThat(open(provider.add("six-pages.pdf")).openRename().seen()).isEqualTo(dark)
+        assertThat(open("six-pages.pdf").openGoToPage().seen()).isEqualTo(dark)
     }
 
     @Test
-    fun withNightModeOffTheRenameBoxIsAsThePhoneHasIt() {
+    fun withNightModeOffGoToPageIsAsThePhoneHasIt() {
         val light = Seen(
             box = context.color(R.color.gander_surface_container_high),
             title = context.color(R.color.gander_on_surface),
             field = textColour(ContextThemeWrapper(context, R.style.Theme_Gander)),
         )
-        assertThat(open(provider.add("six-pages.pdf")).openRename().seen()).isEqualTo(light)
+        assertThat(open("six-pages.pdf").openGoToPage().seen()).isEqualTo(light)
     }
 
     /**
@@ -285,10 +275,10 @@ class NightChromeTest {
     fun everyDialogOverAPageInNightModeIsDarkNotOnlyTheFirst() {
         Settings.setNight(context, true)
         val dark = asDarkPhone()
-        val viewer = open(provider.add("six-pages.pdf"))
+        val viewer = open("six-pages.pdf")
 
         repeat(3) {
-            val box = viewer.openRename()
+            val box = viewer.openGoToPage()
             assertThat(box.seen()).isEqualTo(dark)
             box.close()
         }
@@ -297,19 +287,17 @@ class NightChromeTest {
             .isEqualTo(Configuration.UI_MODE_NIGHT_NO)
     }
 
-    /** A question asked over the box is made and shown in one call, and is dark as well. */
+    /** A box made and shown in one call, as a question asked over another would be, is dark as well. */
     @Test
-    fun aQuestionAskedOverTheBoxIsDarkToo() {
+    fun aBoxShownInOneCallIsDarkToo() {
         Settings.setNight(context, true)
         val dark = asDarkPhone()
-        val box = open(provider.add("six-pages.pdf")).openRename()
-        box.field()!!.setText("six-pages.txt")
-        box.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-        shadowOf(Looper.getMainLooper()).idle()
+        val chrome = NightChrome(open("six-pages.pdf"))
+        chrome.show(true)
 
-        val question = ShadowDialog.getLatestDialog() as AlertDialog
-        assertThat(question).isNotSameInstanceAs(box)
-        assertThat(question.seen()).isEqualTo(dark.copy(field = null))
+        val box = DialogBuilder(chrome.dialogs).setTitle("Title").setMessage("Message").show()
+
+        assertThat(box.seen()).isEqualTo(dark.copy(field = null))
     }
 
     /** The night theme's resources are shared across the process, so a viewer opened later read them too. */
@@ -317,8 +305,8 @@ class NightChromeTest {
     fun aDialogAtNightLeavesTheNextViewerDarkToo() {
         Settings.setNight(context, true)
         val before = open("six-pages.pdf").parts()
-        val first = open(provider.add("six-pages.pdf"))
-        first.openRename().close()
+        val first = open("six-pages.pdf")
+        first.openGoToPage().close()
 
         assertThat(open("six-pages.pdf").parts()).isEqualTo(before)
         // Still open, as it was on the phone, holding the resources it shares with the one above

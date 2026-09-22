@@ -113,18 +113,14 @@ class MainActivity : AppCompatActivity() {
             if (uri != null) openInViewer(uri)
         }
 
-    /**
-     * Keeps a folder the reader adds: read, and write as well, which renaming a file in it takes.
-     * Android grants a folder as one piece, so write covers every file in it, with no way to keep
-     * it for some and not others. Read alone where the grant will not keep write.
-     */
     private val openTree =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             if (uri != null) {
-                val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                val write = Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                runCatching { contentResolver.takePersistableUriPermission(uri, read or write) }
-                    .recoverCatching { contentResolver.takePersistableUriPermission(uri, read) }
+                runCatching {
+                    contentResolver.takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
                 render()
             }
         }
@@ -532,9 +528,7 @@ class MainActivity : AppCompatActivity() {
                         .setPositiveButton(R.string.remove) { _, _ ->
                             runCatching {
                                 contentResolver.releasePersistableUriPermission(
-                                    perm.uri,
-                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                    perm.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                                 )
                             }
                             toastRemoved()

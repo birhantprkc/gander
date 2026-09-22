@@ -13,7 +13,6 @@ import androidx.test.espresso.accessibility.AccessibilityChecks
 import androidx.test.espresso.action.ViewActions
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.RootMatchers.isDialog
-import androidx.test.espresso.matcher.ViewMatchers.withHint
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -191,24 +190,6 @@ class AccessibilityTest {
                     .menu.performIdentifierAction(R.id.action_name_encoding, 0)
             }
             checkFrom(onView(withText(R.string.name_encoding)).inRoot(isDialog()))
-        }
-    }
-
-    /**
-     * The box that asks for a file's new name, which comes up with the keyboard. Rename is only
-     * offered on a file a document provider serves, and a test is handed none, so the item is
-     * asked for directly: the box is the same whatever file it is for.
-     */
-    @Test
-    fun theRenameBoxPassesTheAccessibilityChecks() {
-        ActivityScenario.launch<ViewerActivity>(
-            DeviceFixtures.viewIntent("plain.txt")
-        ).use { scenario ->
-            scenario.onActivity { activity ->
-                activity.findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
-                    .menu.performIdentifierAction(R.id.action_rename, 0)
-            }
-            checkFrom(onView(withHint(R.string.file_name)).inRoot(isDialog()))
         }
     }
 

@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -76,7 +75,6 @@ class ViewerActivity : AppCompatActivity() {
         private const val STATE_COPY_SOURCE = "copy_source"
         private const val STATE_ARCHIVE_FOLDER = "archive_folder"
         private const val STATE_ARCHIVE_CODE_PAGE = "archive_code_page"
-        private const val STATE_RENAMED = "renamed"
         private const val STATE_PLAYER_POSITION = "player_position"
         private const val ASSET_HOST = "appassets.androidplatform.net"
 
@@ -128,32 +126,7 @@ class ViewerActivity : AppCompatActivity() {
     /** The file the destination picker is currently open for. */
     private var copySource: Uri? = null
 
-    /**
-     * The file on screen, when it has been renamed since the intent named it.
-     *
-     * A rename can give a file a new URI and end the old one, and the viewer reopens itself on
-     * the new one. Carried in the saved state rather than put back into the intent, because the
-     * state is what reaches a viewer Android brings back after reclaiming the process, and the
-     * intent it brings back is the one the file first arrived with.
-     */
-    private var renamedTo: Uri? = null
-
-    /** The Rename box, while it is up, so it goes with the screen rather than leaking it. */
-    private var renameBox: AlertDialog? = null
-
-    /**
-     * Where a rename asks the provider: a thread of its own each time, shut down as soon as the
-     * one job is queued, the way Save a copy's is. Tests swap in one that runs inline.
-     */
-    @androidx.annotation.VisibleForTesting
-    internal var renameWorker = java.util.concurrent.Executor { job ->
-        Executors.newSingleThreadExecutor().apply {
-            execute(job)
-            shutdown()
-        }
-    }
-
-    /** Where a video or a track picks up when the viewer is rebuilt around it, as a rename does. */
+    /** Where a video or a track picks up when the viewer is rebuilt around it, as a change of theme does. */
     private var playerStartAt = 0L
 
     /**
@@ -264,7 +237,6 @@ class ViewerActivity : AppCompatActivity() {
         outState.putString(STATE_COPY_SOURCE, copySource?.toString())
         outState.putString(STATE_ARCHIVE_FOLDER, archiveBrowser?.folder)
         outState.putString(STATE_ARCHIVE_CODE_PAGE, archiveBrowser?.codePage)
-        outState.putString(STATE_RENAMED, renamedTo?.toString())
         player?.let { outState.putLong(STATE_PLAYER_POSITION, it.currentPosition) }
     }
 
@@ -276,14 +248,18 @@ class ViewerActivity : AppCompatActivity() {
         pageIndicator.setOnClickListener { askForPage() }
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
-        renamedTo = savedInstanceState?.getString(STATE_RENAMED)?.let(Uri::parse)
         playerStartAt = savedInstanceState?.getLong(STATE_PLAYER_POSITION) ?: 0L
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.setNavigationOnClickListener { finish() }
         val container = findViewById<FrameLayout>(R.id.container)
 
-        val uri = incomingUri()
+        // Files arrive via VIEW (data), the share sheet (EXTRA_STREAM),
+        // a plain path extra, or as shared text (EXTRA_TEXT).
+        val uri = intent.data
+            ?: IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            ?: intent.getStringExtra(EXTRA_PATH)?.let { Uri.fromFile(File(it)) }
+            ?: sharedTextUri()
         if (uri == null) {
             finish()
             return
@@ -294,12 +270,10 @@ class ViewerActivity : AppCompatActivity() {
             return
         }
 
-        val (name, flags) = describe(uri)
+        val name = resolveDisplayName(uri)
         toolbar.title = name
         val ext = name.substringAfterLast('.', "").lowercase()
         val mime = runCatching { contentResolver.getType(uri) }.getOrNull() ?: intent.type
-        // Nothing in a zip is written to the phone, and that includes its names
-        val renamable = !ArchiveProvider.isEntry(this, uri) && canRename(uri, flags, holdsWrite(uri))
 
         // Picker selections carry a persistable grant; keep those in Recents.
         // Open-with and folder-browsed URIs throw here and are simply skipped. A file
@@ -307,7 +281,9 @@ class ViewerActivity : AppCompatActivity() {
         // in a zip is written to the phone, and Recents is on the phone.
         if (uri.scheme == "content" && !ArchiveProvider.isEntry(this, uri)) {
             runCatching {
-                keepGrant(uri, renamable)
+                contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
                 Recents.add(this, uri, name)
             }
         }
@@ -322,66 +298,19 @@ class ViewerActivity : AppCompatActivity() {
             else -> showWeb(container, uri, kind, name, ext)
         }
         setUpSearch(toolbar, kind)
-        setUpActions(toolbar, kind, uri, name, ext, mime, renamable)
+        setUpActions(toolbar, kind, uri, name, ext, mime)
         // A PDF that opens turned over opens with the parts around it dark as well
         if (loadedNight) nightChrome.show(true)
     }
 
-    /**
-     * The file to show. Files arrive via VIEW (data), the share sheet (EXTRA_STREAM), a plain
-     * path extra, or as shared text (EXTRA_TEXT). One renamed here has gone from all of those,
-     * see renamedTo.
-     *
-     * Lint takes the shared extra for an intent that might be launched, and holdsWrite's
-     * permission check, being a Context method, for the launch. It is a Uri, and a permission
-     * check launches nothing.
-     */
-    @SuppressLint("UnsafeIntentLaunch")
-    private fun incomingUri(): Uri? = renamedTo
-        ?: intent.data
-        ?: IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-        ?: intent.getStringExtra(EXTRA_PATH)?.let { Uri.fromFile(File(it)) }
-        ?: sharedTextUri()
-
-    /**
-     * Keeps the picker's grant on [uri] past this visit, which is what puts the file in Recents.
-     *
-     * Read, and write as well for a file that can be renamed from here: the picker hands over
-     * both, and write is what Rename needs once the picker's own grant has lapsed, as it does
-     * when Gander closes. A file that cannot be renamed keeps read alone. Recents gives both
-     * back when the file leaves it.
-     *
-     * Throws where there is nothing to keep: Open with, and a file in a folder, which the
-     * folder's own grant covers.
-     */
-    private fun keepGrant(uri: Uri, renamable: Boolean) {
-        val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
-        val write = Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        if (renamable) {
-            // All or nothing, so a grant that keeps read but not write falls back to read alone
-            val kept = runCatching { contentResolver.takePersistableUriPermission(uri, read or write) }
-            if (kept.isSuccess) return
-        }
-        contentResolver.takePersistableUriPermission(uri, read)
-    }
-
-    /**
-     * Whether Gander may write to [uri] now, by any grant: the picker's, one it kept, or one
-     * another app handed over with the file.
-     */
-    private fun holdsWrite(uri: Uri): Boolean =
-        checkCallingOrSelfUriPermission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
-            PackageManager.PERMISSION_GRANTED
-
-    /** Night mode, share, rename and "show in file manager" toolbar actions. */
+    /** Night mode, share and "show in file manager" toolbar actions. */
     private fun setUpActions(
         toolbar: MaterialToolbar,
         kind: FileKind,
         uri: Uri,
         name: String,
         ext: String,
-        mime: String?,
-        renamable: Boolean
+        mime: String?
     ) {
         setUpNightMode(toolbar, kind)
         goToPageItem = toolbar.menu.findItem(R.id.action_go_to_page).apply {
@@ -404,17 +333,6 @@ class ViewerActivity : AppCompatActivity() {
             }
             true
         }
-        toolbar.menu.findItem(R.id.action_rename).apply {
-            isVisible = renamable
-            setOnMenuItemClickListener {
-                renameBox = askForNewName(
-                    this@ViewerActivity, uri, name, renameWorker, nightChrome.dialogs
-                ) { to, called ->
-                    reopen(uri, to, called.takeIf { it != name })
-                }
-                true
-            }
-        }
 
         val folder = containingFolder(uri)
         toolbar.menu.findItem(R.id.action_open_folder).apply {
@@ -424,39 +342,6 @@ class ViewerActivity : AppCompatActivity() {
                 true
             }
         }
-    }
-
-    /**
-     * Shows the file again under the name it has now, [called], which the toast says. Null when
-     * the name did not change and only the URI moved, which a name put back can do.
-     *
-     * Everything on screen was opened through [from]: the document, the name in the toolbar,
-     * the viewer its extension chose. A provider that files documents by name, as the phone's
-     * own storage does, ends that URI in the rename and issues [to] in its place, and a PDF
-     * still fetching pages or a video still reading would fail on the old one. So the viewer is
-     * rebuilt, the way a change of theme rebuilds it: a PDF comes back at its page, which is
-     * filed under what the file holds rather than its name, and a video or a track where it
-     * had got to.
-     *
-     * What Gander keeps about the file under its old URI goes with it: its place in Recents,
-     * which it takes again under the new one as the rebuilt viewer opens it, its thumbnail, and
-     * a zip's password.
-     */
-    private fun reopen(from: Uri, to: Uri, called: String?) {
-        if (to != from) {
-            Recents.remove(this, from.toString())
-            Thumbs.evict(this, from.toString())
-            ArchivePasswords.get(from)?.let {
-                ArchivePasswords.remember(to, it)
-                ArchivePasswords.forget(from)
-            }
-        }
-        renamedTo = to
-        if (called != null) {
-            Toast.makeText(applicationContext, getString(R.string.renamed_to, called), Toast.LENGTH_SHORT)
-                .show()
-        }
-        recreate()
     }
 
     /**
@@ -611,9 +496,13 @@ class ViewerActivity : AppCompatActivity() {
         override fun handleOnBackPressed() = closeSearchBar()
     }
 
-    /** Last page pdf.html reported, and how many there are. Zero until it says. */
+    /**
+     * Last page pdf.html reported, and how many there are. Zero until it says, which under
+     * Robolectric it never does, so tests set the count themselves.
+     */
     private var pageAt = 0
-    private var pageTotal = 0
+    @androidx.annotation.VisibleForTesting
+    internal var pageTotal = 0
 
     /** What this PDF's page is saved under; see [Positions]. Null for every other format. */
     private var positionKey: String? = null
@@ -1315,25 +1204,18 @@ class ViewerActivity : AppCompatActivity() {
         }.getOrNull()
     }
 
-    /**
-     * The file's name, and the flags its provider reports for it, which is where Rename learns
-     * whether it can be renamed. Only a document provider has that column; everything else
-     * answers zero. One query for both, since each is a round trip to another app.
-     */
-    private fun describe(uri: Uri): Pair<String, Int> {
+    private fun resolveDisplayName(uri: Uri): String {
         if (uri.scheme == "content") {
             runCatching {
                 contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                     val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     if (idx >= 0 && cursor.moveToFirst()) {
-                        val flagsAt = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_FLAGS)
-                        val flags = if (flagsAt >= 0) cursor.getInt(flagsAt) else 0
-                        cursor.getString(idx)?.let { return it to flags }
+                        cursor.getString(idx)?.let { return it }
                     }
                 }
             }
         }
-        return (uri.lastPathSegment?.substringAfterLast('/') ?: "file") to 0
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "file"
     }
 
     private fun showImage(container: FrameLayout, uri: Uri, name: String, ext: String) {
@@ -1809,7 +1691,6 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        renameBox?.dismiss()
         player?.release()
         player = null
         webView?.destroy()

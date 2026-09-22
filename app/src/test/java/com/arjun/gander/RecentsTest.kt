@@ -112,16 +112,10 @@ class RecentsTest {
     private fun kept(uri: Uri) =
         context.contentResolver.persistedUriPermissions.any { it.uri == uri }
 
-    /**
-     * Nothing else opens a file by its grant, so an entry that goes gives it back, write access
-     * included, which the viewer keeps for a file it can rename.
-     */
+    /** Nothing else opens a file by its grant, so an entry that goes gives it back. */
     @Test
     fun removingAnEntryGivesBackItsAccess() {
-        val uri = FixtureProvider.uriFor("a.pdf")
-        context.contentResolver.takePersistableUriPermission(
-            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        )
+        val uri = granted("a.pdf")
         Recents.add(context, uri, "First")
         val other = granted("b.pdf")
         Recents.add(context, other, "Second")
