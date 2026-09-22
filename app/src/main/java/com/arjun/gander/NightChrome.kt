@@ -11,7 +11,9 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.annotation.AttrRes
 import androidx.annotation.ColorInt
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.ViewCompat
@@ -19,6 +21,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.forEach
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.shape.MaterialShapeDrawable
 
@@ -42,8 +45,8 @@ internal class NightChrome(private val activity: AppCompatActivity) {
 
     /**
      * The app's theme under a night configuration, which is what a phone set to dark resolves
-     * every colour role against. Dialogs are built on it whole; the parts already on screen take
-     * their colours from it one at a time.
+     * every colour role against. Dialogs are built on it whole, by a [DialogBuilder]; the parts
+     * already on screen take their colours from it one at a time.
      */
     val nightContext: Context = ContextThemeWrapper(activity, R.style.Theme_Gander).apply {
         applyOverrideConfiguration(Configuration().apply {
@@ -83,7 +86,7 @@ internal class NightChrome(private val activity: AppCompatActivity) {
     var on = false
         private set
 
-    /** What a dialog opened over the document is built on. */
+    /** What a dialog opened over the document is built on, by a [DialogBuilder]. */
     val dialogs: Context
         get() = if (on) nightContext else activity
 
@@ -159,6 +162,36 @@ internal class NightChrome(private val activity: AppCompatActivity) {
             intArrayOf(controlNormal, controlActivated)
         )
         val lightStatusBar = context.resources.getBoolean(R.bool.gander_light_status_bar)
+    }
+}
+
+/**
+ * Builds a dialog that keeps the night or day of the context it is built on.
+ *
+ * AppCompat sets each dialog it makes to the app's night mode, which for Gander is the phone's, by
+ * rewriting the configuration of the Resources the dialog's context reads. The ones
+ * [NightChrome.nightContext] reads are shared by the framework with every context set to night in
+ * the process, so on a phone set to light the first dialog over a page in night mode turned all
+ * of them to day: its own title came out dim on a dark box, every dialog after it light, and a
+ * viewer opened later took light chrome from them, until the process ended. Told its context's
+ * mode as soon as it exists, the dialog rewrites them back before anything in it is drawn. A
+ * dialog made and shown in one call comes through [create] as well.
+ *
+ * Not a dialog built on the activity and told night instead: the Resources it rewrote then would
+ * be the activity's own, and they would stay at night after the dialog had gone.
+ */
+internal class DialogBuilder(context: Context) : MaterialAlertDialogBuilder(context) {
+
+    override fun create(): AlertDialog {
+        // Read first, since making the dialog is what changes it
+        val night = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        return super.create().apply {
+            delegate.localNightMode = if (night == Configuration.UI_MODE_NIGHT_YES) {
+                AppCompatDelegate.MODE_NIGHT_YES
+            } else {
+                AppCompatDelegate.MODE_NIGHT_NO
+            }
+        }
     }
 }
 

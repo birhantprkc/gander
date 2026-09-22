@@ -4,8 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.InsetDrawable
+import android.net.Uri
+import android.os.Looper
 import android.view.View
+import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -16,12 +22,15 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.common.truth.Truth.assertThat
+import java.util.concurrent.Executor
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowDialog
 
 /**
  * The viewer around a PDF in night mode, on a phone set to light and on one set to dark.
@@ -34,11 +43,13 @@ import org.robolectric.annotation.Config
 class NightChromeTest {
 
     private lateinit var context: Context
+    private lateinit var provider: RenamingProvider
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         FixtureProvider.install()
+        provider = RenamingProvider.install()
         Thumbs.resetForTests()
         Settings.setNight(context, false)
     }
@@ -195,5 +206,122 @@ class NightChromeTest {
             chrome.dialogs, com.google.android.material.R.attr.colorSurface, "dialog"
         )
         assertThat(surface).isEqualTo(night.color(R.color.gander_surface))
+    }
+
+    // ---------------------------------------------------------------
+    // Dialogs, opened one after another as a reader opens them
+    // ---------------------------------------------------------------
+
+    private fun open(uri: Uri): ViewerActivity {
+        val intent = Intent(context, ViewerActivity::class.java)
+            .setAction(Intent.ACTION_VIEW)
+            .setDataAndType(uri, context.contentResolver.getType(uri))
+        return Robolectric.buildActivity(ViewerActivity::class.java, intent).setup().get()
+    }
+
+    /** A dialog as a reader sees it: the box, its title, and the words in its field if it has one. */
+    private data class Seen(val box: Int?, val title: Int, val field: Int?)
+
+    /** A dialog as a phone set to dark draws it. Read before any dialog is opened. */
+    private fun asDarkPhone() = Seen(
+        box = night.color(R.color.gander_surface_container_high),
+        title = night.color(R.color.gander_on_surface),
+        field = nightText,
+    )
+
+    private fun ViewerActivity.openRename(): AlertDialog {
+        renameWorker = Executor { it.run() }
+        findViewById<MaterialToolbar>(R.id.toolbar).menu.performIdentifierAction(R.id.action_rename, 0)
+        return ShadowDialog.getLatestDialog() as AlertDialog
+    }
+
+    private fun AlertDialog.field(): EditText? {
+        fun find(v: View): EditText? = when (v) {
+            is EditText -> v
+            is ViewGroup -> v.children.firstNotNullOfOrNull { find(it) }
+            else -> null
+        }
+        return find(window!!.decorView)
+    }
+
+    private fun AlertDialog.seen(): Seen {
+        // Material draws the box as a shape inside an inset, and sets that as the window's background
+        val box = (window!!.decorView.background as? InsetDrawable)?.drawable as? MaterialShapeDrawable
+        return Seen(
+            box = box?.fillColor?.defaultColor,
+            title = findViewById<TextView>(androidx.appcompat.R.id.alertTitle)!!.currentTextColor,
+            field = field()?.currentTextColor,
+        )
+    }
+
+    private fun AlertDialog.close() {
+        cancel()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    /** What the tests below hold night mode to. */
+    @Test
+    @Config(qualifiers = "night")
+    fun onAPhoneSetToDarkTheRenameBoxIsDark() {
+        val dark = asDarkPhone()
+        assertThat(open(provider.add("six-pages.pdf")).openRename().seen()).isEqualTo(dark)
+    }
+
+    @Test
+    fun withNightModeOffTheRenameBoxIsAsThePhoneHasIt() {
+        val light = Seen(
+            box = context.color(R.color.gander_surface_container_high),
+            title = context.color(R.color.gander_on_surface),
+            field = textColour(ContextThemeWrapper(context, R.style.Theme_Gander)),
+        )
+        assertThat(open(provider.add("six-pages.pdf")).openRename().seen()).isEqualTo(light)
+    }
+
+    /**
+     * The first came out dark under a dim title and every one after it light, the field light on
+     * light, because making a dialog put the night theme's resources back to day.
+     */
+    @Test
+    fun everyDialogOverAPageInNightModeIsDarkNotOnlyTheFirst() {
+        Settings.setNight(context, true)
+        val dark = asDarkPhone()
+        val viewer = open(provider.add("six-pages.pdf"))
+
+        repeat(3) {
+            val box = viewer.openRename()
+            assertThat(box.seen()).isEqualTo(dark)
+            box.close()
+        }
+        // And none of it reached the viewer's own resources, which stay the phone's
+        assertThat(viewer.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK)
+            .isEqualTo(Configuration.UI_MODE_NIGHT_NO)
+    }
+
+    /** A question asked over the box is made and shown in one call, and is dark as well. */
+    @Test
+    fun aQuestionAskedOverTheBoxIsDarkToo() {
+        Settings.setNight(context, true)
+        val dark = asDarkPhone()
+        val box = open(provider.add("six-pages.pdf")).openRename()
+        box.field()!!.setText("six-pages.txt")
+        box.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val question = ShadowDialog.getLatestDialog() as AlertDialog
+        assertThat(question).isNotSameInstanceAs(box)
+        assertThat(question.seen()).isEqualTo(dark.copy(field = null))
+    }
+
+    /** The night theme's resources are shared across the process, so a viewer opened later read them too. */
+    @Test
+    fun aDialogAtNightLeavesTheNextViewerDarkToo() {
+        Settings.setNight(context, true)
+        val before = open("six-pages.pdf").parts()
+        val first = open(provider.add("six-pages.pdf"))
+        first.openRename().close()
+
+        assertThat(open("six-pages.pdf").parts()).isEqualTo(before)
+        // Still open, as it was on the phone, holding the resources it shares with the one above
+        assertThat(first.isDestroyed).isFalse()
     }
 }

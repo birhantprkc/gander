@@ -62,7 +62,6 @@ import com.arjun.gander.FileKind.Companion.detect
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -791,7 +790,7 @@ class ViewerActivity : AppCompatActivity() {
             )
         }
 
-        val dialog = MaterialAlertDialogBuilder(themed)
+        val dialog = DialogBuilder(themed)
             .setTitle(R.string.go_to_page)
             .setMessage(getString(R.string.page_range, total))
             .setView(holder)

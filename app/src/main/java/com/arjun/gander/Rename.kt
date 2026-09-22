@@ -26,7 +26,6 @@ import androidx.core.view.isVisible
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.widget.doAfterTextChanged
 import com.google.android.material.color.MaterialColors
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.util.concurrent.Executor
 
 /**
@@ -169,7 +168,7 @@ internal fun askForNewName(
 
     // The password box's insets, for its reason: see field_box_inset
     val inset = activity.resources.getDimensionPixelSize(R.dimen.field_box_inset)
-    val box = MaterialAlertDialogBuilder(themed)
+    val box = DialogBuilder(themed)
         .setTitle(R.string.rename)
         .setView(holder)
         .setBackgroundInsetTop(inset)
@@ -204,7 +203,7 @@ internal fun askForNewName(
             field.requestFocus()
             keyboard?.show(WindowInsetsCompat.Type.ime())
         }
-        MaterialAlertDialogBuilder(themed)
+        DialogBuilder(themed)
             .setTitle(title)
             .setMessage(message)
             .setPositiveButton(yes) { _, _ -> onYes() }
