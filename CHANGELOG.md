@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- In night mode, everything around a PDF goes dark with the page, on a phone set to light as
+  well: the bar with the file's name, the strips at the top and bottom of the screen, the search
+  bar, the menu, and the Go to page and Rename boxes. They used to stay light, which put
+  bright bars around a black page.
+
 - On Android 14 and older, the strip at the top of the screen with the clock and battery now
   matches the app's background, as it already did on newer phones. It was Gander's red with dark
   icons on it, and at night a pale pink with white icons that were hard to read. Thanks

@@ -57,6 +57,16 @@
     <color name="gander_inverse_on_surface">#F8F3EA</color>
     <color name="gander_inverse_primary">#FFB39E</color>
 
+    <!-- Five night values under names of their own, so the viewer can reach them on a phone
+         set to light. PDF night mode dresses the viewer's menu in them whatever the phone is
+         set to (NightChrome.kt), and a theme overlay can only name a colour, never ask for its
+         night version. values-night takes these five roles from here, so each is written once. -->
+    <color name="gander_night_primary">#FFB39E</color>
+    <color name="gander_night_on_primary">#650B00</color>
+    <color name="gander_night_on_surface">#E7E2D9</color>
+    <color name="gander_night_on_surface_variant">#CFC5B2</color>
+    <color name="gander_night_surface_container">#221F19</color>
+
     <!-- The ground behind a track. The same warm near-black the app uses at night, and
          deliberately with no values-night twin: a screen holding nothing but cover art is
          dark whatever the phone is set to, so this must not invert with the theme. -->
