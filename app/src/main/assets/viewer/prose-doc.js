@@ -1144,7 +1144,7 @@ function docBlipRecord(doc, b, from, type, stop) {
  * text box it holds by index into the text box stories.
  */
 function docDrawings(doc) {
-  var out = { shapes: {}, blips: [] };
+  var out = { shapes: {}, blips: [], anchors: {} };
   var entry = doc.at.dggInfo;
   var b = doc.table;
   if (!entry || entry.lcb < 8 || entry.fc + entry.lcb > b.length) return out;
@@ -1187,7 +1187,6 @@ function docDrawings(doc) {
   walk(entry.fc, end, 0);
 
   // Which shape sits at which anchor character
-  out.anchors = {};
   var spa = docPlc(doc, doc.at.spaMom, 26);
   for (var i = 0; i < spa.n; i++) {
     var at = spa.at + i * 26;

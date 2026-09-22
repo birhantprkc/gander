@@ -706,14 +706,17 @@ function rtfWord(state, word, param, has) {
 function rtfBinary(state, count) {
   var g = state.group;
   var end = Math.min(state.bytes.length, state.at + Math.max(0, count));
-  if (g.dest === "pict") {
+  if (g.dest === "pict" && state.pict) {
     for (var i = state.at; i < end; i++) rtfPictByte(state.pict, state.bytes[i]);
   }
   state.at = end;
 }
 
 function rtfPictWord(state, word, param) {
+  // A \pict group inside a \pict group, which no writer makes but a damaged file can,
+  // takes the picture with it when it closes and leaves the outer group with none
   var p = state.pict;
+  if (!p) return;
   if (word === "picw") p.width = param;
   else if (word === "pich") p.height = param;
   else if (word === "picwgoal") p.goalWidth = param;
@@ -775,7 +778,7 @@ function rtfEnter(state, dest, word) {
 function rtfLeave(state, g) {
   if (g.opened === "pict") {
     var outer = state.group;
-    if (outer.dest !== "skip" && state.pict.length) rtfPicture(state, state.pict);
+    if (state.pict && outer.dest !== "skip" && state.pict.length) rtfPicture(state, state.pict);
     state.pict = null;
   } else if (g.opened === "footnote") {
     rtfClosePara(state, g.flow, g.pf, false);

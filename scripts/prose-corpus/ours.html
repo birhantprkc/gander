@@ -39,7 +39,7 @@
       vwProseFit(prose);
       window.__done = true;
     });
-  }).catch(function (e) { window.__error = String(e && e.stack || e); });
+  }).catch(function (e) { window.__errorName = e && e.name; window.__error = String(e && e.stack || e); });
 </script>
 </body>
 </html>

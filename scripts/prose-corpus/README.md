@@ -32,3 +32,21 @@ files: recall 0.955, 1.000 and 0.931, the last held down by an encrypted file th
 refused on purpose. The three best libraries found on npm, run through the same harness
 on the same day, scored 0.841 (`@file-viewer/doc` 3.1.2), 0.871 (`rtf.js`) and 0.900
 (`odf-kit` 0.14.3).
+
+## Fuzzing
+
+`fuzz.py` makes broken variants of the corpus files and the fixtures (bytes flipped, blocks
+zeroed, the file cut short, length and offset fields inflated, blocks swapped) and opens
+each with a timeout. The only acceptable outcomes are the document or the card; a hang, a
+memory blowup or an exception that is not the reader's own refusal is a bug, and the file
+that found it is kept under `<work>/fuzz/found/`.
+
+```sh
+python3 scripts/prose-corpus/fuzz.py "$W" --count 3000 --seed 2
+```
+
+Break a reader on purpose before trusting a clean run: plant `while (true) {}` or a null
+dereference at the top of `docOpen` and the tally should show every file as a hang or an
+escape. On 2026-09-22, 6,000 variants over two seeds found two escapes (a `\pict` group
+nested in a `\pict` group, and a `.doc` with an anchor but no drawing table), both fixed,
+and no hangs or memory growth.

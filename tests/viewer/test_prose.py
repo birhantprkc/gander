@@ -207,3 +207,20 @@ def test_nothing_in_a_document_becomes_markup(viewer, page, made):
     assert page.evaluate("() => window.__pwned") is None
     assert page.evaluate("() => document.querySelectorAll('#container img, #container script').length") == 0
     assert page.evaluate("() => getComputedStyle(document.body).display") != "none"
+
+
+def test_a_picture_group_inside_a_picture_group_does_not_stop_the_reader(viewer, page, made):
+    """
+    Found by the fuzz pass: a damaged file can nest one \\pict group in another, and the
+    inner one closing took the outer one's picture state with it, so the next picture word
+    dereferenced null and the reader stopped with an exception instead of a document.
+    """
+    nested = (
+        b"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Arial;}}"
+        b"\\pard\\plain\\f0 Before the picture. "
+        b"{\\pict{\\pict\\pngblip\\picw1\\pich1 89504e47}\\picscalex50\\picscaley50 0d0a}"
+        b" ordering is checkable.\\par}"
+    )
+    viewer("prose.html", made("nested.rtf", nested))
+    wait_for_document(page)
+    assert "Before the picture." in paper_text(page)
