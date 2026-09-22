@@ -10,6 +10,13 @@ enum class FileKind(val page: String) {
     PDF("pdf.html"),
     PLAYER(""),
     DOCX("docx.html"),
+
+    /**
+     * OpenDocument text, Rich Text and Word 97-2003, read by Gander's own readers in one
+     * page, which asks the file's first bytes which it is: a ".doc" is Rich Text about as
+     * often as not. Issues #4 and #13, and the README's oldest caveat.
+     */
+    PROSE("prose.html"),
     XLSX("xlsx.html"),
     PPTX("pptx.html"),
     MD("md.html"),
@@ -23,6 +30,7 @@ enum class FileKind(val page: String) {
         private val imageExt = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
         private val imageWebExt = setOf("gif", "svg", "avif", "ico")
         private val wordExt = setOf("docx")
+        private val proseExt = setOf("odt", "ott", "fodt", "rtf", "doc", "dot")
         private val sheetExt = setOf("xlsx", "xls", "xlsm", "xlsb", "csv", "ods")
         private val slideExt = setOf("pptx")
         private val mdExt = setOf("md", "markdown")
@@ -47,6 +55,10 @@ enum class FileKind(val page: String) {
         private const val MIME_PPTX =
             "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         private const val MIME_ODS = "application/vnd.oasis.opendocument.spreadsheet"
+        private const val MIME_ODT = "application/vnd.oasis.opendocument.text"
+        private const val MIME_OTT = "application/vnd.oasis.opendocument.text-template"
+        private const val MIME_DOC = "application/msword"
+        private val proseMimes = setOf(MIME_ODT, MIME_OTT, MIME_DOC, "application/rtf", "text/rtf")
         private const val MIME_ZIP = "application/zip"
 
         /** What Windows calls a zip, and so what one attached on Windows often arrives as. */
@@ -62,6 +74,7 @@ enum class FileKind(val page: String) {
             ext == "pdf" -> PDF
             ext in videoExt || ext in audioExt -> PLAYER
             ext in wordExt -> DOCX
+            ext in proseExt -> PROSE
             ext in sheetExt -> XLSX
             ext in slideExt -> PPTX
             ext in mdExt -> MD
@@ -70,6 +83,7 @@ enum class FileKind(val page: String) {
             mime == "application/pdf" -> PDF
             mime?.startsWith("video/") == true || mime?.startsWith("audio/") == true -> PLAYER
             mime == MIME_DOCX -> DOCX
+            mime in proseMimes -> PROSE
             mime == MIME_XLSX || mime == "application/vnd.ms-excel" ||
                 mime == "text/csv" || mime == MIME_ODS -> XLSX
             mime == MIME_PPTX -> PPTX

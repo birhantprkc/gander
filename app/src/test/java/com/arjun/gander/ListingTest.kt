@@ -134,7 +134,14 @@ class ListingTest {
     fun anythingUnrecognisedFallsBackToFile() {
         assertThat(badgeFor("backup.rar", null)).isEqualTo(FILE_BADGE)
         assertThat(badgeFor("noextension", null)).isEqualTo(FILE_BADGE)
-        assertThat(badgeFor("legacy.doc", null)).isEqualTo(FILE_BADGE)
+        assertThat(badgeFor("slides.ppt", null)).isEqualTo(FILE_BADGE)
+    }
+
+    @Test
+    fun theThreeOlderWordProcessorFormatsShareTheWordBadge() {
+        assertThat(badgeFor("legacy.doc", null)).isEqualTo(DOC_BADGE)
+        assertThat(badgeFor("minutes.rtf", null)).isEqualTo(DOC_BADGE)
+        assertThat(badgeFor("letter.odt", null)).isEqualTo(DOC_BADGE)
     }
 
     @Test

@@ -102,7 +102,7 @@ internal fun badgeFor(name: String, mime: String?): Pair<String, Int> {
     val ext = name.substringAfterLast('.', "").lowercase()
     return when (FileKind.detect(ext, mime)) {
         FileKind.PDF -> PDF_BADGE
-        FileKind.DOCX -> DOC_BADGE
+        FileKind.DOCX, FileKind.PROSE -> DOC_BADGE
         FileKind.XLSX -> XLS_BADGE
         FileKind.PPTX -> PPT_BADGE
         FileKind.IMAGE, FileKind.IMAGE_WEB -> IMG_BADGE

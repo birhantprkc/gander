@@ -63,6 +63,7 @@ It cannot phone home because it does not even hold the INTERNET permission.
 | --- | --- | --- |
 | Documents | PDF | pdf.js, offline in a sandboxed WebView |
 | | Word `.docx` | docx-preview, offline in a sandboxed WebView |
+| | Word 97-2003 `.doc`, OpenDocument `.odt`, Rich Text `.rtf` | Gander's own readers, offline in a sandboxed WebView |
 | Spreadsheets | `.xlsx` `.xls` `.xlsm` `.xlsb` `.csv` `.ods` | SheetJS, offline |
 | Slides | PowerPoint `.pptx` | PPTXjs, offline |
 | Photos | JPG, PNG, WebP, BMP, HEIC/HEIF | Tiled deep-zoom image view, EXIF aware |
@@ -83,9 +84,16 @@ Anything else, including files with no extension at all, offers **View as text**
 shows the raw contents without renaming the file. Large files load 5 MB at a time with a
 **Show more** button, so they open instantly and can still be read end to end.
 
-Legacy binary `.doc` and `.ppt` are not supported (no open-source renderer is both
-faithful and small enough to bundle); the app explains this and suggests re-saving as
-`.docx` / `.pptx`. Binary `.xls` works.
+Word 97-2003 `.doc`, OpenDocument `.odt` and Rich Text `.rtf` are read by code written for
+Gander rather than by a bundled library: text and formatting, headings, lists, tables,
+pictures, footnotes, headers and footers, in any script. The file's first bytes choose the
+reader, so a `.doc` that is Rich Text inside, as many are, opens all the same. Word 6 and
+Word 95 files show their text without formatting, and a Windows metafile picture shows a
+box saying it cannot be drawn.
+
+Legacy binary `.ppt` is not supported (no open-source renderer is both faithful and small
+enough to bundle); the app explains this and suggests re-saving as `.pptx`. Binary `.xls`
+works.
 
 ## Install
 
@@ -195,7 +203,7 @@ jQuery 1.11 (MIT), D3 3.x + NVD3 (BSD/Apache), marked (MIT), DOMPurify
 ## Roadmap
 
 - F-Droid listing
-- Legacy `.doc` / `.ppt` support if a usable offline renderer appears
+- Legacy `.ppt` support if a usable offline renderer appears
 - iOS companion (thin QuickLook wrapper)
 
 ## Contributing

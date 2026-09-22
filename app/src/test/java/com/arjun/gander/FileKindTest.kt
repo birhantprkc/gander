@@ -8,6 +8,7 @@ import com.arjun.gander.FileKind.MD
 import com.arjun.gander.FileKind.PDF
 import com.arjun.gander.FileKind.PLAYER
 import com.arjun.gander.FileKind.PPTX
+import com.arjun.gander.FileKind.PROSE
 import com.arjun.gander.FileKind.TEXT
 import com.arjun.gander.FileKind.UNSUPPORTED
 import com.arjun.gander.FileKind.XLSX
@@ -50,6 +51,10 @@ class FileKindTest {
             "amr" to PLAYER,
 
             "docx" to DOCX,
+
+            // Read by Gander's own readers, issues #4 and #13; the page asks the bytes
+            "odt" to PROSE, "ott" to PROSE, "fodt" to PROSE, "rtf" to PROSE,
+            "doc" to PROSE, "dot" to PROSE,
 
             // Spreadsheets. csv is here and not in the text list: see
             // csvIsASpreadsheetBecauseSheetsAreCheckedFirst below.
@@ -94,8 +99,8 @@ class FileKindTest {
 
     /** A count, so a silently deleted table row is noticed. */
     @Test
-    fun theTableCoversSeventyNineExtensions() {
-        assertThat(EXPECTED).hasSize(79)
+    fun theTableCoversEightyFiveExtensions() {
+        assertThat(EXPECTED).hasSize(85)
     }
 
     @Test
@@ -157,6 +162,10 @@ class FileKindTest {
             "video/mp4" to PLAYER,
             "audio/mpeg" to PLAYER,
             MIME_DOCX to DOCX,
+            "application/vnd.oasis.opendocument.text" to PROSE,
+            "application/msword" to PROSE,
+            "application/rtf" to PROSE,
+            "text/rtf" to PROSE,
             MIME_XLSX to XLSX,
             "application/vnd.ms-excel" to XLSX,
             "text/csv" to XLSX,
@@ -215,9 +224,8 @@ class FileKindTest {
     fun anythingElseIsUnsupported() {
         assertThat(FileKind.detect("", null)).isEqualTo(UNSUPPORTED)
         assertThat(FileKind.detect("xyz", null)).isEqualTo(UNSUPPORTED)
-        assertThat(FileKind.detect("doc", null)).isEqualTo(UNSUPPORTED)
         assertThat(FileKind.detect("ppt", null)).isEqualTo(UNSUPPORTED)
-        assertThat(FileKind.detect("odt", null)).isEqualTo(UNSUPPORTED)
+        assertThat(FileKind.detect("odp", null)).isEqualTo(UNSUPPORTED)
         assertThat(FileKind.detect("", "application/octet-stream")).isEqualTo(UNSUPPORTED)
     }
 
