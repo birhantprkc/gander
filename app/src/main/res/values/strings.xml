@@ -148,6 +148,20 @@
     <!-- The characters are filled in from FORBIDDEN_IN_NAMES in Rename.kt, spaced out -->
     <string name="rename_bad_character">A name can\'t contain any of %1$s</string>
     <string name="rename_failed">The file could not be renamed</string>
+    <!-- Android's storage cuts a name at 255 bytes, which for most alphabets is 255 letters and
+         for Chinese or Japanese about 85 -->
+    <string name="rename_too_long">That name is too long</string>
+    <!-- Asked before a rename that changes what a name ends in, the part after its last dot -->
+    <string name="rename_type_title">Change the file type?</string>
+    <string name="rename_type_message">%1$s would become %2$s. Apps go by the end of a file\'s name to open it, so it may not open the same way afterwards.</string>
+    <string name="rename_type_change">Change</string>
+    <string name="go_back">Go back</string>
+    <!-- Asked when another file in the same folder already has the name. Keep both lets Android
+         add a number to this one's name, as it does for any name already in use -->
+    <string name="rename_taken_title">Name already taken</string>
+    <string name="rename_taken_message">There\'s already a file called %1$s here. Keep both, with a number added to this one\'s name?</string>
+    <string name="rename_keep_both">Keep both</string>
+    <string name="rename_change_name">Change name</string>
     <!-- With the name the file ended up with, which is not always what was typed: the phone's
          storage adds " (1)" to a name another file already has -->
     <string name="renamed_to">Renamed to %1$s</string>

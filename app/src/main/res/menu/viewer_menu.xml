@@ -33,8 +33,8 @@
         android:id="@+id/action_save_copy"
         android:title="@string/save_copy"
         app:showAsAction="never" />
-    <!-- Only for a file Gander can rename, which is one the picker handed it or that another
-         app handed it along with write access: see Rename.kt. -->
+    <!-- Only for a file Gander can rename, which is one it was handed along with write access:
+         picked, in a folder the reader added, or opened by the Files app. See Rename.kt. -->
     <item
         android:id="@+id/action_rename"
         android:title="@string/rename"

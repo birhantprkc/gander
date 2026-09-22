@@ -349,10 +349,11 @@ class ViewerActivity : AppCompatActivity() {
      *
      * Read, and write as well for a file that can be renamed from here: the picker hands over
      * both, and write is what Rename needs once the picker's own grant has lapsed, as it does
-     * when Gander closes. A file that cannot be renamed keeps read alone, and so Gander holds
-     * write access to nothing it has no use for. Recents gives both back when the file leaves it.
+     * when Gander closes. A file that cannot be renamed keeps read alone. Recents gives both
+     * back when the file leaves it.
      *
-     * Throws where there is nothing to keep, which is Open with and a file in a folder.
+     * Throws where there is nothing to keep: Open with, and a file in a folder, which the
+     * folder's own grant covers.
      */
     private fun keepGrant(uri: Uri, renamable: Boolean) {
         val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -410,7 +411,7 @@ class ViewerActivity : AppCompatActivity() {
                 renameBox = askForNewName(
                     this@ViewerActivity, uri, name, renameWorker, nightChrome.dialogs
                 ) { to, called ->
-                    reopen(uri, to, called)
+                    reopen(uri, to, called.takeIf { it != name })
                 }
                 true
             }
@@ -427,7 +428,8 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Shows the file again under the name it has now, [called].
+     * Shows the file again under the name it has now, [called], which the toast says. Null when
+     * the name did not change and only the URI moved, which a name put back can do.
      *
      * Everything on screen was opened through [from]: the document, the name in the toolbar,
      * the viewer its extension chose. A provider that files documents by name, as the phone's
@@ -441,7 +443,7 @@ class ViewerActivity : AppCompatActivity() {
      * which it takes again under the new one as the rebuilt viewer opens it, its thumbnail, and
      * a zip's password.
      */
-    private fun reopen(from: Uri, to: Uri, called: String) {
+    private fun reopen(from: Uri, to: Uri, called: String?) {
         if (to != from) {
             Recents.remove(this, from.toString())
             Thumbs.evict(this, from.toString())
@@ -451,8 +453,10 @@ class ViewerActivity : AppCompatActivity() {
             }
         }
         renamedTo = to
-        Toast.makeText(applicationContext, getString(R.string.renamed_to, called), Toast.LENGTH_SHORT)
-            .show()
+        if (called != null) {
+            Toast.makeText(applicationContext, getString(R.string.renamed_to, called), Toast.LENGTH_SHORT)
+                .show()
+        }
         recreate()
     }
 

@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.media3.ui.PlayerView
 import androidx.test.core.app.ApplicationProvider
@@ -83,17 +84,22 @@ class RenameTest {
         assertThat(canRename(picked, writable, holdsWrite = true)).isFalse()
     }
 
-    /**
-     * Folders are read-only. Android does hand over write access to one as it is added, until
-     * Gander closes, and a file in it is not offered Rename even then.
-     */
+    private val addedFolder = DocumentsContract.buildTreeDocumentUri(
+        "com.android.externalstorage.documents", "primary:Download"
+    )
+
+    /** A file in a folder the reader added, whose write access the home screen keeps. */
     @Test
-    fun notAFileBrowsedInAFolder() {
-        val tree = DocumentsContract.buildTreeDocumentUri(
-            "com.android.externalstorage.documents", "primary:Download"
-        )
-        val inFolder = DocumentsContract.buildDocumentUriUsingTree(tree, "primary:Download/report.pdf")
-        assertThat(canRename(inFolder, renamable, holdsWrite = true)).isFalse()
+    fun aFileInAnAddedFolderIsOfferedItToo() {
+        val inFolder = DocumentsContract.buildDocumentUriUsingTree(addedFolder, "primary:Download/report.pdf")
+        assertThat(canRename(inFolder, renamable, holdsWrite = true)).isTrue()
+    }
+
+    /** Never the folder itself: renaming it would end Android's grant on it. */
+    @Test
+    fun neverTheAddedFolderItself() {
+        val folder = DocumentsContract.buildDocumentUriUsingTree(addedFolder, "primary:Download")
+        assertThat(canRename(folder, renamable, holdsWrite = true)).isFalse()
     }
 
     @Test
@@ -133,6 +139,15 @@ class RenameTest {
         (FORBIDDEN_IN_NAMES.toList() + Char(0x09) + Char(0x7F)).forEach { c ->
             assertThat(nameProblem("a${c}b.pdf")).isEqualTo(NameProblem.BAD_CHARACTER)
         }
+    }
+
+    /** Android's storage cuts a name at 255 bytes, which Chinese or Japanese reach in about 85 characters. */
+    @Test
+    fun aNameAndroidWouldCutShortIsRefused() {
+        assertThat(nameProblem("a".repeat(251) + ".pdf")).isNull()
+        assertThat(nameProblem("a".repeat(252) + ".pdf")).isEqualTo(NameProblem.TOO_LONG)
+        assertThat(nameProblem("報".repeat(83) + ".pdf")).isNull()
+        assertThat(nameProblem("報".repeat(84) + ".pdf")).isEqualTo(NameProblem.TOO_LONG)
     }
 
     /** The box starts with the name selected and the extension not, so typing keeps the type. */
@@ -190,6 +205,22 @@ class RenameTest {
         shadowOf(Looper.getMainLooper()).idle()
     }
 
+    /** What the line under the field says, or null while it is hidden. */
+    private fun Pair<AlertDialog, EditText>.problem(): String? =
+        first.findViewById<TextView>(R.id.rename_problem)
+            ?.takeIf { it.visibility == View.VISIBLE }?.text?.toString()
+
+    /** The box asked on top of the Rename box, and its message. */
+    private fun prompt(): Pair<AlertDialog, String> {
+        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        return dialog to dialog.findViewById<TextView>(android.R.id.message)!!.text.toString()
+    }
+
+    private fun AlertDialog.press(which: Int) {
+        getButton(which).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
     private fun grant(uri: Uri) =
         context.contentResolver.persistedUriPermissions.singleOrNull { it.uri == uri }
 
@@ -204,13 +235,21 @@ class RenameTest {
         assertThat(view(uri).renameOffered()).isFalse()
     }
 
-    /** The document opens, flags and all, and is still not offered it: folders are read-only. */
     @Test
-    fun oneOpenedFromAFolderDoesNot() {
+    fun oneOpenedFromAFolderHasItToo() {
+        provider.add("six-pages.pdf")
+        assertThat(view(RenamingProvider.inFolder("six-pages.pdf")).renameOffered()).isTrue()
+    }
+
+    @Test
+    fun aFileInAFolderIsRenamedWhereItIs() {
         provider.add("six-pages.pdf")
         val controller = view(RenamingProvider.inFolder("six-pages.pdf"))
-        assertThat(controller.title()).isEqualTo("six-pages.pdf")
-        assertThat(controller.renameOffered()).isFalse()
+        controller.askToRename().submit("Survey.pdf")
+
+        assertThat(provider.renames).containsExactly("six-pages.pdf" to "Survey.pdf")
+        assertThat(controller.title()).isEqualTo("Survey.pdf")
+        assertThat(controller.loadedUrl()).contains("name=Survey.pdf")
     }
 
     @Test
@@ -259,13 +298,41 @@ class RenameTest {
         assertThat(ShadowDialog.getLatestDialog().isShowing).isFalse()
     }
 
-    /** A new extension is a new type, and the viewer is chosen again for it. */
+    /** A new extension is asked about first, since the file may not open the same way after it. */
+    @Test
+    fun aNewExtensionIsAskedAboutFirst() {
+        val controller = view(provider.add("notes.md"))
+        val asked = controller.askToRename()
+        asked.submit("notes.txt")
+
+        val (prompt, message) = prompt()
+        assertThat(prompt).isNotSameInstanceAs(asked.first)
+        assertThat(message).startsWith("notes.md would become notes.txt.")
+        assertThat(provider.renames).isEmpty()
+
+        prompt.press(AlertDialog.BUTTON_NEGATIVE)
+        assertThat(provider.renames).isEmpty()
+        assertThat(asked.first.isShowing).isTrue()
+    }
+
+    /** Changed anyway, it is a new type, and the viewer is chosen again for it. */
     @Test
     fun aNewExtensionChoosesTheViewerAgain() {
         val controller = view(provider.add("notes.md"))
         assertThat(controller.loadedUrl()).contains("viewer/md.html")
         controller.askToRename().submit("notes.txt")
+        prompt().first.press(AlertDialog.BUTTON_POSITIVE)
         assertThat(controller.loadedUrl()).contains("viewer/text.html")
+    }
+
+    /** One that only changes case is the same type, and nothing is asked. */
+    @Test
+    fun anExtensionInAnotherCaseIsNotAskedAbout() {
+        val controller = view(provider.add("notes.md"))
+        val asked = controller.askToRename()
+        asked.submit("Notes.MD")
+        assertThat(provider.renames).isNotEmpty()
+        assertThat(controller.title()).isEqualTo("Notes.MD")
     }
 
     /**
@@ -318,8 +385,18 @@ class RenameTest {
         val asked = view(provider.add("six-pages.pdf")).askToRename()
         asked.submit("   ")
         assertThat(asked.first.isShowing).isTrue()
-        assertThat(asked.second.error?.toString()).isEqualTo(context.getString(R.string.rename_empty))
+        assertThat(asked.problem()).isEqualTo(context.getString(R.string.rename_empty))
         assertThat(provider.renames).isEmpty()
+    }
+
+    /** The line under the field goes as soon as the name is changed. */
+    @Test
+    fun aProblemGoesOnceTheNameIsChanged() {
+        val asked = view(provider.add("six-pages.pdf")).askToRename()
+        asked.submit("   ")
+        assertThat(asked.problem()).isNotNull()
+        asked.second.setText("Survey.pdf")
+        assertThat(asked.problem()).isNull()
     }
 
     @Test
@@ -327,7 +404,7 @@ class RenameTest {
         val asked = view(provider.add("six-pages.pdf")).askToRename()
         asked.submit("2026/09 survey.pdf")
         assertThat(asked.first.isShowing).isTrue()
-        assertThat(asked.second.error?.toString()).isEqualTo(
+        assertThat(asked.problem()).isEqualTo(
             context.getString(R.string.rename_bad_character, "\" * / : < > ? \\ |")
         )
         assertThat(provider.renames).isEmpty()
@@ -336,7 +413,7 @@ class RenameTest {
     /** Said where the name was typed, with the box left up and ready for another go. */
     @Test
     fun aRefusalSaysSoInTheBox() {
-        provider.refuseFrom = 0
+        provider.refuse = { true }
         val controller = view(provider.add("six-pages.pdf"))
         val before = controller.get()
         val asked = controller.askToRename()
@@ -344,24 +421,55 @@ class RenameTest {
 
         assertThat(provider.renames).hasSize(1)
         assertThat(asked.first.isShowing).isTrue()
-        assertThat(asked.second.error?.toString()).isEqualTo(context.getString(R.string.rename_failed))
+        assertThat(asked.problem()).isEqualTo(context.getString(R.string.rename_failed))
         assertThat(asked.first.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled).isTrue()
         assertThat(controller.get()).isSameInstanceAs(before)
         assertThat(controller.title()).isEqualTo("six-pages.pdf")
     }
 
     /**
-     * The phone's storage does not replace a file that has the name already: it calls this one
-     * "name (1)". The toast says so, since the title may be a folder in a zip rather than the name.
+     * The phone's storage does not replace a file that has the name already: it numbers this one.
+     * That is asked about first, the file keeping its own name meanwhile.
      */
     @Test
-    fun aNameAlreadyTakenSaysWhatTheFileWasCalledInstead() {
+    fun aTakenNameIsAskedAboutBeforeItIsNumbered() {
+        provider.add("plain.txt")
+        val controller = view(provider.add("notes.txt", fixture = "plain.txt"))
+        val asked = controller.askToRename()
+        asked.submit("plain.txt")
+
+        val (prompt, message) = prompt()
+        assertThat(prompt).isNotSameInstanceAs(asked.first)
+        assertThat(message).contains("There's already a file called plain.txt here.")
+        assertThat(provider.has("notes.txt")).isTrue()
+        assertThat(provider.has("plain (1).txt")).isFalse()
+        assertThat(controller.title()).isEqualTo("notes.txt")
+    }
+
+    /** Keep both lets the storage number this one, and the toast says what it was called. */
+    @Test
+    fun keepingBothNumbersThisOne() {
         provider.add("plain.txt")
         val controller = view(provider.add("notes.txt", fixture = "plain.txt"))
         controller.askToRename().submit("plain.txt")
+        prompt().first.press(AlertDialog.BUTTON_POSITIVE)
 
         assertThat(controller.title()).isEqualTo("plain (1).txt")
         assertThat(ShadowToast.getTextOfLatestToast()).isEqualTo("Renamed to plain (1).txt")
+    }
+
+    @Test
+    fun changingTheNameGoesBackToTheBox() {
+        provider.add("plain.txt")
+        val controller = view(provider.add("notes.txt", fixture = "plain.txt"))
+        val asked = controller.askToRename()
+        asked.submit("plain.txt")
+        val renamesSoFar = provider.renames.size
+        prompt().first.press(AlertDialog.BUTTON_NEGATIVE)
+
+        assertThat(asked.first.isShowing).isTrue()
+        assertThat(provider.renames).hasSize(renamesSoFar)
+        assertThat(controller.title()).isEqualTo("notes.txt")
     }
 
     /**
@@ -383,12 +491,25 @@ class RenameTest {
     /** The first step has ended the URI the file had, so the viewer follows it to the name between. */
     @Test
     fun aChangeOfCaseRefusedHalfwayLeavesTheFileWhereItIs() {
-        provider.refuseFrom = 1
+        provider.refuse = { it >= 2 }
         val controller = view(provider.add("Photo.jpg", fixture = "exif-1.jpg"))
         controller.askToRename().submit("photo.jpg")
 
         assertThat(controller.title()).isEqualTo("photo (renaming).jpg")
         assertThat(Recents.all(context).map { it.name }).containsExactly("photo (renaming).jpg")
+    }
+
+    /** Refused halfway but put back: the file keeps its name, and the box says it could not. */
+    @Test
+    fun aChangeOfCaseRefusedHalfwayPutsTheNameBack() {
+        provider.refuse = { it == 2 }
+        val controller = view(provider.add("Photo.jpg", fixture = "exif-1.jpg"))
+        val asked = controller.askToRename()
+        asked.submit("photo.jpg")
+
+        assertThat(provider.has("Photo.jpg")).isTrue()
+        assertThat(asked.problem()).isEqualTo(context.getString(R.string.rename_failed))
+        assertThat(controller.title()).isEqualTo("Photo.jpg")
     }
 
     /** The password a zip was opened with is held under its URI, so it moves to the new one. */
