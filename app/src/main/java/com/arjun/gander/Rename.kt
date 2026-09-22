@@ -1,6 +1,7 @@
 package com.arjun.gander
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -93,10 +94,12 @@ internal fun askForNewName(
     uri: Uri,
     name: String,
     worker: Executor,
+    // What the box is built on: the activity, or the night theme over a PDF in night mode
+    themed: Context = activity,
     renamed: (Uri, String) -> Unit,
 ): AlertDialog {
     val density = activity.resources.displayMetrics.density
-    val field = EditText(activity).apply {
+    val field = EditText(themed).apply {
         // Plain text without suggestions: a keyboard's corrections turn a file name into words
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         imeOptions = EditorInfo.IME_ACTION_DONE
@@ -108,7 +111,7 @@ internal fun askForNewName(
         requestFocus()
     }
     val gutter = (24 * density).toInt()
-    val holder = FrameLayout(activity).apply {
+    val holder = FrameLayout(themed).apply {
         setPadding(gutter, gutter / 3, gutter, 0)
         addView(
             field,
@@ -117,7 +120,7 @@ internal fun askForNewName(
     }
     // The password box's insets, for its reason: see field_box_inset
     val inset = activity.resources.getDimensionPixelSize(R.dimen.field_box_inset)
-    val box = MaterialAlertDialogBuilder(activity)
+    val box = MaterialAlertDialogBuilder(themed)
         .setTitle(R.string.rename)
         .setView(holder)
         .setBackgroundInsetTop(inset)

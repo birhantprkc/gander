@@ -324,6 +324,8 @@ class ViewerActivity : AppCompatActivity() {
         }
         setUpSearch(toolbar, kind)
         setUpActions(toolbar, kind, uri, name, ext, mime, renamable)
+        // A PDF that opens turned over opens with the parts around it dark as well
+        if (loadedNight) nightChrome.show(true)
     }
 
     /**
@@ -405,7 +407,9 @@ class ViewerActivity : AppCompatActivity() {
         toolbar.menu.findItem(R.id.action_rename).apply {
             isVisible = renamable
             setOnMenuItemClickListener {
-                renameBox = askForNewName(this@ViewerActivity, uri, name, renameWorker) { to, called ->
+                renameBox = askForNewName(
+                    this@ViewerActivity, uri, name, renameWorker, nightChrome.dialogs
+                ) { to, called ->
                     reopen(uri, to, called)
                 }
                 true
@@ -480,6 +484,7 @@ class ViewerActivity : AppCompatActivity() {
             val on = !it.isChecked
             it.isChecked = on
             Settings.setNight(this, on)
+            nightChrome.show(on)
             if (searchPort != null) loadedNight = on
             searchPort?.postMessage(WebMessageCompat(PortCommand.nightMode(on)))
             true
@@ -695,6 +700,9 @@ class ViewerActivity : AppCompatActivity() {
 
     private val pageIndicator: TextView by lazy { findViewById(R.id.pageIndicator) }
 
+    /** The viewer's own parts, dark with a PDF in night mode. See [NightChrome]. */
+    private val nightChrome by lazy { NightChrome(this) }
+
     private val pageFader by lazy { AutoHide(pageIndicator, View.GONE) }
 
     /** Bound once the toolbar exists, shown once pdf.html has said how long the file is. */
@@ -757,7 +765,9 @@ class ViewerActivity : AppCompatActivity() {
         val total = pageTotal
         if (total < 2) return
 
-        val entry = EditText(this).apply {
+        // Dark over a document in night mode, like the rest of the viewer. See NightChrome.
+        val themed = nightChrome.dialogs
+        val entry = EditText(themed).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
             imeOptions = EditorInfo.IME_ACTION_GO
             hint = getString(R.string.page_number)
@@ -766,7 +776,7 @@ class ViewerActivity : AppCompatActivity() {
             requestFocus()
         }
         val gutter = (24 * resources.displayMetrics.density).toInt()
-        val holder = FrameLayout(this).apply {
+        val holder = FrameLayout(themed).apply {
             setPadding(gutter, gutter / 3, gutter, 0)
             addView(
                 entry,
@@ -777,7 +787,7 @@ class ViewerActivity : AppCompatActivity() {
             )
         }
 
-        val dialog = MaterialAlertDialogBuilder(this)
+        val dialog = MaterialAlertDialogBuilder(themed)
             .setTitle(R.string.go_to_page)
             .setMessage(getString(R.string.page_range, total))
             .setView(holder)
@@ -1648,6 +1658,9 @@ class ViewerActivity : AppCompatActivity() {
         goneMenu.findItem(R.id.action_night_mode)?.isVisible = false
         closeSearchChannel()
 
+        // The card is the app's rather than the document's, so the parts around it go back to
+        // the phone's colours along with the page that was dark
+        nightChrome.show(false)
         container.removeAllViews()
         val card = layoutInflater.inflate(R.layout.view_render_gone, container, false)
         card.findViewById<TextView>(R.id.renderGoneTitle).setText(

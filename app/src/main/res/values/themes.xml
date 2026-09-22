@@ -49,6 +49,29 @@
         <item name="android:colorBackground">@color/gander_surface</item>
         <item name="android:windowBackground">@color/gander_surface</item>
         <item name="android:windowLightStatusBar">@bool/gander_light_status_bar</item>
+        <!-- The status bar itself, on Android 14 and older, where the app colours it. With
+             nothing named here the platform used colorPrimaryDark, which Material 3 sets to
+             colorPrimary: the brand red under the dark icons asked for above, and a pale pink
+             under white ones at night. From Android 15 the app is drawn beneath the bar, which
+             already shows the surface there, so this changes nothing on those phones. Seen in
+             a screenshot on #30. -->
+        <item name="android:statusBarColor">@color/gander_surface</item>
+    </style>
+
+    <!-- The viewer's overflow menu in the app's night colours, on a phone set to light.
+         NightChrome.kt lays this over the toolbar's theme when PDF night mode goes on, and lays
+         Theme.Gander back over it when it goes off. The menu is built again each time it opens
+         and reads these then. They are the roles it draws with, the container and the night
+         mode checkbox, and its text, which Material's light theme sets to a grey of its own
+         rather than to a role: the light theme's inverse text is the grey its night theme uses,
+         so that is what a phone set to dark shows. -->
+    <style name="ThemeOverlay.Gander.Menu.Night" parent="">
+        <item name="colorSurfaceContainer">@color/gander_night_surface_container</item>
+        <item name="colorOnSurface">@color/gander_night_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/gander_night_on_surface_variant</item>
+        <item name="colorPrimary">@color/gander_night_primary</item>
+        <item name="colorOnPrimary">@color/gander_night_on_primary</item>
+        <item name="android:textColorPrimary">?android:attr/textColorPrimaryInverse</item>
     </style>
 
     <style name="ShapeAppearance.Gander.Thumb" parent="">
