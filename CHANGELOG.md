@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- On Android 14 and older, the strip at the top of the screen with the clock and battery now
+  matches the app's background, as it already did on newer phones. It was Gander's red with dark
+  icons on it, and at night a pale pink with white icons that were hard to read. Thanks
+  @DEWE-ex, whose screenshot in #30 showed it.
+
 - Gander opens Word 97-2003 documents (.doc), OpenDocument text (.odt, the format
   LibreOffice writes) and Rich Text (.rtf). Thanks @celsoazevedo, who asked for .rtf in
   #13, and everyone who asked for .odt after #4. Text and formatting, headings, lists,
