@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/viewer/app.css">
+<link rel="stylesheet" href="/viewer/prose.css">
+<script src="/viewer/lib/jszip3.min.js"></script>
+</head>
+<body>
+<div id="out"></div>
+<script src="/viewer/app.js"></script>
+<script src="/viewer/prose-draw.js"></script>
+<script src="/viewer/prose-odt.js"></script>
+<script src="/viewer/prose-rtf.js"></script>
+<script src="/viewer/prose-doc.js"></script>
+<script>
+  window.onerror = function (m) { window.__error = "onerror: " + m; };
+  function sniff(bytes) {
+    function starts(at, text) { for (var i = 0; i < text.length; i++) if (bytes[at + i] !== text.charCodeAt(i)) return false; return true; }
+    var at = 0;
+    if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) at = 3;
+    while (at < 64 && (bytes[at] === 0x20 || bytes[at] === 0x09 || bytes[at] === 0x0A || bytes[at] === 0x0D)) at++;
+    if (starts(at, "{\\rtf")) return "rtf";
+    if (starts(0, "PK")) return "odt";
+    if (starts(at, "<?xml") || starts(at, "<office:document")) return "odt";
+    if (bytes[0] === 0xD0 && bytes[1] === 0xCF) return "doc";
+    return null;
+  }
+  var file = new URLSearchParams(location.search).get("file");
+  fetch(file).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+    var kind = sniff(new Uint8Array(buf, 0, Math.min(buf.byteLength, 80)));
+    var readers = {
+      odt: window.vwReadOdt, rtf: window.vwReadRtf, doc: window.vwReadDoc
+    };
+    if (!readers[kind]) throw new Error("no reader for " + kind);
+    var t0 = performance.now();
+    return Promise.resolve(readers[kind](buf, document.getElementById("out"))).then(function (prose) {
+      window.__ms = performance.now() - t0;
+      vwProseFit(prose);
+      window.__done = true;
+    });
+  }).catch(function (e) { window.__error = String(e && e.stack || e); });
+</script>
+</body>
+</html>
