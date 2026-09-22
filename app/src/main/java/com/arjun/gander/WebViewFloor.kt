@@ -54,8 +54,10 @@ internal fun minChromiumMajor(kind: FileKind): Int? = when (kind) {
     FileKind.PDF -> PDFJS_MIN_CHROMIUM_MAJOR
     FileKind.DOCX -> DOCX_PREVIEW_MIN_CHROMIUM_MAJOR
     FileKind.MD -> MARKED_MIN_CHROMIUM_MAJOR
+    // Gander's own readers: scripts/js-floor.mjs puts every prose-*.js at Chromium 51
+    // or earlier, and they lean on nothing newer than JSZip does
     FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.XLSX, FileKind.PPTX,
-    FileKind.TEXT, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> null
+    FileKind.PROSE, FileKind.TEXT, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> null
 }
 
 /**

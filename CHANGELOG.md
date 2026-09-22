@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Gander opens Word 97-2003 documents (.doc), OpenDocument text (.odt, the format
+  LibreOffice writes) and Rich Text (.rtf). Thanks @celsoazevedo, who asked for .rtf in
+  #13, and everyone who asked for .odt after #4. Text and formatting, headings, lists,
+  tables, pictures, footnotes, headers and footers all come through, in any script, and
+  each file is drawn as pages of the paper size it names. The three are read by code
+  written for Gander rather than by a bundled library, which is why the app grows by
+  about 50 KB for all of them together. The file's first bytes choose the reader, so a
+  .doc that is Rich Text inside, as many are, opens just the same. Word 6 and Word 95
+  files show their text without formatting, a picture in a Windows metafile shows a box
+  saying it cannot be drawn, and a password-protected file says so.
+
 - Rename, in the viewer's menu, renames a file you picked from your phone's storage or its
   Downloads, whether just now or from Recents, and asks for no permission. Files picked from the
   picker's Recent, Images, Videos, Audio or Documents sections can't be renamed, since the part

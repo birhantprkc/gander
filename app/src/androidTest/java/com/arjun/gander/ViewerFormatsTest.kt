@@ -103,12 +103,18 @@ class ViewerFormatsTest {
         }
     }
 
+    // The three formats read by Gander's own code rather than a library, on the
+    // one page that asks the file's bytes which it is
+
     @Test
-    fun legacyWordIsRefusedWithAnExplanation() {
-        open("legacy.doc").use {
-            onWebView()
-                .withElement(findElement(Locator.ID, "hint"))
-                .check(webMatches(getText(), containsString("legacy")))
-        }
-    }
+    fun aWord97DocumentRenders() =
+        expect("legacy.doc", "#container", "Field Survey")
+
+    @Test
+    fun anOpenDocumentTextRenders() =
+        expect("letter.odt", "#container", "Field Survey")
+
+    @Test
+    fun aRichTextFileRenders() =
+        expect("memo.rtf", "#container", "Field Survey")
 }

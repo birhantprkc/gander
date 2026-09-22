@@ -301,7 +301,7 @@ html[data-play="live"] .when-pending{display:none}
       <tr><th scope="row" class="k">Name</th><td>Gander</td></tr>
       <tr><th scope="row" class="k">What it is</th><td>An offline file viewer for Android. A viewer, not an editor.</td></tr>
       <tr><th scope="row" class="k">Current release</th><td>1.17, released 14 September 2026. The GitHub APK is versionCode 19; the Play build carries 20, one above, so that Play offers an update rather than "Installed" to anyone who sideloaded the same version. <a href="https://github.com/mokshablr/gander/releases">All releases and changelogs</a></td></tr>
-      <tr><th scope="row" class="k">Formats</th><td>PDF; Word (.docx); Excel (.xlsx, .xls, .xlsm, .xlsb, .csv, .ods); PowerPoint (.pptx); JPG, PNG, WebP, HEIC, BMP, GIF, SVG, AVIF; MP4, MKV, WebM, MOV; MP3, M4A, FLAC, WAV, OGG, Opus; Markdown, plain text and source code</td></tr>
+      <tr><th scope="row" class="k">Formats</th><td>PDF; Word (.docx and Word 97-2003 .doc); OpenDocument text (.odt); Rich Text (.rtf); Excel (.xlsx, .xls, .xlsm, .xlsb, .csv, .ods); PowerPoint (.pptx); JPG, PNG, WebP, HEIC, BMP, GIF, SVG, AVIF; MP4, MKV, WebM, MOV; MP3, M4A, FLAC, WAV, OGG, Opus; Markdown, plain text and source code</td></tr>
       <tr><th scope="row" class="k">Permissions</th><td>None</td></tr>
       <tr><th scope="row" class="k">Network</th><td>No <code>INTERNET</code> permission. No ads, trackers, analytics, crash reporting or accounts.</td></tr>
       <tr><th scope="row" class="k">Price</th><td>Free. No in-app purchases, no subscription.</td></tr>
@@ -617,9 +617,9 @@ CA:7C:15:9F:22:A7:E2:4B</span>
   anyone installs.</p>
   <ul>
     <li>It is a viewer, not an editor.</li>
-    <li>Legacy binary <code>.doc</code> and <code>.ppt</code> do not open, because no open-source
-      renderer for them is both faithful and small enough to bundle. Binary <code>.xls</code> does
-      open.</li>
+    <li>Legacy binary <code>.ppt</code> does not open, because no open-source renderer for it
+      is both faithful and small enough to bundle. Binary <code>.xls</code> and <code>.doc</code>
+      do open.</li>
     <li>Complex PowerPoint decks render approximately, and spreadsheet charts are not drawn.</li>
     <li>PDF rendering needs Android System WebView 125 or newer. On Android 8 and 9 the last
       WebView those devices will receive is Chromium 138, so this is a real ceiling rather than a

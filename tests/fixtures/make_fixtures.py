@@ -565,12 +565,6 @@ Text after the injected markup, so the sanitiser can be seen to have kept it.
     (OUT / "unknown.xyz").write_bytes(bytes(range(32, 127)) * 4 + b"\n")
     written(OUT / "unknown.xyz")
 
-    # Legacy binary Word: the OLE2 compound file signature and nothing useful
-    # after it. Gander does not open these and says so; it must not try.
-    (OUT / "legacy.doc").write_bytes(
-        b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 504
-    )
-    written(OUT / "legacy.doc")
 
 
 # ---------------------------------------------------------------------------
@@ -1257,10 +1251,343 @@ def zips() -> None:
 
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# The three word processor formats prose.html reads itself: OpenDocument text,
+# Rich Text and Word 97-2003. Each is written here by hand, from the format,
+# rather than by a library, so that the bytes are stable and say exactly what
+# the tests rely on. What each one carries is the same short document.
+#
+# These prove the page's plumbing: order, formatting, tables, pictures, notes,
+# the error card. They cannot prove the readers against the world, because a
+# file written from the same understanding of a format as the reader agrees
+# with it by construction; that was done against LibreOffice's rendering of
+# real files from the Apache POI and Tika corpora when the readers were built.
+# ---------------------------------------------------------------------------
+
+PROSE_TITLE = "Field Survey, Willowmere"
+PROSE_BODY = "A short report written only so that a test has something to render."
+PROSE_BOLD = "Bold words"
+PROSE_AFTER = "The paragraph after it, so ordering is checkable."
+PROSE_HINDI = "\u092a\u0941\u0932 \u092c\u0902\u0926 \u0939\u0948\u0964"    # the bridge is closed
+PROSE_NOTE = "A footnote, which lands under a rule at the end."
+
+
+def odt() -> None:
+    """letter.odt: a zip of XML, the way LibreOffice writes one, with a picture."""
+    png = (OUT / "tiny.png").read_bytes()
+    manifest = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3">\n'
+        ' <manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.text"/>\n'
+        ' <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>\n'
+        ' <manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>\n'
+        ' <manifest:file-entry manifest:full-path="Pictures/tiny.png" manifest:media-type="image/png"/>\n'
+        '</manifest:manifest>\n'
+    )
+    ns = (
+        'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+        'xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" '
+        'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" '
+        'xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+        'xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" '
+        'xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" '
+        'xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" '
+        'office:version="1.3"'
+    )
+    styles = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<office:document-styles {ns}>\n'
+        ' <office:font-face-decls>\n'
+        '  <style:font-face style:name="Liberation Serif" svg:font-family="\'Liberation Serif\'" style:font-family-generic="roman"/>\n'
+        ' </office:font-face-decls>\n'
+        ' <office:styles>\n'
+        '  <style:default-style style:family="paragraph">\n'
+        '   <style:text-properties style:font-name="Liberation Serif" fo:font-size="12pt"/>\n'
+        '  </style:default-style>\n'
+        '  <style:style style:name="Standard" style:family="paragraph"/>\n'
+        '  <style:style style:name="Heading_20_1" style:display-name="Heading 1" style:family="paragraph" style:parent-style-name="Standard">\n'
+        '   <style:paragraph-properties fo:margin-top="12pt" fo:margin-bottom="6pt"/>\n'
+        '   <style:text-properties fo:font-size="18pt" fo:font-weight="bold" fo:color="#1f3864"/>\n'
+        '  </style:style>\n'
+        ' </office:styles>\n'
+        ' <office:automatic-styles>\n'
+        '  <style:page-layout style:name="pm1">\n'
+        '   <style:page-layout-properties fo:page-width="21cm" fo:page-height="29.7cm" fo:margin-top="2cm" fo:margin-bottom="2cm" fo:margin-left="2cm" fo:margin-right="2cm"/>\n'
+        '  </style:page-layout>\n'
+        ' </office:automatic-styles>\n'
+        ' <office:master-styles>\n'
+        '  <style:master-page style:name="Standard" style:page-layout-name="pm1">\n'
+        '   <style:header><text:p>HEADER-MARK Willowmere Parish Council</text:p></style:header>\n'
+        '  </style:master-page>\n'
+        ' </office:master-styles>\n'
+        '</office:document-styles>\n'
+    )
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<office:document-content {ns}>\n'
+        ' <office:automatic-styles>\n'
+        '  <style:style style:name="T1" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>\n'
+        '  <style:style style:name="P1" style:family="paragraph" style:parent-style-name="Standard">\n'
+        '   <style:paragraph-properties fo:break-before="page"/>\n'
+        '  </style:style>\n'
+        '  <style:style style:name="Table1.A1" style:family="table-cell">\n'
+        '   <style:table-cell-properties fo:border="0.5pt solid #000000" fo:background-color="#d9e2f3"/>\n'
+        '  </style:style>\n'
+        '  <text:list-style style:name="L1">\n'
+        '   <text:list-level-style-bullet text:level="1" text:bullet-char="\u2022">\n'
+        '    <style:list-level-properties><style:list-level-label-alignment text:label-followed-by="listtab" fo:text-indent="-0.635cm" fo:margin-left="1.27cm"/></style:list-level-properties>\n'
+        '   </text:list-level-style-bullet>\n'
+        '  </text:list-style>\n'
+        ' </office:automatic-styles>\n'
+        ' <office:body>\n'
+        '  <office:text>\n'
+        f'   <text:h text:style-name="Heading_20_1" text:outline-level="1">{PROSE_TITLE}</text:h>\n'
+        f'   <text:p text:style-name="Standard">{PROSE_BODY}</text:p>\n'
+        f'   <text:p text:style-name="Standard"><text:span text:style-name="T1">{PROSE_BOLD}</text:span> in the middle of a sentence.'
+        f'<text:note text:id="ftn1" text:note-class="footnote"><text:note-citation>1</text:note-citation>'
+        f'<text:note-body><text:p>{PROSE_NOTE}</text:p></text:note-body></text:note></text:p>\n'
+        '   <text:list text:style-name="L1">\n'
+        '    <text:list-item><text:p>Bridges and culverts</text:p></text:list-item>\n'
+        '    <text:list-item><text:p>Retaining walls</text:p></text:list-item>\n'
+        '   </text:list>\n'
+        '   <table:table table:name="Table1">\n'
+        '    <table:table-column table:number-columns-repeated="2"/>\n'
+        '    <table:table-row><table:table-cell table:style-name="Table1.A1"><text:p>Item</text:p></table:table-cell>'
+        '<table:table-cell table:style-name="Table1.A1"><text:p>Amount</text:p></table:table-cell></table:table-row>\n'
+        '    <table:table-row><table:table-cell><text:p>Surveying</text:p></table:table-cell>'
+        '<table:table-cell><text:p>4200</text:p></table:table-cell></table:table-row>\n'
+        '   </table:table>\n'
+        '   <text:p text:style-name="Standard"><draw:frame draw:name="Picture" text:anchor-type="as-char" svg:width="2cm" svg:height="2cm">'
+        '<draw:image xlink:href="Pictures/tiny.png" xlink:type="simple"/></draw:frame></text:p>\n'
+        f'   <text:p text:style-name="P1">{PROSE_AFTER}</text:p>\n'
+        f'   <text:p text:style-name="Standard">Hindi: {PROSE_HINDI}</text:p>\n'
+        '  </office:text>\n'
+        ' </office:body>\n'
+        '</office:document-content>\n'
+    )
+    members = [
+        Member(b"mimetype", b"application/vnd.oasis.opendocument.text", method=STORED),
+        Member(b"META-INF/manifest.xml", manifest.encode()),
+        Member(b"styles.xml", styles.encode()),
+        Member(b"content.xml", content.encode()),
+        Member(b"Pictures/tiny.png", png, method=STORED),
+    ]
+    (OUT / "letter.odt").write_bytes(zip_bytes(members))
+    written(OUT / "letter.odt")
+
+
+def rtf() -> None:
+    """memo.rtf: what Word writes, with a code page, Unicode escapes and a picture."""
+    png = (OUT / "tiny.png").read_bytes()
+
+    def uni(text: str) -> str:
+        # Each character outside ASCII as \uN, with the one-byte fallback \uc1 asks for
+        return "".join(c if ord(c) < 128 else f"\\u{ord(c) if ord(c) < 0x8000 else ord(c) - 0x10000}?" for c in text)
+
+    doc = (
+        "{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\\uc1"
+        "{\\fonttbl{\\f0\\froman\\fcharset0 Times New Roman;}{\\f1\\fswiss\\fcharset0 Arial;}{\\f2\\fnil\\fcharset2 Wingdings;}}\n"
+        "{\\colortbl;\\red31\\green56\\blue100;\\red255\\green255\\blue0;}\n"
+        "{\\stylesheet{\\s0 Normal;}{\\s1\\f1\\fs36\\b\\cf1 heading 1;}}\n"
+        "{\\*\\generator Gander fixtures}\n"
+        "{\\info{\\title Field Survey}}\n"
+        "\\paperw11906\\paperh16838\\margl1134\\margr1134\\margt1134\\margb1134\n"
+        "{\\header\\pard\\plain\\f0\\fs20 HEADER-MARK Willowmere Parish Council\\par}\n"
+        f"\\pard\\plain\\s1\\f1\\fs36\\b\\cf1 {PROSE_TITLE}\\par\n"
+        f"\\pard\\plain\\f0\\fs24 {PROSE_BODY}\\par\n"
+        f"\\pard\\plain\\f0\\fs24 {{\\b {PROSE_BOLD}}} in the middle of a sentence."
+        f"{{\\super\\chftn{{\\footnote\\pard\\plain\\f0\\fs20 {{\\super\\chftn}} {PROSE_NOTE}\\par}}}}\\par\n"
+        "{\\pntext\\f2\\'b7\\tab}{\\*\\pn\\pnlvlblt\\pnf2\\pnindent360{\\pntxtb\\'b7}}\\pard\\plain\\fi-360\\li720 Bridges and culverts\\par\n"
+        "{\\pntext\\f2\\'b7\\tab}\\pard\\plain\\fi-360\\li720 Retaining walls\\par\n"
+        "\\trowd\\trgaph108\\cellx4320\\cellx8640\\clcbpat2"
+        "\\pard\\intbl Item\\cell Amount\\cell\\row\n"
+        "\\trowd\\trgaph108\\cellx4320\\cellx8640"
+        "\\pard\\intbl Surveying\\cell 4200\\cell\\row\n"
+        "\\pard\\plain\\f0\\fs24 {\\pict\\pngblip\\picw64\\pich64\\picwgoal1134\\pichgoal1134 " + png.hex() + "}\\par\n"
+        "\\page\n"
+        f"\\pard\\plain\\f0\\fs24 {PROSE_AFTER}\\par\n"
+        f"\\pard\\plain\\f0\\fs24 Hindi: {uni(PROSE_HINDI)}\\par\n"
+        "\\pard\\plain\\f0\\fs24 Accents: {\\'e9}t{\\'e9} and Gr{\\'f6}{\\'df}e.\\par\n"
+        "}\n"
+    )
+    (OUT / "memo.rtf").write_bytes(doc.encode("ascii"))
+    written(OUT / "memo.rtf")
+
+
+def doc() -> None:
+    """legacy.doc: a Word 97 file, with its text in UTF-16, a bold run and a table.
+
+    The compound file has one FAT sector and one directory sector, and each of
+    its two streams is padded to 4,096 bytes so that neither is small enough to
+    need the mini stream.
+    """
+    cell = "\x07"
+    parts = [
+        PROSE_TITLE + "\r",
+        PROSE_BODY + "\r",
+        PROSE_BOLD, " in the middle of a sentence.\r",
+        "Item" + cell, "Amount" + cell, cell,
+        "Surveying" + cell, "4200" + cell, cell,
+        PROSE_AFTER + "\r",
+        "Hindi: " + PROSE_HINDI + "\r",
+    ]
+    text = "".join(parts)
+    fc_text = 0x400
+    fc_end = fc_text + 2 * len(text)
+    assert fc_end <= 0x800
+
+    # The paragraphs, and what each one's properties say: nothing, in a table
+    # cell, or the end of a row with the row's own definition. The bold words are
+    # a run inside the third paragraph, not a paragraph of their own
+    para_runs, fc = [], fc_text
+    for part in parts:
+        end = fc + 2 * len(part)
+        if part != PROSE_BOLD:
+            start = fc - (2 * len(PROSE_BOLD) if part.startswith(" in the middle") else 0)
+            kind = "row" if part == cell else "cell" if part.endswith(cell) else "plain"
+            para_runs.append((start, end, kind))
+        fc = end
+
+    bold_start = fc_text + 2 * len(parts[0] + parts[1])
+    bold_end = bold_start + 2 * len(PROSE_BOLD)
+
+    def u16(v): return struct.pack("<H", v)
+    def u32(v): return struct.pack("<I", v)
+    def i16(v): return struct.pack("<h", v)
+
+    # CHPX page: three runs, the middle one bold
+    chpx = bytes([3, 0x35, 0x08, 1])                       # cb, sprmCFBold, on
+    page = bytearray(512)
+    for i, f in enumerate([fc_text, bold_start, bold_end, fc_end]):
+        page[i * 4:i * 4 + 4] = u32(f)
+    page[500:504] = chpx
+    page[16:19] = bytes([0, 250, 0])
+    page[511] = 3
+    chp_page = bytes(page)
+
+    # PAPX page: one run per paragraph, properties at the end of the page
+    in_table = bytes([3, 0, 0, 0x16, 0x24, 1])              # cb 3: istd, sprmPFInTable
+    tc = u16(0) + u16(4320) + bytes([4, 1, 0, 0]) * 4      # a cell: half-point single borders
+    def_table = bytes([2]) + i16(0) + i16(4320) + i16(8640) + tc + tc
+    row_end = (u16(0) + bytes([0x16, 0x24, 1, 0x17, 0x24, 1]) +
+               bytes([0x08, 0xD6]) + u16(len(def_table) + 1) + def_table)
+    assert len(row_end) % 2 == 1
+    row_end = bytes([(len(row_end) + 1) // 2]) + row_end
+    page = bytearray(512)
+    n = len(para_runs)
+    for i, (start, _, _) in enumerate(para_runs):
+        page[i * 4:i * 4 + 4] = u32(start)
+    page[n * 4:n * 4 + 4] = u32(para_runs[-1][1])
+    page[400:400 + len(row_end)] = row_end
+    page[460:460 + len(in_table)] = in_table
+    for i, (_, _, kind) in enumerate(para_runs):
+        at = (n + 1) * 4 + i * 13
+        page[at] = {"plain": 0, "cell": 230, "row": 200}[kind]
+    page[511] = n
+    pap_page = bytes(page)
+
+    # The table stream: the piece table, an empty stylesheet, one font, the bin tables
+    clx = bytes([2]) + u32(16) + u32(0) + u32(len(text)) + u16(0) + u32(fc_text) + u16(0)
+    stsh = u16(18) + u16(0) + u16(10) + u16(0) * 4 + u16(0) * 3
+    name = "Times New Roman".encode("utf-16-le") + b"\0\0"
+    ffn = bytes([0, 0x12]) + u16(400) + bytes([0, 0]) + bytes(10) + bytes(24) + name
+    ffn = bytes([len(ffn) - 1]) + ffn[1:]
+    fonts = u16(1) + u16(0) + ffn
+    bte_chpx = u32(fc_text) + u32(0x800) + u32(4)
+    bte_papx = u32(fc_text) + u32(0x800) + u32(5)
+    table = bytearray(4096)
+    places = {}
+    at = 0
+    for key, blob in (("clx", clx), ("stsh", stsh), ("ffn", fonts), ("chpx", bte_chpx), ("papx", bte_papx)):
+        table[at:at + len(blob)] = blob
+        places[key] = (at, len(blob))
+        at += len(blob) + (16 - len(blob) % 16)
+
+    # The FIB, then the text at fc 0x400, then the two formatting pages
+    fib = bytearray(0x400)
+    fib[0:2] = u16(0xA5EC)
+    fib[2:4] = u16(0xC1)
+    fib[6:8] = u16(0x0409)
+    fib[0x0A:0x0C] = u16(0x0200)                             # fWhichTblStm: 1Table
+    fib[0x0C:0x0E] = u16(0xBF)
+    fib[0x18:0x1C] = u32(fc_text)
+    fib[0x1C:0x20] = u32(fc_end)
+    fib[0x20:0x22] = u16(0x0E)
+    fib[0x3E:0x40] = u16(0x16)
+    fib[0x40:0x44] = u32(fc_end)
+    fib[0x4C:0x50] = u32(len(text))
+    fib[0x98:0x9A] = u16(0x5D)
+    for index, key in ((1, "stsh"), (12, "chpx"), (13, "papx"), (15, "ffn"), (33, "clx")):
+        fib[0x9A + index * 8:0x9A + index * 8 + 8] = u32(places[key][0]) + u32(places[key][1])
+    word = bytearray(4096)
+    word[0:0x400] = fib
+    word[0x400:fc_end] = text.encode("utf-16-le")
+    word[0x800:0xA00] = chp_page
+    word[0xA00:0xC00] = pap_page
+
+    # The compound file around them
+    END, FREE, FATSECT, NOSTREAM = 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFD, 0xFFFFFFFF
+    header = bytearray(512)
+    header[0:8] = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+    header[0x18:0x1A] = u16(0x3E)                            # minor version
+    header[0x1A:0x1C] = u16(3)
+    header[0x1C:0x1E] = u16(0xFFFE)                          # byte order
+    header[0x1E:0x20] = u16(9)                               # 512-byte sectors
+    header[0x20:0x22] = u16(6)                               # 64-byte mini sectors
+    header[0x2C:0x30] = u32(1)                               # one FAT sector
+    header[0x30:0x34] = u32(1)                               # directory at sector 1
+    header[0x38:0x3C] = u32(4096)
+    header[0x3C:0x40] = u32(END)
+    header[0x44:0x48] = u32(END)
+    header[0x4C:0x50] = u32(0)                               # the FAT is sector 0
+    for i in range(1, 109):
+        header[0x4C + i * 4:0x50 + i * 4] = u32(FREE)
+
+    fat = [FREE] * 128
+    fat[0] = FATSECT
+    fat[1] = END
+    for s in range(2, 9): fat[s] = s + 1
+    fat[9] = END
+    for s in range(10, 17): fat[s] = s + 1
+    fat[17] = END
+
+    def entry(name: str, kind: int, left, right, child, start, size):
+        e = bytearray(128)
+        raw = name.encode("utf-16-le") + b"\0\0"
+        e[0:len(raw)] = raw
+        e[64:66] = u16(len(raw))
+        e[66] = kind
+        e[67] = 1                                            # black
+        e[68:72] = u32(left)
+        e[72:76] = u32(right)
+        e[76:80] = u32(child)
+        e[116:120] = u32(start)
+        e[120:124] = u32(size)
+        return bytes(e)
+
+    directory = (
+        entry("Root Entry", 5, NOSTREAM, NOSTREAM, 1, END, 0) +
+        entry("WordDocument", 2, NOSTREAM, 2, NOSTREAM, 2, 4096) +
+        entry("1Table", 2, NOSTREAM, NOSTREAM, NOSTREAM, 10, 4096) +
+        bytes(128)
+    )
+    out = bytes(header) + b"".join(u32(v) for v in fat) + directory + bytes(word) + bytes(table)
+    assert len(out) == 512 * 19
+    (OUT / "legacy.doc").write_bytes(out)
+    written(OUT / "legacy.doc")
+
+
+def prose() -> None:
+    odt()
+    rtf()
+    doc()
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, texts, images, audio, zips):
+    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, texts, images, audio, zips, prose):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
     count = sum(1 for p in OUT.iterdir() if p.is_file())

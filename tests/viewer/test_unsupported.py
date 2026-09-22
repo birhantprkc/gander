@@ -7,14 +7,14 @@ def test_the_file_is_named(viewer, page):
     assert page.text_content("#fname").strip() == "unknown.xyz"
 
 
-def test_legacy_word_gets_an_explanation_of_its_own(viewer, page):
+def test_legacy_powerpoint_gets_an_explanation_of_its_own(viewer, page):
     """
-    .doc and .ppt are the two formats Gander deliberately does not open, so
-    they are told why rather than just refused.
+    .ppt is the one Office format Gander deliberately does not open, now that
+    .doc has a reader of its own, so it is told why rather than just refused.
     """
-    viewer("unsupported.html", "legacy.doc")
+    viewer("unsupported.html", "unknown.xyz", name="slides.ppt", ext="ppt")
     page.wait_for_selector("#hint", timeout=10000)
-    assert page.text_content("#hint").strip()
+    assert ".pptx" in page.text_content("#hint")
 
 
 def test_reading_it_as_text_is_offered_with_a_caveat(viewer, page):

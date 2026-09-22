@@ -63,7 +63,7 @@ class ThumbsTest {
     @Test
     fun documentsAndTextKeepTheirBadges() {
         listOf(
-            FileKind.DOCX, FileKind.XLSX, FileKind.PPTX,
+            FileKind.DOCX, FileKind.PROSE, FileKind.XLSX, FileKind.PPTX,
             FileKind.MD, FileKind.TEXT, FileKind.UNSUPPORTED,
         ).forEach { assertThat(Thumbs.supported(it, "")).isFalse() }
     }

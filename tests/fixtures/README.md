@@ -52,7 +52,9 @@ should stay obviously so.
 | `snapshot.json` | Issue #32. A .json file as they arrive, all on one line. Its id is 2<sup>53</sup>+1, the smallest whole number a double cannot hold, so laying it out by parsing and restringifying would round it and be caught. Carries an accent and an emoji, both inside strings the formatter copies through. |
 | `utf16le.txt`, `utf16be.txt` | `vwEncodingOf` byte order mark sniffing. The mark itself must not appear in the output. |
 | `unknown.xyz` | An extension nothing claims, so the unsupported page offers to read it as text. |
-| `legacy.doc` | Binary Word, which Gander deliberately does not open. OLE2 signature only. |
+| `legacy.doc` | A Word 97 file written by hand: a compound file with its text in UTF-16, a bold run and a two-by-two table. LibreOffice opens it. |
+| `letter.odt` | The same document as OpenDocument: a heading style, a bold span, a bulleted list, a shaded table, a footnote, a picture, a page break and an A4 page with a header. |
+| `memo.rtf` | The same document as Rich Text, the way Word writes one: a code page, `\u` escapes for the Hindi, a Wingdings bullet, a footnote, a `\pngblip` picture and a page break. |
 | `exif-{1,3,5,6,7,8}.jpg` | `Thumbs.exifRotation`, including the transpose and transverse cases folded into 90 and 270. |
 | `tiny.png` | A small image with no EXIF. |
 | `anim.gif`, `icon.svg` | The WebView image path, which is what GIF and SVG take. |
@@ -69,6 +71,12 @@ should stay obviously so.
 
 The zips are written byte by byte rather than with `zipfile`, which sets the UTF-8 flag
 on every name that is not ASCII and so cannot write what Windows writes.
+
+The three word processor files carry one document, so `test_prose.py` checks most things
+three times over. They prove the page, not the readers: a file written from the same
+understanding of a format as its reader agrees with it by construction. The readers were
+measured against LibreOffice's rendering of real files from the Apache POI and Tika corpora
+when they were written, and that is what to repeat before trusting a change to one.
 
 Text files too large to commit (a 6 MB one, one of exactly 5 MiB, one with a
 multi-byte character straddling the page boundary, and one over the 16 MiB
