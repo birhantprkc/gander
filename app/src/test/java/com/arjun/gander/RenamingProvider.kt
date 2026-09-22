@@ -61,8 +61,10 @@ internal class RenamingProvider : ContentProvider() {
 
     var stableIds = false
 
-    /** How many renames go through before the rest are turned down, as for a file it cannot change. */
-    var refuseFrom = Int.MAX_VALUE
+    /** Which renames, counted from one, are turned down, as a provider does a file it cannot change. */
+    var refuse: (Int) -> Boolean = { false }
+
+    fun has(id: String) = id in docs
 
     /** Serves the fixture [fixture] as the document [id], renamable unless told otherwise. */
     fun add(id: String, fixture: String = id, renamable: Boolean = true): Uri {
@@ -121,7 +123,7 @@ internal class RenamingProvider : ContentProvider() {
         val id = DocumentsContract.getDocumentId(uri)
         val name = extras.getString(Document.COLUMN_DISPLAY_NAME)!!
         renames += id to name
-        if (renames.size > refuseFrom) throw IllegalStateException("this provider will not rename $id")
+        if (refuse(renames.size)) throw IllegalStateException("this provider will not rename $id")
         val doc = doc(uri)
         val taken = docs.values.map { it.name.lowercase() }
         val dot = name.lastIndexOf('.').takeIf { it > 0 } ?: name.length

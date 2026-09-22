@@ -407,7 +407,7 @@ class ViewerActivity : AppCompatActivity() {
             isVisible = renamable
             setOnMenuItemClickListener {
                 renameBox = askForNewName(this@ViewerActivity, uri, name, renameWorker) { to, called ->
-                    reopen(uri, to, called)
+                    reopen(uri, to, called.takeIf { it != name })
                 }
                 true
             }
@@ -424,7 +424,8 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Shows the file again under the name it has now, [called].
+     * Shows the file again under the name it has now, [called], which the toast says. Null when
+     * the name did not change and only the URI moved, which a name put back can do.
      *
      * Everything on screen was opened through [from]: the document, the name in the toolbar,
      * the viewer its extension chose. A provider that files documents by name, as the phone's
@@ -438,7 +439,7 @@ class ViewerActivity : AppCompatActivity() {
      * which it takes again under the new one as the rebuilt viewer opens it, its thumbnail, and
      * a zip's password.
      */
-    private fun reopen(from: Uri, to: Uri, called: String) {
+    private fun reopen(from: Uri, to: Uri, called: String?) {
         if (to != from) {
             Recents.remove(this, from.toString())
             Thumbs.evict(this, from.toString())
@@ -448,8 +449,10 @@ class ViewerActivity : AppCompatActivity() {
             }
         }
         renamedTo = to
-        Toast.makeText(applicationContext, getString(R.string.renamed_to, called), Toast.LENGTH_SHORT)
-            .show()
+        if (called != null) {
+            Toast.makeText(applicationContext, getString(R.string.renamed_to, called), Toast.LENGTH_SHORT)
+                .show()
+        }
         recreate()
     }
 

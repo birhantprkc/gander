@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The line under the Rename box's field that says what is wrong with a name. Built in
+         code, so it needs an id declared here for anything to find it. -->
+    <item name="rename_problem" type="id" />
+</resources>
