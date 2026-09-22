@@ -78,6 +78,7 @@ class ViewerActivity : AppCompatActivity() {
         private const val STATE_ARCHIVE_CODE_PAGE = "archive_code_page"
         private const val STATE_RENAMED = "renamed"
         private const val STATE_PLAYER_POSITION = "player_position"
+        private const val STATE_FULL_SCREEN = "full_screen"
         private const val ASSET_HOST = "appassets.androidplatform.net"
 
         /**
@@ -155,6 +156,12 @@ class ViewerActivity : AppCompatActivity() {
 
     /** Where a video or a track picks up when the viewer is rebuilt around it, as a rename does. */
     private var playerStartAt = 0L
+
+    /** The title bar and the phone's bars over a video. See [VideoChrome]. */
+    private var videoChrome: VideoChrome? = null
+
+    /** How the screen was held for a video in full screen, before the viewer was made again. */
+    private var playerHeld: Int? = null
 
     /**
      * ACTION_CREATE_DOCUMENT with the type set per file. The stock contract fixes
@@ -266,6 +273,7 @@ class ViewerActivity : AppCompatActivity() {
         outState.putString(STATE_ARCHIVE_CODE_PAGE, archiveBrowser?.codePage)
         outState.putString(STATE_RENAMED, renamedTo?.toString())
         player?.let { outState.putLong(STATE_PLAYER_POSITION, it.currentPosition) }
+        videoChrome?.held?.let { outState.putInt(STATE_FULL_SCREEN, it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -278,6 +286,8 @@ class ViewerActivity : AppCompatActivity() {
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
         renamedTo = savedInstanceState?.getString(STATE_RENAMED)?.let(Uri::parse)
         playerStartAt = savedInstanceState?.getLong(STATE_PLAYER_POSITION) ?: 0L
+        playerHeld = savedInstanceState?.takeIf { it.containsKey(STATE_FULL_SCREEN) }
+            ?.getInt(STATE_FULL_SCREEN)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.setNavigationOnClickListener { finish() }
@@ -1419,6 +1429,12 @@ class ViewerActivity : AppCompatActivity() {
             playerView.setBackgroundColor(Color.BLACK)
         }
         container.addView(playerView, matchParent())
+        if (!audio) {
+            videoChrome = VideoChrome(this, playerView, ::touchExplorationOn, ::applySystemBarInsets).apply {
+                float()
+                playerHeld?.let { hold(it) }
+            }
+        }
 
         val exo = ExoPlayer.Builder(this).build()
         player = exo
@@ -1451,6 +1467,8 @@ class ViewerActivity : AppCompatActivity() {
             override fun onPlayerError(error: PlaybackException) {
                 exo.release()
                 player = null
+                videoChrome?.land()
+                videoChrome = null
                 container.removeAllViews()
                 showWeb(container, uri, FileKind.UNSUPPORTED, name, ext)
             }

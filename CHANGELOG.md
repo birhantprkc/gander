@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Videos fill the screen. The bar with the file's name and the phone's own bars now float over
+  the picture and hide with the player's controls, so one tap brings them all back. A full screen
+  button turns the screen the way the video was filmed, landscape for most, without auto-rotate,
+  and back. They used to stay above the video, which in landscape left it little room. With a
+  screen reader on they stay up, and the controls, which could stay on screen until tapped when a
+  video started, now hide as they should. Thanks @DEWE-ex, who asked for this in #30.
+
 - In night mode, everything around a PDF goes dark with the page, on a phone set to light as
   well: the bar with the file's name, the strips at the top and bottom of the screen, the search
   bar, the menu, and the Go to page and Rename boxes. They used to stay light, which put
