@@ -107,14 +107,23 @@ class VideoChromeTest {
     private val statusBar = Insets.of(0, 63, 0, 0)
     private val navigationBar = Insets.of(0, 0, 0, 126)
 
-    /** The phone's bars, shown or hidden: where they can be stays the same either way. */
-    private fun bars(shown: Boolean): WindowInsetsCompat = WindowInsetsCompat.Builder()
-        .setInsets(WindowInsetsCompat.Type.statusBars(), if (shown) statusBar else Insets.NONE)
-        .setInsets(WindowInsetsCompat.Type.navigationBars(), if (shown) navigationBar else Insets.NONE)
-        .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars(), statusBar)
-        .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars(), navigationBar)
-        .setVisible(WindowInsetsCompat.Type.systemBars(), shown)
-        .build()
+    /**
+     * The phone's bars, shown or hidden: where they can be stays the same either way. What takes a
+     * tap is the status bar, and the navigation bar only when it has [buttons]: the handle of
+     * gesture navigation takes swipes, and taps under it reach the app.
+     */
+    private fun bars(shown: Boolean, buttons: Boolean = false): WindowInsetsCompat {
+        val tappable = if (buttons) Insets.add(statusBar, navigationBar) else statusBar
+        return WindowInsetsCompat.Builder()
+            .setInsets(WindowInsetsCompat.Type.statusBars(), if (shown) statusBar else Insets.NONE)
+            .setInsets(WindowInsetsCompat.Type.navigationBars(), if (shown) navigationBar else Insets.NONE)
+            .setInsets(WindowInsetsCompat.Type.tappableElement(), if (shown) tappable else Insets.NONE)
+            .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars(), statusBar)
+            .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars(), navigationBar)
+            .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.tappableElement(), tappable)
+            .setVisible(WindowInsetsCompat.Type.systemBars(), shown)
+            .build()
+    }
 
     private fun View.padding() = listOf(paddingLeft, paddingTop, paddingRight, paddingBottom)
 
@@ -136,9 +145,22 @@ class VideoChromeTest {
             listOf(0, 0, 0, 0),
             // The title bar's strip reaches behind the clock
             listOf(0, 63, 0, 0),
-            // And the controls keep clear of both bars
-            listOf(0, 63, 0, 126),
+            // And the controls keep clear of it, and reach the bottom under a gesture handle
+            listOf(0, 63, 0, 0),
         ))
+        assertThat(viewer.paddings()).isEqualTo(shown)
+    }
+
+    /** Three buttons take taps, so the controls stay above them. */
+    @Test
+    fun withThreeButtonNavigationTheControlsStayAboveTheButtons() {
+        val viewer = video().get()
+
+        ViewCompat.dispatchApplyWindowInsets(viewer.root, bars(shown = true, buttons = true))
+        val shown = viewer.paddings()
+        ViewCompat.dispatchApplyWindowInsets(viewer.root, bars(shown = false, buttons = true))
+
+        assertThat(shown.last()).isEqualTo(listOf(0, 63, 0, 126))
         assertThat(viewer.paddings()).isEqualTo(shown)
     }
 

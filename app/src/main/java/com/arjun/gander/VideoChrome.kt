@@ -123,9 +123,15 @@ internal class VideoChrome(
             val clear = insets.getInsetsIgnoringVisibility(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
+            // The controls keep clear only of what takes a tap. Three buttons at the bottom do;
+            // the handle of gesture navigation takes a swipe, and taps under it still reach the
+            // player, so kept clear of it the controls stopped a handle's height off the bottom.
+            val tappable = insets.getInsetsIgnoringVisibility(
+                WindowInsetsCompat.Type.tappableElement() or WindowInsetsCompat.Type.displayCutout()
+            )
             root.setPadding(0, 0, 0, 0)
             top.setPadding(clear.left, clear.top, clear.right, 0)
-            controls?.setPadding(clear.left, clear.top, clear.right, clear.bottom)
+            controls?.setPadding(tappable.left, tappable.top, tappable.right, tappable.bottom)
             WindowInsetsCompat.CONSUMED
         }
         ViewCompat.requestApplyInsets(root)
