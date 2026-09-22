@@ -7,6 +7,10 @@
   bar, the menu, and the Go to page and Rename boxes. They used to stay light, which put
   bright bars around a black page.
 
+- Go to page no longer comes up short with the keyboard open, which could leave its Go and Cancel
+  buttons cut to a sliver, and its field is 48dp tall, the smallest Android recommends for
+  anything you tap.
+
 - On Android 14 and older, the strip at the top of the screen with the clock and battery now
   matches the app's background, as it already did on newer phones. It was Gander's red with dark
   icons on it, and at night a pale pink with white icons that were hard to read. Thanks

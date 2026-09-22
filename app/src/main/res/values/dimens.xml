@@ -18,9 +18,9 @@
          instead of ellipsising its label. -->
     <dimen name="welcome_action_min_width">240dp</dimen>
 
-    <!-- Above and below a box with a field to type in, a zip file's password or a new name for
-         a file, in place of Material's 80dp: with the keyboard up, 80 left the field under 48dp
-         on a 731dp phone. The same as a dialog's inset at its sides. -->
+    <!-- Above and below a box with a field to type in, a zip file's password, a new name for a
+         file or a page to go to, in place of Material's 80dp: with the keyboard up, 80 left the
+         field under 48dp on a 731dp phone. The same as a dialog's inset at its sides. -->
     <dimen name="field_box_inset">24dp</dimen>
 
     <!-- The scroll thumb's floor, and so its height in the layout: proportional alone

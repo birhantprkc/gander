@@ -774,6 +774,8 @@ class ViewerActivity : AppCompatActivity() {
             inputType = InputType.TYPE_CLASS_NUMBER
             imeOptions = EditorInfo.IME_ACTION_GO
             hint = getString(R.string.page_number)
+            // A plain field comes out at 43dp, under the 48 Android asks of anything tapped
+            minHeight = (48 * resources.displayMetrics.density).toInt()
             setText(pageAt.toString())
             setSelection(text.length)
             requestFocus()
@@ -790,10 +792,15 @@ class ViewerActivity : AppCompatActivity() {
             )
         }
 
+        // The password box's insets, for its reason: see field_box_inset. With Material's own the
+        // box could also come up short under the keyboard, Go and Cancel cut to a sliver.
+        val inset = resources.getDimensionPixelSize(R.dimen.field_box_inset)
         val dialog = DialogBuilder(themed)
             .setTitle(R.string.go_to_page)
             .setMessage(getString(R.string.page_range, total))
             .setView(holder)
+            .setBackgroundInsetTop(inset)
+            .setBackgroundInsetBottom(inset)
             .setPositiveButton(R.string.go, null)
             .setNegativeButton(android.R.string.cancel, null)
             .create()
