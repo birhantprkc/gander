@@ -3,16 +3,23 @@ package com.arjun.gander
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Looper
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.widget.TextView
+import androidx.appcompat.view.ContextThemeWrapper
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.children
 import androidx.media3.common.VideoSize
@@ -20,6 +27,7 @@ import androidx.media3.ui.PlayerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.common.truth.Truth.assertThat
 import java.time.Duration
 import org.junit.Before
@@ -135,6 +143,45 @@ class VideoChromeTest {
     }
 
     // ---------------------------------------------------------------
+    // Its colours
+    // ---------------------------------------------------------------
+
+    /** The app's colours as a phone set to dark has them. */
+    private val night: Context by lazy {
+        val conf = Configuration(context.resources.configuration)
+        conf.uiMode = (conf.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+            Configuration.UI_MODE_NIGHT_YES
+        context.createConfigurationContext(conf)
+    }
+
+    private fun textColour(themed: Context): Int {
+        val values = themed.obtainStyledAttributes(intArrayOf(android.R.attr.textColorPrimary))
+        try {
+            return values.getColorStateList(0)!!.defaultColor
+        } finally {
+            values.recycle()
+        }
+    }
+
+    private fun MaterialToolbar.titleColour(): Int =
+        children.filterIsInstance<TextView>().first { it.text == title }.currentTextColor
+
+    private fun View.surface(): Int? = (background as? MaterialShapeDrawable)?.fillColor?.defaultColor
+
+    /** A film is dark whatever the phone is set to, and the bar over it is too, with pale icons. */
+    @Test
+    fun onAPhoneSetToLightTheBarOverAVideoTakesTheNightColours() {
+        val nightSurface = ContextCompat.getColor(night, R.color.gander_surface)
+        val nightText = textColour(ContextThemeWrapper(night, R.style.Theme_Gander))
+        val viewer = video().get()
+
+        assertThat(viewer.top.surface()).isEqualTo(nightSurface)
+        assertThat(viewer.toolbar.titleColour()).isEqualTo(nightText)
+        assertThat(WindowCompat.getInsetsController(viewer.window, viewer.window.decorView)
+            .isAppearanceLightStatusBars).isFalse()
+    }
+
+    // ---------------------------------------------------------------
     // Coming and going
     // ---------------------------------------------------------------
 
@@ -203,6 +250,55 @@ class VideoChromeTest {
         assertThat(viewer.top.visibility).isEqualTo(View.INVISIBLE)
     }
 
+    /** A finger on the title bar is using it, as one on the player's controls would be. */
+    @Test
+    fun aFingerOnTheTitleBarStartsTheCountdownAgain() {
+        val viewer = video().get()
+        viewer.player.controllerAutoShow = false
+        viewer.player.showController()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2000))
+
+        val toolbar = viewer.toolbar
+        val x = toolbar.width / 2f
+        val y = toolbar.top + toolbar.height / 2f
+        val now = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val touch = MotionEvent.obtain(now, now, action, x, y, 0)
+            viewer.top.dispatchTouchEvent(touch)
+            touch.recycle()
+        }
+
+        // Past the first countdown's end, and within the second's
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500))
+        assertThat(viewer.top.visibility).isEqualTo(View.VISIBLE)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500))
+        assertThat(viewer.top.visibility).isEqualTo(View.INVISIBLE)
+    }
+
+    /**
+     * The menu from the title bar, or a box opened from it, takes the window's focus. The countdown
+     * knew nothing of either, and the title bar faded out from under its own menu.
+     */
+    @Test
+    fun everythingStaysUpWhileAMenuIsOpenOverTheVideo() {
+        val viewer = video().get()
+        viewer.player.controllerAutoShow = false
+        viewer.player.showController()
+        settle()
+
+        viewer.onWindowFocusChanged(false)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(4000))
+        assertThat(viewer.player.isControllerFullyVisible).isTrue()
+        assertThat(viewer.top.visibility).isEqualTo(View.VISIBLE)
+
+        // Closed, it counts down again from there
+        viewer.onWindowFocusChanged(true)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2000))
+        assertThat(viewer.top.visibility).isEqualTo(View.VISIBLE)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000))
+        assertThat(viewer.top.visibility).isEqualTo(View.INVISIBLE)
+    }
+
     @Test
     fun underAScreenReaderTheTitleBarStays() {
         val viewer = video().get()
@@ -220,13 +316,21 @@ class VideoChromeTest {
     // Full screen
     // ---------------------------------------------------------------
 
+    // The tone has no picture, so the size a real film's first frame reports is handed over here
+    private val wide = VideoSize(1920, 1080)
+    private val upright = VideoSize(1080, 1920)
+
+    private val ViewerActivity.offersFullScreen get() = fullScreenButton.visibility == View.VISIBLE
+
     @Test
-    fun fullScreenHoldsTheScreenTheVideosWayRoundAndGivesItBack() {
+    fun aWideVideoIsOfferedFullScreenWhichTurnsTheScreenAndGivesItBack() {
         val viewer = video().get()
-        assertThat(viewer.fullScreenButton.visibility).isEqualTo(View.VISIBLE)
+        // Nothing until the size is known
+        assertThat(viewer.offersFullScreen).isFalse()
+        viewer.videoChrome!!.sized(wide)
+        assertThat(viewer.offersFullScreen).isTrue()
 
         viewer.fullScreenButton.performClick()
-        // The tone has no picture and so no size, and a video of no known size goes landscape
         assertThat(viewer.requestedOrientation)
             .isEqualTo(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
 
@@ -234,33 +338,47 @@ class VideoChromeTest {
         assertThat(viewer.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
     }
 
+    /** Landscape would only shrink it, so there is no button that seems to do nothing. */
+    @Test
+    fun anUprightVideoIsNotOfferedFullScreen() {
+        val viewer = video().get()
+        viewer.videoChrome!!.sized(upright)
+        assertThat(viewer.offersFullScreen).isFalse()
+
+        // And one that turns upright while held gives the screen back
+        viewer.videoChrome!!.sized(wide)
+        viewer.fullScreenButton.performClick()
+        viewer.videoChrome!!.sized(upright)
+        assertThat(viewer.offersFullScreen).isFalse()
+        assertThat(viewer.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+    }
+
     @Test
     fun aVideoInFullScreenStaysSoWhenTheViewerIsMadeAgain() {
         val controller = video()
+        controller.get().videoChrome!!.sized(wide)
         controller.get().fullScreenButton.performClick()
 
         controller.recreate()
 
         assertThat(controller.get().requestedOrientation)
             .isEqualTo(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
-        // And the button knows it, so the next press gives the screen back
+        // And the button knows it once it is back, so the next press gives the screen back
+        controller.get().videoChrome!!.sized(wide)
         controller.get().fullScreenButton.performClick()
         assertThat(controller.get().requestedOrientation)
             .isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
     }
 
     @Test
-    fun aVideoGoesFullScreenTheWayRoundItWasFilmed() {
-        val portrait = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        val landscape = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-
+    fun whetherAVideoShowsWiderThanTall() {
+        assertThat(widerThanTall(wide)).isTrue()
         // A phone held upright
-        assertThat(fullScreenOrientation(VideoSize(1080, 1920))).isEqualTo(portrait)
-        assertThat(fullScreenOrientation(VideoSize(1920, 1080))).isEqualTo(landscape)
+        assertThat(widerThanTall(upright)).isFalse()
         // Stored narrow in pixels drawn twice as wide, so wide on screen
-        assertThat(fullScreenOrientation(VideoSize(480, 640, 2f))).isEqualTo(landscape)
-        assertThat(fullScreenOrientation(VideoSize(640, 640))).isEqualTo(landscape)
-        assertThat(fullScreenOrientation(VideoSize.UNKNOWN)).isEqualTo(landscape)
+        assertThat(widerThanTall(VideoSize(480, 640, 2f))).isTrue()
+        assertThat(widerThanTall(VideoSize(640, 640))).isFalse()
+        assertThat(widerThanTall(VideoSize.UNKNOWN)).isFalse()
     }
 
     // ---------------------------------------------------------------
@@ -290,7 +408,8 @@ class VideoChromeTest {
         assertThat(viewer.root.indexOfChild(viewer.toolbar)).isEqualTo(sound.root.indexOfChild(sound.toolbar))
         assertThat(viewer.root.indexOfChild(viewer.saveProgress))
             .isEqualTo(sound.root.indexOfChild(sound.saveProgress))
-        assertThat(viewer.toolbar.background).isNotNull()
+        assertThat(viewer.toolbar.surface()).isEqualTo(sound.toolbar.surface())
+        assertThat(viewer.toolbar.titleColour()).isEqualTo(sound.toolbar.titleColour())
         assertThat(viewer.toolbar.elevation).isEqualTo(sound.toolbar.elevation)
         assertThat(viewer.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
         // And it keeps clear of the bars again

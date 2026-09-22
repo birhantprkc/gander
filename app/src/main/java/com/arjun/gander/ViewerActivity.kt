@@ -50,6 +50,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.webkit.WebMessageCompat
@@ -157,8 +158,9 @@ class ViewerActivity : AppCompatActivity() {
     /** Where a video or a track picks up when the viewer is rebuilt around it, as a rename does. */
     private var playerStartAt = 0L
 
-    /** The title bar and the phone's bars over a video. See [VideoChrome]. */
-    private var videoChrome: VideoChrome? = null
+    /** The title bar and the phone's bars over a video. See [VideoChrome]. Read by tests. */
+    internal var videoChrome: VideoChrome? = null
+        private set
 
     /** How the screen was held for a video in full screen, before the viewer was made again. */
     private var playerHeld: Int? = null
@@ -1430,7 +1432,9 @@ class ViewerActivity : AppCompatActivity() {
         }
         container.addView(playerView, matchParent())
         if (!audio) {
-            videoChrome = VideoChrome(this, playerView, ::touchExplorationOn, ::applySystemBarInsets).apply {
+            videoChrome = VideoChrome(
+                this, playerView, nightChrome, ::touchExplorationOn, ::applySystemBarInsets
+            ).apply {
                 float()
                 playerHeld?.let { hold(it) }
             }
@@ -1462,6 +1466,11 @@ class ViewerActivity : AppCompatActivity() {
                 val bmp = runCatching { sampledArt(bytes, view.width) }.getOrNull() ?: return
                 artDecoded = bytes
                 view.setImageBitmap(bmp)
+            }
+
+            /** Which way round the picture is, which decides whether full screen is offered. */
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoChrome?.sized(videoSize)
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -1795,6 +1804,11 @@ class ViewerActivity : AppCompatActivity() {
         ViewGroup.LayoutParams.MATCH_PARENT,
         ViewGroup.LayoutParams.MATCH_PARENT
     )
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        videoChrome?.focusChanged(hasFocus)
+    }
 
     override fun onStop() {
         player?.pause()
