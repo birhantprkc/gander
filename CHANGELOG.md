@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A document opened from an app that has to fetch it first, a cloud drive or a mail
+  attachment say, no longer freezes the screen until it has arrived. Gander asked that app how
+  long the file was, and a PDF's first bytes for the page it was left on, on the thread that
+  draws, so nothing moved and Back did nothing until the download was done.
+
 - In night mode, everything around a PDF goes dark with the page, on a phone set to light as
   well: the bar with the file's name, the strips at the top and bottom of the screen, the search
   bar, the menu, and the Go to page box. They used to stay light, which put bright bars around a

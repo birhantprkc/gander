@@ -34,6 +34,15 @@ internal class FixtureProvider : ContentProvider() {
         const val NO_LENGTH = "nolength.pdf"
 
         /**
+         * six-pages.pdf, handed over only once [gate] opens, as a cloud provider hands over a
+         * file once it has fetched it.
+         */
+        const val SLOW = "slow.pdf"
+
+        @Volatile
+        var gate = java.util.concurrent.CountDownLatch(0)
+
+        /**
          * Registers the provider with the resolver, and answers it.
          *
          * Without this Robolectric hands openInputStream a placeholder stream
@@ -69,7 +78,7 @@ internal class FixtureProvider : ContentProvider() {
         val name = nameOf(uri)
         if (name == BROKEN) throw FileNotFoundException("this provider is having a bad day")
         extra[name]?.let { return it }
-        return Fixtures.file(name)
+        return Fixtures.file(if (name == SLOW) "six-pages.pdf" else name)
     }
 
     override fun query(
@@ -97,8 +106,10 @@ internal class FixtureProvider : ContentProvider() {
         return documentMime(ext)
     }
 
-    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
-        ParcelFileDescriptor.open(fileFor(uri), ParcelFileDescriptor.MODE_READ_ONLY)
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        if (nameOf(uri) == SLOW) gate.await()
+        return ParcelFileDescriptor.open(fileFor(uri), ParcelFileDescriptor.MODE_READ_ONLY)
+    }
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, args: Array<out String>?) = 0

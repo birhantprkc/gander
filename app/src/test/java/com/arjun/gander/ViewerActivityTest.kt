@@ -18,6 +18,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
 import java.util.concurrent.Executor
 import org.junit.After
@@ -64,7 +65,17 @@ class ViewerActivityTest {
         val intent = Intent(context, ViewerActivity::class.java)
             .setAction(Intent.ACTION_VIEW)
             .setDataAndType(uri, type ?: context.contentResolver.getType(uri))
-        return Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        return start(intent)
+    }
+
+    /**
+     * The viewer for [intent], with what it asks of the provider before the page loads asked
+     * inline, so the page has loaded by the time this returns.
+     */
+    private fun start(intent: Intent): ActivityController<ViewerActivity> {
+        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent)
+        controller.get().documentLoader = Executor { it.run() }
+        return controller.setup().also { shadowOf(Looper.getMainLooper()).idle() }
     }
 
     private fun open(fixture: String): ActivityController<ViewerActivity> =
@@ -314,7 +325,7 @@ class ViewerActivityTest {
             .setAction(Intent.ACTION_SEND)
             .setType("text/plain")
             .putExtra(Intent.EXTRA_TEXT, "Something copied out of another app")
-        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        val controller = start(intent)
 
         assertThat(controller.loadedUrl()).contains("viewer/text.html")
         assertThat(File(context.cacheDir, "shared-text.txt").readText())
@@ -327,7 +338,7 @@ class ViewerActivityTest {
             .setAction(Intent.ACTION_SEND)
             .setType("application/pdf")
             .putExtra(Intent.EXTRA_STREAM, FixtureProvider.uriFor("six-pages.pdf"))
-        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        val controller = start(intent)
         assertThat(controller.loadedUrl()).contains("viewer/pdf.html")
     }
 
@@ -336,7 +347,7 @@ class ViewerActivityTest {
     fun aPlainPathIsOpenedAsAFile() {
         val intent = Intent(context, ViewerActivity::class.java)
             .putExtra(ViewerActivity.EXTRA_PATH, Fixtures.file("notes.md").absolutePath)
-        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        val controller = start(intent)
         assertThat(controller.loadedUrl()).contains("viewer/md.html")
     }
 
@@ -344,7 +355,7 @@ class ViewerActivityTest {
     @Test
     fun anIntentCarryingNothingClosesTheViewer() {
         val intent = Intent(context, ViewerActivity::class.java)
-        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        val controller = start(intent)
         assertThat(controller.get().isFinishing).isTrue()
     }
 
@@ -788,7 +799,7 @@ class ViewerActivityTest {
         val intent = Intent()
             .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
             .setData(entry)
-        val activity = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup().get()
+        val activity = start(intent).get()
         activity.findViewById<MaterialToolbar>(R.id.toolbar).menu
             .performIdentifierAction(R.id.action_share, 0)
         val chooser = shadowOf(activity).nextStartedActivity
@@ -833,7 +844,7 @@ class ViewerActivityTest {
         val intent = Intent()
             .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
             .setData(ArchiveProvider.uriFor(context, archive, entry))
-        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        val controller = start(intent)
 
         assertThat(controller.loadedUrl()).contains("ranged=1")
         val response = controller.serve("/doc/file.pdf", "bytes=100-199")!!
@@ -876,9 +887,57 @@ class ViewerActivityTest {
         val intent = Intent()
             .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
             .setData(uri)
-        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        val controller = start(intent)
         assertThat(controller.loadedUrl()).contains("viewer/pdf.html")
         assertThat(controller.loadedUrl()).doesNotContain("resume=")
+    }
+
+    @Test
+    fun aPdfOpensAtThePageItWasLeftAt() {
+        val uri = FixtureProvider.uriFor("six-pages.pdf")
+        val length = Fixtures.file("six-pages.pdf").length()
+        Positions.save(context, Positions.keyFor(context.contentResolver, uri, length)!!, 4, 6)
+        assertThat(view(uri).loadedUrl()).contains("&resume=4")
+    }
+
+    /**
+     * A provider that has to fetch a file before it can hand it over, as a cloud one does,
+     * answers when it has it. The reading position is looked up in the file's first bytes,
+     * and looked up on the main thread it held the viewer still, and short of its first
+     * frame, for as long as that took: a whole download, for a large PDF on a slow line.
+     */
+    @Test
+    fun aProviderSlowToHandAPdfOverDoesNotHoldTheViewerUp() {
+        val uri = FixtureProvider.uriFor(FixtureProvider.SLOW)
+        val length = Fixtures.file("six-pages.pdf").length()
+        Positions.save(context, Positions.keyFor(context.contentResolver, uri, length)!!, 3, 6)
+        FixtureProvider.gate = java.util.concurrent.CountDownLatch(1)
+        // Handed over in fifteen seconds whatever happens, so a viewer that waits for it on
+        // the main thread comes back late rather than never
+        Thread { Thread.sleep(15_000); FixtureProvider.gate.countDown() }.apply { isDaemon = true }.start()
+        try {
+            val intent = Intent(context, ViewerActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/pdf")
+            val started = System.nanoTime()
+            val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+            assertWithMessage("the viewer waited for the provider on the main thread")
+                .that(tookMs).isLessThan(10_000L)
+
+            // And the page loads, at its page, once the provider answers
+            FixtureProvider.gate.countDown()
+            val deadline = System.currentTimeMillis() + 10_000
+            while (shadowOf(controller.webView()!!).lastLoadedUrl == null &&
+                System.currentTimeMillis() < deadline
+            ) {
+                Thread.sleep(20)
+                shadowOf(Looper.getMainLooper()).idle()
+            }
+            assertThat(controller.loadedUrl()).contains("&resume=3")
+        } finally {
+            FixtureProvider.gate.countDown()
+        }
     }
 
     @Test
@@ -891,7 +950,7 @@ class ViewerActivityTest {
         val intent = Intent()
             .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
             .setData(entry)
-        val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+        val controller = start(intent)
         assertThat(controller.get().isFinishing).isFalse()
         assertThat(controller.loadedUrl()).contains("viewer/text.html")
     }

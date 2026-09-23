@@ -165,7 +165,7 @@ class ViewerActivity : AppCompatActivity() {
 
         // Asked once, up front: a provider that cannot say how long the file is
         // gets a spinner rather than a bar that would have to invent a position.
-        val total = documentLength(src)
+        val total = documentLength(this, src)
         bar.isIndeterminate = total <= 0L
         if (total > 0L) {
             bar.max = 100
@@ -506,6 +506,18 @@ class ViewerActivity : AppCompatActivity() {
 
     /** What this PDF's page is saved under; see [Positions]. Null for every other format. */
     private var positionKey: String? = null
+
+    /**
+     * Where a document's length and a PDF's page are looked up before the page loads, which
+     * means asking its provider and, for the page, reading the start of the file. Tests swap
+     * in one that runs inline.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal var documentLoader: java.util.concurrent.Executor? = null
+
+    /** The document's length as its provider gave it, or -1; set before the page loads. */
+    @Volatile
+    private var documentTotal = -1L
 
     /**
      * True while the find box is up. The page readout stands down for it: two counters
@@ -1419,9 +1431,9 @@ class ViewerActivity : AppCompatActivity() {
             .build()
 
         // Neither of these can change while the document is open, and a ranged load
-        // asks for hundreds of pieces, so resolve them once here instead of per
-        // request. documentLength in particular is a round trip to the provider.
-        val total = documentLength(uri)
+        // asks for hundreds of pieces, so they are resolved once rather than per request:
+        // the type here, and the length before the page loads, below, since that is a
+        // round trip to the provider.
         val mime = documentMime(ext)
 
         web.webViewClient = object : WebViewClientCompat() {
@@ -1470,7 +1482,7 @@ class ViewerActivity : AppCompatActivity() {
                 if (request.url.host == ASSET_HOST &&
                     request.url.path?.startsWith("/doc/") == true
                 ) {
-                    return docResponse(uri, mime, total, request.requestHeaders["Range"])
+                    return docResponse(uri, mime, documentTotal, request.requestHeaders["Range"])
                 }
                 return assetLoader.shouldInterceptRequest(request.url)
             }
@@ -1490,9 +1502,6 @@ class ViewerActivity : AppCompatActivity() {
         setUpFastScroll(web, kind)
 
         container.addView(web, matchParent())
-        // The load strategy is decided here, not in the page, so the headers we serve
-        // and the loader the page picks cannot disagree
-        val ranged = if (useRanges(total)) 1 else 0
         // Out on the URL rather than over the port, so a page opens already turned over
         // instead of drawing itself white and then again. It is also the only route that
         // survives process death and the recreate() in showRendererGone, neither of which
@@ -1505,20 +1514,38 @@ class ViewerActivity : AppCompatActivity() {
         // the position is filed on the phone under a fingerprint of the file, nothing in a
         // zip is written to the phone, and one under a password would leave a fingerprint
         // of what the password was keeping.
-        positionKey =
-            if (kind == FileKind.PDF && !ArchiveProvider.isEntry(this, uri)) {
-                Positions.keyFor(contentResolver, uri, total)
-            } else {
-                null
+        val keepsPosition = kind == FileKind.PDF && !ArchiveProvider.isEntry(this, uri)
+        positionKey = null
+
+        // Both looked up off the main thread, since both ask the provider, and the page's
+        // fingerprint reads the start of the file itself. A provider that fetches a file
+        // before handing it over, as a cloud one does, answers when it has it, and asked on
+        // the main thread that held the whole viewer still for the length of a download. The
+        // page waits for the answers, since it would be waiting on the same provider anyway.
+        val main = Handler(Looper.getMainLooper())
+        val app = applicationContext
+        val worker = documentLoader ?: Executors.newSingleThreadExecutor()
+        worker.execute {
+            val total = documentLength(app, uri)
+            val key = if (keepsPosition) Positions.keyFor(app.contentResolver, uri, total) else null
+            val resumeAt = key?.let { Positions.page(app, it) } ?: 0
+            main.post {
+                if (isDestroyed || webView !== web) return@post
+                documentTotal = total
+                positionKey = key
+                // The load strategy is decided here, not in the page, so the headers we serve
+                // and the loader the page picks cannot disagree
+                val ranged = if (useRanges(total)) 1 else 0
+                web.loadUrl(
+                    "https://$ASSET_HOST/assets/viewer/${kind.page}" +
+                        "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
+                        "&night=$night" +
+                        (if (resumeAt > 1) "&resume=$resumeAt" else "") +
+                        webViewFloorParamsFor(kind, web.settings.userAgentString)
+                )
             }
-        val resumeAt = positionKey?.let { Positions.page(this, it) } ?: 0
-        web.loadUrl(
-            "https://$ASSET_HOST/assets/viewer/${kind.page}" +
-                "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
-                "&night=$night" +
-                (if (resumeAt > 1) "&resume=$resumeAt" else "") +
-                webViewFloorParamsFor(kind, web.settings.userAgentString)
-        )
+        }
+        (worker as? java.util.concurrent.ExecutorService)?.shutdown()
     }
 
     /**
@@ -1639,8 +1666,8 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     /** Length in bytes, or -1 when the provider declines to say. */
-    private fun documentLength(uri: Uri): Long = runCatching {
-        contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
+    private fun documentLength(context: Context, uri: Uri): Long = runCatching {
+        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
     }.getOrNull()?.takeIf { it >= 0 } ?: -1L
 
     /**
