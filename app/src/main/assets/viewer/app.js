@@ -143,11 +143,41 @@ function vwDocUrl() {
   return "/doc/file" + (vwExt ? "." + vwExt : "");
 }
 
+/*
+ * How large a document has to be before the card goes up for reading it.
+ *
+ * .vw-wait holds the card back for 700 ms by animating its visibility, and only the
+ * page's main thread can end that. Every page but the PDF one reads its document in
+ * one piece on that thread, and a document fetched well inside the hold gave it no
+ * chance to: the hold ran out unseen, and a spreadsheet of thirty thousand rows left
+ * the reader on a blank page for the seconds it took to read, where before the hold
+ * they were shown the card. Past this size the card goes up at once, and is given a
+ * frame to be drawn in, before the reading starts.
+ *
+ * A megabyte is a judgment rather than a measurement. Below it, reading is short
+ * enough that the hold covers it in the files .vw-wait was measured on; above it, a
+ * card that comes and goes quickly costs less than a blank page for a slow one.
+ */
+var VW_BUSY_BYTES = 1024 * 1024;
+
+/* [doc], once the card is on screen if [size] says reading it will take a while. */
+function vwShowBusy(doc, size) {
+  var el = document.getElementById("vw-status");
+  if (size < VW_BUSY_BYTES || !el || el.style.display === "none") return doc;
+  el.classList.remove("vw-wait");
+  return new Promise(function (resolve) {
+    // The frame the card is drawn in comes after this callback, and the timeout after it
+    requestAnimationFrame(function () { setTimeout(function () { resolve(doc); }, 0); });
+  });
+}
+
 /* Fetch the document being viewed. kind: "buffer" | "text" */
 function vwFetchDoc(kind) {
   return fetch(vwDocUrl()).then(function (r) {
     if (!r.ok) throw new Error("Could not read the file (HTTP " + r.status + ")");
     return kind === "text" ? r.text() : r.arrayBuffer();
+  }).then(function (doc) {
+    return vwShowBusy(doc, kind === "text" ? doc.length : doc.byteLength);
   });
 }
 
@@ -169,6 +199,17 @@ function vwEncodingOf(bytes) {
  * resolves to { text, bytes, done } for the next VW_TEXT_PAGE bytes.
  */
 function vwOpenText() {
+  return vwOpenTextPages().then(function (doc) {
+    // A page is read into the DOM in one piece, like any other document: see VW_BUSY_BYTES
+    var next = doc.next;
+    doc.next = function () {
+      return next().then(function (page) { return vwShowBusy(page, page.bytes); });
+    };
+    return doc;
+  });
+}
+
+function vwOpenTextPages() {
   return fetch(vwDocUrl()).then(function (r) {
     if (!r.ok) throw new Error("Could not read the file (HTTP " + r.status + ")");
 

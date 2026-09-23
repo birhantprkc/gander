@@ -77,7 +77,8 @@
 
 - Opening a document no longer flashes a loading card for a split second. The card now waits
   0.7 seconds before it appears, so a file that opens quickly goes straight to its content
-  and only a slow one shows it. Errors and the password prompt still appear straight away.
+  and only a slow one shows it. A document of a megabyte or more shows it straight away, since
+  reading one can take seconds on a phone, and so do errors and the password prompt.
 
 - Swiping back from a document no longer shows the file you tapped still highlighted for a
   moment. Leaving with the back arrow was never affected.

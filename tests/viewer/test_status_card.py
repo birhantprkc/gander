@@ -111,3 +111,99 @@ def test_a_line_put_up_after_a_tap_does_not_wait(viewer, page):
     assert not showing(page)
     page.evaluate("() => vwStatus('Opening document…')")
     assert showing(page)
+
+
+# ---------------------------------------------------------------------------
+# A document large enough to take a while to read, arriving inside the hold
+# ---------------------------------------------------------------------------
+
+def padded(made, fixture_path, name, source):
+    """A copy of a zipped fixture carrying 1.5 MB its reader never looks at."""
+    import io
+    import random
+    import zipfile
+    out = io.BytesIO()
+    with zipfile.ZipFile(fixture_path(source)) as src, zipfile.ZipFile(out, "w") as dst:
+        for item in src.infolist():
+            dst.writestr(item, src.read(item.filename))
+        dst.writestr(zipfile.ZipInfo("padding.bin"), random.Random(1).randbytes(1_500_000))
+    return made(name, out.getvalue())
+
+
+def watch_the_read(page):
+    """
+    Notes whether the card was on screen at the moment the document is handed to the page,
+    which reads it there and then in one piece on its main thread. Nothing drawn can reach the
+    screen until that is done, so a card not on screen then is not seen for as long as it takes.
+
+    On screen means a frame began with it showing, since that frame is the one that draws it.
+    Showing, in its style, is not enough: a card made visible just before the reading starts is
+    never drawn at all.
+    """
+    hook = """
+;(function () {
+  function showing() {
+    var e = document.getElementById('vw-status'), s = e && getComputedStyle(e);
+    return !!s && s.display !== 'none' && s.visibility === 'visible';
+  }
+  var framed = false;
+  (function frame() {
+    if (showing()) framed = true;
+    if (!('cardWhileReading' in window)) requestAnimationFrame(frame);
+  })();
+  function note() {
+    if ('cardWhileReading' in window) return;
+    window.cardWhileReading = showing() && framed;
+  }
+  var fetchDoc = vwFetchDoc;
+  vwFetchDoc = function (kind) {
+    return fetchDoc(kind).then(function (doc) { note(); return doc; });
+  };
+  var openText = vwOpenText;
+  vwOpenText = function () {
+    return openText().then(function (doc) {
+      var next = doc.next;
+      doc.next = function () { return next().then(function (p) { note(); return p; }); };
+      return doc;
+    });
+  };
+})();
+"""
+
+    def serve(route):
+        response = route.fetch()
+        route.fulfill(response=response, body=response.text() + hook)
+    page.route("**/assets/viewer/app.js", serve)
+
+
+@pytest.mark.parametrize("html", ["xlsx.html", "docx.html", "md.html", "text.html", "prose.html"])
+def test_a_document_that_takes_a_while_to_read_shows_the_card_while_it_is_read(
+        viewer, page, made, fixture_path, html):
+    """
+    A document of a megabyte and more is fetched in well under the 700 ms hold and then read in
+    one piece on the main thread, which on a phone takes seconds. The hold is a visibility
+    animation, which only the main thread can end, so it ran out unseen and the reader looked
+    at a blank page until the document appeared, where before the hold they saw the card.
+    """
+    document = {
+        "xlsx.html": lambda: padded(made, fixture_path, "big.xlsx", "budget.xlsx"),
+        "docx.html": lambda: padded(made, fixture_path, "big.docx", "report.docx"),
+        "md.html": lambda: made("big.md", "# Notes\n\n" + "A line of notes.\n" * 100_000),
+        "text.html": lambda: made("big.txt", "A line of text.\n" * 100_000),
+        "prose.html": lambda: made("big.rtf", "{\\rtf1\\ansi " + "A line of text.\\par\n" * 80_000 + "}"),
+    }[html]()
+    watch_the_read(page)
+    viewer(html, document)
+    page.wait_for_function("() => 'cardWhileReading' in window", timeout=20000)
+    assert page.evaluate("() => window.cardWhileReading") is True
+
+
+@pytest.mark.parametrize("html, fixture", OPENING[1:])
+def test_a_small_document_is_still_read_inside_the_hold(viewer, page, html, fixture):
+    """And one that reads in a moment still never shows it."""
+    if html == "pptx.html":
+        pytest.skip("the deck's library fetches it itself")
+    watch_the_read(page)
+    viewer(html, fixture)
+    page.wait_for_function("() => 'cardWhileReading' in window", timeout=20000)
+    assert page.evaluate("() => window.cardWhileReading") is False
