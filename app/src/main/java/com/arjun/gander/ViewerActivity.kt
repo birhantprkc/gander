@@ -1694,6 +1694,17 @@ class ViewerActivity : AppCompatActivity() {
         ViewGroup.LayoutParams.MATCH_PARENT
     )
 
+    /**
+     * The tap highlight goes as the viewer leaves, for the reason MainActivity.onPause gives: a
+     * back swipe shows the frame drawn on the way out, and a zip's list, drawn with the home
+     * screen's rows, came back with the file just opened still lit.
+     */
+    override fun onPause() {
+        super.onPause()
+        window.decorView.isPressed = false
+        window.decorView.jumpDrawablesToCurrentState()
+    }
+
     override fun onStop() {
         player?.pause()
         savePosition()

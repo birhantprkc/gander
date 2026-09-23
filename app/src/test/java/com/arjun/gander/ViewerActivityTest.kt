@@ -940,6 +940,31 @@ class ViewerActivityTest {
         }
     }
 
+    /**
+     * A zip's list is drawn with the home screen's rows, and leaves for a viewer the same way, so
+     * it clears a tap highlight on the way out as the home screen does: a back swipe shows the
+     * frame drawn as the list left, and the file just opened came back lit.
+     */
+    @Test
+    fun aZipsRowsAreNotLeftLitWhenAFileOpens() {
+        val controller = zip()
+        // The rows the list has laid out in the window, not ones bound for reading, which the
+        // window never reaches
+        val list = controller.list()
+        list.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(1920, android.view.View.MeasureSpec.EXACTLY),
+        )
+        list.layout(0, 0, 1080, 1920)
+        val rows = (0 until list.childCount).map { list.getChildAt(it) }.filter { it.isClickable }
+        assertThat(rows).isNotEmpty()
+        rows.forEach { it.isPressed = true }
+
+        controller.pause()
+
+        assertThat(rows.filter { it.isPressed }).isEmpty()
+    }
+
     @Test
     fun theEntryAliasIsLetThrough() {
         val entry = ArchiveProvider.uriFor(
