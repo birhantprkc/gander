@@ -22,6 +22,7 @@ Regenerate after a deliberate change:
     pytest tests/viewer/test_visual.py --update-goldens
 """
 
+import os
 import platform
 
 import pytest
@@ -46,6 +47,16 @@ def compare(page, name, update):
     shot = page.screenshot(full_page=False)
 
     if update or not target.exists():
+        # In CI a missing golden was deleted or never committed, and writing one there
+        # would pass whatever the page looks like now. GitHub Actions sets CI.
+        if not update and os.environ.get("CI"):
+            failed = GOLDENS / f"{name}.failed.png"
+            failed.write_bytes(shot)
+            pytest.fail(
+                f"{name}: there is no golden to compare against. The render is beside "
+                f"the goldens as {failed.name}; make the golden with --update-goldens "
+                f"and commit it."
+            )
         target.write_bytes(shot)
         if not update:
             pytest.skip(f"wrote a new golden for {name}; check it and commit it")
