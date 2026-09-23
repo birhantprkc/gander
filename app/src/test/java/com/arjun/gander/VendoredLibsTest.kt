@@ -29,6 +29,18 @@ class VendoredLibsTest {
         val VENDORED_MD = File(REPO, "docs/VENDORED.md").readText()
         val LICENCES_MD = File(REPO, "app/src/main/assets/licences.md").readText()
 
+        /**
+         * VENDORED.md's table as each file it lists, relative to the lib
+         * directory, to the project named beside it.
+         */
+        val PROJECTS: Map<String, String> = VENDORED_MD.lines()
+            .filter { it.startsWith("| `") }
+            .flatMap { row ->
+                val cells = row.split("|").map { it.trim() }
+                Regex("`([^`]+)`").findAll(cells[1]).map { it.groupValues[1] to cells[2] }.toList()
+            }
+            .toMap()
+
         /** The pdf.js release the script pins, read out of the script itself. */
         val PDFJS_VER: String =
             Regex("""PDFJS_VER="([^"]+)"""").find(FETCH_SCRIPT)!!.groupValues[1]
@@ -86,18 +98,36 @@ class VendoredLibsTest {
      * licence notice the app displays. Shipping a library the notice does not
      * mention is the licence problem; naming one that is not there is the
      * smaller half of the same drift.
+     *
+     * The notice names projects, not files, so each file is looked up in
+     * VENDORED.md's table for the project it belongs to, and that project has
+     * to be in a row of the notice's own table. The two documents word some
+     * names differently, "pdf.js worker (legacy build)" against "pdf.js (legacy
+     * build, with worker)", so a project counts as named when every word of it,
+     * less VENDORED.md's notes in brackets or after a comma, is in one row.
+     * Rows only, because the licence texts below them use words like "marked".
      */
     @Test
     fun everyShippedLibraryIsNamedInBothRecords() {
         val shipped = LIB.walkTopDown()
-            .filter { it.isFile && (it.extension == "js" || it.extension == "mjs") }
-            .map { it.name }
+            .filter { it.isFile && it.extension in setOf("js", "mjs", "wasm") }
+            .map { it.relativeTo(LIB).invariantSeparatorsPath }
             .toList()
         assertThat(shipped).isNotEmpty()
-        shipped.forEach { name ->
+        shipped.forEach { path ->
+            val name = path.substringAfterLast('/')
             assertThat("$name in VENDORED.md: ${VENDORED_MD.contains(name)}")
                 .isEqualTo("$name in VENDORED.md: true")
         }
+
+        val rows = LICENCES_MD.lines().filter { it.startsWith("|") }
+        val unnamed = shipped.mapNotNull { path ->
+            val project = PROJECTS[path] ?: return@mapNotNull "$path: no row in VENDORED.md"
+            val words = project.substringBefore(" (").substringBefore(",").split(" ")
+            val named = rows.any { row -> words.all { standalone(it).containsMatchIn(row) } }
+            if (named) null else "$path: $project"
+        }
+        assertWithMessage("shipped but not named in licences.md").that(unnamed).isEmpty()
     }
 
     // ---------------------------------------------------------------
@@ -189,4 +219,8 @@ class VendoredLibsTest {
                 .isEqualTo("${page.name}: no remote reference")
         }
     }
+
+    /** [word] where it is not part of a longer run of letters and digits, so D3 is not in NVD3. */
+    private fun standalone(word: String) =
+        Regex("""(?<![0-9A-Za-z])${Regex.escape(word)}(?![0-9A-Za-z])""")
 }
