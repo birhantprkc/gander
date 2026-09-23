@@ -27,6 +27,8 @@ def sprm(code, operand=b"\x01"):
 # The sprms these files use, by their names in MS-DOC
 BOLD = sprm(0x0835)             # sprmCFBold
 SPECIAL = sprm(0x0855)          # sprmCFSpec: the character is an anchor, a picture or a note mark
+IN_TABLE = sprm(0x2416)         # sprmPFInTable
+ROW_END = sprm(0x2417)          # sprmPFTtp: the mark that ends a table row
 
 # ---------------------------------------------------------------------------
 # The compound file
@@ -346,3 +348,45 @@ def test_a_long_document_is_read_in_time_that_grows_with_its_length(viewer, page
         "  } out.plain = getComputedStyle(ps[ps.length - 1]).fontWeight; return out; }"
     )
     assert last == {"count": 12000, "bold": "700", "plain": "400"}
+
+
+def test_a_row_whose_properties_are_kept_in_the_data_stream_keeps_its_table(viewer, page, made):
+    """
+    A row's properties outgrow its formatting page when it has many cells or borders,
+    and are kept in the Data stream, with sprmPHugePapx pointing at them. MS-DOC numbers
+    that sprm 0x6646 and only 0x6645 was followed, so such a row lost its column widths
+    and borders, and its end mark became an empty paragraph under the table.
+    """
+    tc = u16(0) + u16(0) + bytes([8, 1, 1, 0]) * 4      # a one-point black line on each side
+    definition = bytes([2]) + i16(0) + i16(2880) + i16(7200) + tc + tc
+    row = IN_TABLE + ROW_END + sprm(0xD608, u16(len(definition) + 1) + definition)
+    doc = Word97()
+    doc.data = bytes(16) + u16(len(row)) + row
+    doc.add("Left\x07", pap=IN_TABLE)
+    doc.add("Right\x07", pap=IN_TABLE)
+    doc.add("\x07", pap=sprm(0x6646, u32(16)))
+    doc.add("Under the table.\r")
+    viewer("prose.html", made("huge.doc", doc.build()))
+    wait_for_text(page, "Under the table")
+    drawn = page.evaluate(
+        "() => ({"
+        "  cols: [...document.querySelectorAll('.vw-paper col')].map(c => c.style.width),"
+        "  cells: [...document.querySelectorAll('.vw-paper td')]"
+        "    .map(td => [td.textContent.trim(), getComputedStyle(td).borderTopStyle]),"
+        "  after: [...document.querySelectorAll('.vw-body > p')].map(p => p.textContent) })"
+    )
+    assert drawn == {
+        "cols": ["144pt", "216pt"],
+        "cells": [["Left", "solid"], ["Right", "solid"]],
+        "after": ["Under the table."],
+    }
+
+
+def test_properties_in_the_data_stream_that_point_at_themselves_are_not_followed_round(viewer, page, made):
+    """A damaged file's sprmPHugePapx can name the very bytes in the Data stream that hold it."""
+    doc = Word97()
+    loop = sprm(0x6646, u32(16))
+    doc.data = bytes(16) + u16(len(loop)) + loop
+    doc.add("A paragraph whose properties go round in a circle.\r", pap=loop)
+    viewer("prose.html", made("circle.doc", doc.build()))
+    wait_for_text(page, "go round in a circle")

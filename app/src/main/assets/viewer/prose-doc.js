@@ -1281,8 +1281,10 @@ function docParagraph(doc, cp, end) {
   var ownSprms = [];
   function collect(code, at, len, b) {
     // A paragraph whose sprms outgrow the page, a table row's usually, keeps them in
-    // the Data stream and leaves a pointer to them here
-    if (code === 0x6645 && doc.data) {
+    // the Data stream and leaves a pointer to them here: sprmPHugePapx, which MS-DOC
+    // numbers 0x6646 and Word 97's own documentation 0x6645. One found in the Data
+    // stream is not followed, since a damaged file's could point at itself
+    if ((code === 0x6646 || code === 0x6645) && doc.data && b !== doc.data) {
       var fc = docU32(b, at);
       if (fc + 2 <= doc.data.length) {
         var cb = docU16(doc.data, fc);
