@@ -405,12 +405,13 @@ class ViewerActivityTest {
     private fun zip(
         uri: Uri = FixtureProvider.uriFor("archive.zip"),
         state: Bundle? = null,
+        loader: Executor = Executor { it.run() },
     ): ActivityController<ViewerActivity> {
         val intent = Intent(context, ViewerActivity::class.java)
             .setAction(Intent.ACTION_VIEW)
             .setDataAndType(uri, "application/zip")
         val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent)
-        controller.get().archiveLoader = Executor { it.run() }
+        controller.get().archiveLoader = loader
         // setup(null) restores from a null bundle and throws; the no-argument form is the one
         // that means a fresh start
         val started = if (state == null) controller.setup() else controller.setup(state)
@@ -637,6 +638,61 @@ class ViewerActivityTest {
 
     // ---------------------------------------------------------------
     // The code page names are read in
+    /**
+     * Cancel means the file stays shut, even when the password typed before it was right and was
+     * still being tried: the answer came back after the box had gone and opened the file anyway,
+     * and kept the password for the rest of the archive.
+     */
+    @Test
+    fun cancellingThePasswordBoxWhileItIsTriedOpensNothing() {
+        val held = ArrayList<Runnable>()
+        var holding = false
+        val controller = zip(loader = Executor { if (holding) held += it else it.run() })
+        controller.tap("private")
+        controller.tap("locked.txt")
+        val (box, field) = passwordBox()
+        holding = true
+        field.setText("gander")
+        box.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        box.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).performClick()
+        assertThat(held).isNotEmpty()
+        held.forEach { it.run() }
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertThat(shadowOf(controller.get()).nextStartedActivity).isNull()
+        assertThat(ArchivePasswords.get(FixtureProvider.uriFor("archive.zip"))).isNull()
+    }
+
+    /**
+     * A reading of the names that fails, the file gone or its grant lapsed, leaves the list saying
+     * so and nothing of the reading before it: Back went up into the old list, over the message.
+     */
+    @Test
+    fun aReadingThatFailsLeavesNothingOfTheOldListBehind() {
+        val copy = File.createTempFile("vanishing", ".zip").apply {
+            writeBytes(Fixtures.bytes("names-gbk.zip"))
+            deleteOnExit()
+        }
+        val uri = FixtureProvider.install().add("vanishing.zip", copy)
+        val controller = zip(uri)
+        controller.tap("季度报告")
+        assertThat(copy.delete()).isTrue()
+
+        controller.get().findViewById<MaterialToolbar>(R.id.toolbar).menu
+            .performIdentifierAction(controller.encodingItem().itemId, 0)
+        val box = ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        val choices = box.listView.adapter
+        val big5 = (0 until choices.count).single { choices.getItem(it).toString() == context.getString(R.string.encoding_big5) }
+        box.listView.performItemClick(null, big5, big5.toLong())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertThat(controller.titles()).containsExactly(context.getString(R.string.archive_unreadable))
+
+        controller.get().onBackPressedDispatcher.onBackPressed()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertThat(controller.titles()).containsExactly(context.getString(R.string.archive_unreadable))
+        assertThat(controller.get().isFinishing).isTrue()
+    }
+
     // ---------------------------------------------------------------
 
     private fun ActivityController<ViewerActivity>.encodingItem(): android.view.MenuItem =

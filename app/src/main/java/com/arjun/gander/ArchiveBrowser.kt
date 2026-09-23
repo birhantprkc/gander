@@ -158,6 +158,13 @@ internal class ArchiveBrowser(
     /** The dialog on screen, if one is, so it goes with the screen rather than leaking it. */
     private var dialog: AlertDialog? = null
 
+    /**
+     * Which try at a password is still wanted. A try runs off the main thread, and one the reader
+     * has let go of since, by the box's Cancel or by going elsewhere in the list, is dropped when
+     * it comes back rather than opening the file from under their no.
+     */
+    private var unlockWanted = 0
+
     private val back = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() = show(folder.substringBeforeLast('/', ""))
     }
@@ -236,6 +243,11 @@ internal class ArchiveBrowser(
                         show(folder.takeIf(result.tree::has).orEmpty())
                     }
                     is Listing.Failed -> {
+                        // Nothing of an earlier reading is left to go back into: it was of a file
+                        // that can no longer be read, in names that may read otherwise now
+                        tree = null
+                        folder = ""
+                        back.isEnabled = false
                         toolbar.title = archiveName
                         adapter.submit(listOf(Row.Hint(activity.getString(result.message))))
                     }
@@ -296,6 +308,7 @@ internal class ArchiveBrowser(
 
     private fun show(to: String) {
         val tree = tree ?: return
+        if (to != folder) unlockWanted++
         scrolled[folder] = (list.layoutManager as GridLayoutManager).findFirstVisibleItemPosition()
         folder = to
         back.isEnabled = to.isNotEmpty()
@@ -370,6 +383,7 @@ internal class ArchiveBrowser(
 
     /** Tries [password] on [entry] off the main thread, and says what came of it on it. */
     private fun unlock(entry: ArchiveEntry, password: String, then: (Unlock) -> Unit) {
+        val ticket = ++unlockWanted
         val quiet = announceAfterADelay()
         loader.execute {
             val result = try {
@@ -389,7 +403,7 @@ internal class ArchiveBrowser(
             }
             main.post {
                 quiet()
-                if (activity.isDestroyed) return@post
+                if (activity.isDestroyed || ticket != unlockWanted) return@post
                 if (result == Unlock.OPENS) ArchivePasswords.remember(archive, password)
                 if (result == Unlock.FAILED) {
                     Toast.makeText(activity, R.string.archive_unreadable, Toast.LENGTH_SHORT).show()
@@ -438,9 +452,13 @@ internal class ArchiveBrowser(
             .setBackgroundInsetTop(inset)
             .setBackgroundInsetBottom(inset)
             .setPositiveButton(R.string.password_open, null)
-            .setNegativeButton(android.R.string.cancel, null)
+            // Said here and not only on dismissal: the dialog posts its dismissal, and then its
+            // dismiss listener after that, behind an answer that may already be on its way
+            .setNegativeButton(android.R.string.cancel) { _, _ -> unlockWanted++ }
             .create()
         box.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        // However else it goes, Back or a tap outside, a try still running is no longer wanted
+        box.setOnDismissListener { unlockWanted++ }
         dialog = box
         box.show()
 
