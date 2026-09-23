@@ -56,8 +56,13 @@ function docFail(why) {
 /*
  * Reads the streams out of a compound file: the FAT from the header's list of FAT
  * sectors, the directory from its chain, and each stream from its own chain, or from
- * the mini stream when it is small. Chains are walked with a step count, since a
- * damaged FAT can point at itself for ever.
+ * the mini stream when it is small.
+ *
+ * Each of the file's numbers is held to what a file of its length could mean: no more
+ * FAT sectors than it has sectors, no stream longer than it is, and no chain through
+ * the same sector twice, since a damaged FAT can point at itself for ever. Believed,
+ * an eight-kilobyte file held the reader for seconds, and a directory that led back
+ * to itself was read sixty-five thousand times over into hundreds of megabytes.
  */
 function docCompound(bytes) {
   if (bytes.length < 512 || bytes[0] !== 0xD0 || bytes[1] !== 0xCF || bytes[2] !== 0x11 || bytes[3] !== 0xE0) {
@@ -70,9 +75,11 @@ function docCompound(bytes) {
   var cutoff = docU32(bytes, 0x38);
   var firstMiniFat = docU32(bytes, 0x3C);
   var firstDifat = docU32(bytes, 0x44);
-  if (sectorSize < 128 || sectorSize > 65536 || miniSize > sectorSize) docFail("This Word document is damaged.");
+  // The format's sectors are 512 bytes, or 4,096 in its fourth version, and no other size
+  if ((sectorSize !== 512 && sectorSize !== 4096) || miniSize > sectorSize) docFail("This Word document is damaged.");
   var perSector = sectorSize / 4;
-  var sectorCount = Math.floor((bytes.length - sectorSize) / sectorSize);
+  var sectorCount = Math.max(0, Math.floor((bytes.length - sectorSize) / sectorSize));
+  var room = sectorCount * sectorSize;
 
   function sector(n) {
     var at = (n + 1) * sectorSize;
@@ -80,12 +87,14 @@ function docCompound(bytes) {
   }
 
   // The FAT, from the sector list in the header and in the DIFAT chain after it
+  fatCount = Math.min(fatCount, sectorCount);
   var fatSectors = [];
   var i;
   for (i = 0; i < 109 && fatSectors.length < fatCount; i++) fatSectors.push(docU32(bytes, 0x4C + i * 4));
   var difat = firstDifat;
-  var steps = 0;
-  while (difat < 0xFFFFFFFE && steps++ < 10000 && fatSectors.length < fatCount) {
+  var walked = new Uint8Array(sectorCount);
+  while (difat < sectorCount && !walked[difat] && fatSectors.length < fatCount) {
+    walked[difat] = 1;
     var at = sector(difat);
     if (at < 0) break;
     for (i = 0; i < perSector - 1 && fatSectors.length < fatCount; i++) fatSectors.push(docU32(bytes, at + i * 4));
@@ -102,12 +111,16 @@ function docCompound(bytes) {
     }
   }
 
+  // A chain ends at its end mark, at a sector the table does not reach, or at a sector
+  // it has already passed through
   function chain(start, table, limit) {
     var out = [];
+    var seen = new Uint8Array(table.length);
     var n = start;
-    while (n < 0xFFFFFFFE && out.length < limit) {
+    while (n < table.length && !seen[n] && out.length < limit) {
+      seen[n] = 1;
       out.push(n);
-      n = n < table.length ? table[n] : 0xFFFFFFFE;
+      n = table[n];
     }
     return out;
   }
@@ -127,7 +140,7 @@ function docCompound(bytes) {
   }
 
   // The directory: 128-byte entries, the root first
-  var dirSectors = chain(firstDir, fat, 65536);
+  var dirSectors = chain(firstDir, fat, sectorCount);
   var entries = [];
   for (i = 0; i < dirSectors.length; i++) {
     var ds = sector(dirSectors[i]);
@@ -150,7 +163,7 @@ function docCompound(bytes) {
   var miniFat = null;
   function miniStream() {
     if (mini) return;
-    mini = readChain(root.start, root.size);
+    mini = readChain(root.start, Math.min(root.size, room));
     var raw = readChain(firstMiniFat, Math.ceil(mini.length / miniSize) * 4);
     miniFat = new Uint32Array(raw.length / 4);
     for (var k = 0; k < miniFat.length; k++) miniFat[k] = docU32(raw, k * 4);
@@ -162,14 +175,15 @@ function docCompound(bytes) {
         if (entries[k].type !== 2 || entries[k].name !== name) continue;
         var s = entries[k];
         if (s.size > 256 * 1024 * 1024) docFail("This Word document is too large to open here.");
-        if (s.size >= cutoff) return readChain(s.start, s.size);
+        if (s.size >= cutoff) return readChain(s.start, Math.min(s.size, room));
         miniStream();
-        var out = new Uint8Array(s.size);
-        var sectors = chain(s.start, miniFat, Math.ceil(s.size / miniSize) + 1);
+        var size = Math.min(s.size, mini.length);
+        var out = new Uint8Array(size);
+        var sectors = chain(s.start, miniFat, Math.ceil(size / miniSize) + 1);
         var done = 0;
-        for (var m = 0; m < sectors.length && done < s.size; m++) {
+        for (var m = 0; m < sectors.length && done < size; m++) {
           var at = sectors[m] * miniSize;
-          var take = Math.min(miniSize, s.size - done);
+          var take = Math.min(miniSize, size - done);
           if (at + take > mini.length) break;
           out.set(mini.subarray(at, at + take), done);
           done += take;

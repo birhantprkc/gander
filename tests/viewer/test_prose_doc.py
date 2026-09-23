@@ -10,6 +10,8 @@ fixture's are.
 import struct
 import time
 
+import pytest
+
 from server import FIXTURES
 
 
@@ -390,3 +392,61 @@ def test_properties_in_the_data_stream_that_point_at_themselves_are_not_followed
     doc.add("A paragraph whose properties go round in a circle.\r", pap=loop)
     viewer("prose.html", made("circle.doc", doc.build()))
     wait_for_text(page, "go round in a circle")
+
+
+def difat_that_names_itself(shift=12):
+    """Asks for four thousand million FAT sectors, listed by a DIFAT sector that names itself as the next."""
+    header = cfb_header(shift, 0xFFFFFFFF, 0, [0] * 109, first_difat=0, difat_count=1)
+    return bytes(header) + bytes((2 << shift) - 512)
+
+
+def directory_that_names_itself():
+    """A directory sector whose FAT entry points back at it, of entries with the longest names allowed."""
+    header = cfb_header(12, 1, 0, [1])
+    directory = dir_entry("Root Entry", 5) + dir_entry("Thirty-one characters of a name", 2) * 31
+    fat = u32(0) + u32(FATSECT) + u32(FREE) * 1022
+    return bytes(header) + bytes(4096 - 512) + directory + fat
+
+
+def root_longer_than_the_file():
+    """A document whose streams all belong in the mini stream, which the root entry says is 4 GB."""
+    doc = Word97()
+    doc.add("A document whose root entry claims more than any phone holds.\r")
+    data = bytearray(doc.build())
+    root = 512 * (1 + struct.unpack_from("<I", data, 0x2C)[0])
+    data[root + 120:root + 124] = u32(0xFFFFFFF0)
+    data[0x38:0x3C] = u32(0xFFFFFFFF)
+    return bytes(data)
+
+
+TRAPS = {
+    "difat-loop": difat_that_names_itself,
+    "sectors-of-64k": lambda: difat_that_names_itself(shift=16),
+    "directory-loop": directory_that_names_itself,
+    "root-too-long": root_longer_than_the_file,
+    "shorter-than-a-sector": lambda: bytes(cfb_header(12, 1, 0, [0])) + bytes(512),
+}
+
+
+@pytest.mark.parametrize("trap", list(TRAPS))
+def test_a_compound_file_built_to_trap_its_reader_is_refused_at_once(viewer, page, made, trap):
+    """
+    The compound file's numbers were believed: sectors of any size to 64 KB, as many FAT
+    sectors as the header asked for, chains stopped only by counting steps, and a root
+    entry of any length. These four files held the reader for seconds, filled hundreds
+    of megabytes with a directory read over and over, or ended in a RangeError. Each is
+    refused at once, in the reader's own words, timed in the page as well because the
+    directory's cost is in memory and hardly shows on the clock of a whole page load.
+    """
+    data = TRAPS[trap]()
+    viewer("prose.html", made("trap.doc", data))
+    page.wait_for_selector(".vw-error", timeout=5000)
+    assert "Word document" in page.text_content(".vw-error-detail")
+    kind, took = page.evaluate(
+        "(b) => { const buffer = Uint8Array.from(b).buffer; const started = performance.now();"
+        "  try { vwReadDoc(buffer, document.createElement('div')); }"
+        "  catch (e) { return [e.constructor.name, performance.now() - started]; }"
+        "  return ['nothing', performance.now() - started]; }",
+        list(data),
+    )
+    assert kind == "Error" and took < 100, f"{kind} after {took:.0f} ms"
