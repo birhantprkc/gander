@@ -697,8 +697,13 @@ function docPagesFor(bin, fcFrom, fcTo) {
  * The formatting runs of one piece, as [{ cp, end, at, len }] in CP order, at and len
  * being where the run's sprms are in the WordDocument stream. kind is "chp" or "pap":
  * the pages differ in what follows the FC list, and in how a paragraph's sprms begin.
+ *
+ * They are read once for each piece and kept on it, under kind. A file Word saved whole
+ * is one piece, and when its pages were read again for every paragraph, the time a
+ * document took to open went as the square of its length.
  */
 function docRuns(doc, bin, piece, kind) {
+  if (piece[kind]) return piece[kind];
   var main = doc.main;
   var runs = [];
   var width = piece.wide ? 2 : 1;
@@ -736,7 +741,22 @@ function docRuns(doc, bin, piece, kind) {
     }
   }
   runs.sort(function (x, y) { return x.cp - y.cp; });
+  piece[kind] = runs;
   return runs;
+}
+
+/*
+ * The first of a piece's runs to end after cp, found by bisection, or runs.length. Runs
+ * do not overlap, so their ends are in order as their starts are.
+ */
+function docRunFrom(runs, cp) {
+  var lo = 0;
+  var hi = runs.length;
+  while (lo < hi) {
+    var mid = (lo + hi) >> 1;
+    if (runs[mid].end <= cp) lo = mid + 1; else hi = mid;
+  }
+  return lo;
 }
 
 /* ------------------------------------------------------------------------------------
@@ -1252,8 +1272,8 @@ function docParagraph(doc, cp, end) {
   var markCp = end - 1;
   var piece = docPieceAt(doc, markCp);
   var runs = docRuns(doc, doc.papBin, piece, "pap");
-  var papx = null;
-  for (var r = 0; r < runs.length; r++) if (markCp >= runs[r].cp && markCp < runs[r].end) papx = runs[r];
+  var holder = runs[docRunFrom(runs, markCp)];
+  var papx = holder && holder.cp <= markCp ? holder : null;
 
   var istd = papx && papx.len >= 2 ? docU16(doc.main, papx.at) : 0;
   var style = docStyle(doc, istd);
@@ -1314,7 +1334,7 @@ function docCharRuns(doc, cp, end, style) {
     var runs = docRuns(doc, doc.chpBin, piece, "chp");
     var prc = docPiecePrm(doc, piece);
     var covered = pos;
-    for (var r = 0; r < runs.length && covered < stop; r++) {
+    for (var r = docRunFrom(runs, covered); r < runs.length && covered < stop; r++) {
       var run = runs[r];
       if (run.end <= covered) continue;
       if (run.cp > covered) {

@@ -8,6 +8,7 @@ fixture's are.
 """
 
 import struct
+import time
 
 from server import FIXTURES
 
@@ -24,6 +25,7 @@ def sprm(code, operand=b"\x01"):
 
 
 # The sprms these files use, by their names in MS-DOC
+BOLD = sprm(0x0835)             # sprmCFBold
 SPECIAL = sprm(0x0855)          # sprmCFSpec: the character is an anchor, a picture or a note mark
 
 # ---------------------------------------------------------------------------
@@ -317,3 +319,30 @@ def test_a_floating_picture_is_drawn_from_the_drawing(viewer, page, made):
         timeout=10000,
     )
     assert page.evaluate("() => document.querySelector('.vw-paper img').style.width") == "144pt"
+
+
+def test_a_long_document_is_read_in_time_that_grows_with_its_length(viewer, page, made):
+    """
+    Twelve thousand paragraphs in one piece, as a file Word saved whole keeps them. The
+    formatting of each paragraph was found by reading all of the piece's formatting
+    pages again, so the time went as the square of the length: this file took twenty
+    seconds, and takes well under one. The last paragraph's bold words, furthest into
+    the pages, must still be bold.
+    """
+    doc = Word97()
+    for n in range(1, 12001):
+        doc.add(f"Paragraph {n} of the long report, ", ("with a bold phrase", BOLD), " and plain words after it.\r")
+    data = doc.build()
+    started = time.monotonic()
+    viewer("prose.html", made("long.doc", data))
+    wait_for_text(page, "Paragraph 12000 of the long report", timeout=60000)
+    took = time.monotonic() - started
+    assert took < 5, f"twelve thousand paragraphs took {took:.1f} s"
+    last = page.evaluate(
+        "() => { const ps = document.querySelectorAll('.vw-paper p');"
+        "  const out = { count: ps.length };"
+        "  for (const el of ps[ps.length - 1].querySelectorAll('span')) {"
+        "    if (el.textContent === 'with a bold phrase') out.bold = getComputedStyle(el).fontWeight;"
+        "  } out.plain = getComputedStyle(ps[ps.length - 1]).fontWeight; return out; }"
+    )
+    assert last == {"count": 12000, "bold": "700", "plain": "400"}
