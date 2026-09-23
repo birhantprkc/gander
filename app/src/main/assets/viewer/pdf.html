@@ -2546,6 +2546,30 @@ function bringIntoView(slot) {
   askedFor = vv ? { n: slot.n, top: vv.pageTop } : null;
 }
 
+/*
+ * bringIntoView(), with the page and the one before it at their own shapes first.
+ *
+ * Until a page is drawn its box has page 1's shape, which in a document of mixed pages is
+ * some other page's, and bringIntoView decides top or middle from the box. A landscape
+ * page after a portrait cover was put at the top as if it were tall, and the middle of the
+ * screen was on the page after it: that is what the readout named, what Kotlin saved, and
+ * where the document reopened, a page further on every time. The page before matters too.
+ * It is the one showing above a page put in the middle, and when it was drawn and shrank to
+ * its own shape, everything below it moved up with it.
+ */
+function place(slot) {
+  var unshaped = [slot.n - 1, slot.n].filter(function (n) {
+    return n >= 1 && !slots[n - 1].box.style.aspectRatio;
+  });
+  return Promise.all(unshaped.map(function (n) {
+    return doc.getPage(n).then(function (page) {
+      shape(slots[n - 1].box, page.getViewport({ scale: 1 }));
+    }, function () {
+      /* A page that will not load keeps the stand-in shape, as it does when drawn */
+    });
+  })).then(function () { bringIntoView(slot); });
+}
+
 /* One measurement per frame, however many events arrive in it. */
 var pageRaf = 0;
 function schedulePageReport() {
@@ -2639,13 +2663,14 @@ function onCommand(msg) {
     var n = Math.floor(Number(msg.slice(1)));
     if (!doc || !slots.length || !(n >= 1 && n <= slots.length)) return;
     var target = slots[n - 1];
-    bringIntoView(target);
-    want(target);
-    pump();
-    reportPage();
-    /* A jump made while pinched in lands somewhere else on a page that is drawn but not
-       yet sharp here, and moves nothing that would fire a scroll to say so. */
-    scheduleRefine();
+    place(target).then(function () {
+      want(target);
+      pump();
+      reportPage();
+      /* A jump made while pinched in lands somewhere else on a page that is drawn but not
+         yet sharp here, and moves nothing that would fire a scroll to say so. */
+      scheduleRefine();
+    });
   }
 }
 
@@ -3047,7 +3072,7 @@ if (!vwPdfBlocked) {
       var resumeAt = Math.floor(Number(vwParams.get("resume")));
       if (resumeAt >= 2 && resumeAt <= slots.length) {
         first = slots[resumeAt - 1];
-        bringIntoView(first);
+        return place(first).then(function () { return draw(first); });
       }
       return draw(first);
     })
