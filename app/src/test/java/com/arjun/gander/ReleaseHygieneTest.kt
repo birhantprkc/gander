@@ -221,9 +221,10 @@ class ReleaseHygieneTest {
      */
     @Test
     fun thePermissionGateIsStillWiredToBothOutputs() {
-        assertThat(BUILD_FILE).contains("checkPermissions")
-        assertThat(BUILD_FILE).contains("assemble\$suffix")
-        assertThat(BUILD_FILE).contains("bundle\$suffix")
+        val build = code(BUILD_FILE, "//")
+        assertThat(build).contains("checkPermissions")
+        assertThat(build).contains("assemble\$suffix")
+        assertThat(build).contains("bundle\$suffix")
     }
 
     /**
@@ -233,10 +234,18 @@ class ReleaseHygieneTest {
      */
     @Test
     fun releaseBuildsKeepTheirLineNumbers() {
-        val rules = File(REPO, "app/proguard-rules.pro").readText()
+        val rules = code(File(REPO, "app/proguard-rules.pro").readText(), "#")
         assertThat(rules).contains("-keepattributes SourceFile,LineNumberTable")
-        assertThat(BUILD_FILE).contains("isMinifyEnabled = true")
+        assertThat(code(BUILD_FILE, "//")).contains("isMinifyEnabled = true")
     }
+
+    /**
+     * [text] without its comment lines, the ones starting with [marker], so a
+     * guard above is not satisfied by the line it guards having been commented
+     * out.
+     */
+    private fun code(text: String, marker: String): String =
+        text.lines().filterNot { it.trimStart().startsWith(marker) }.joinToString("\n")
 
     /** Each paragraph of a description as its number of "- " bullets, 0 for prose. */
     private fun shape(text: String): List<Int> =
