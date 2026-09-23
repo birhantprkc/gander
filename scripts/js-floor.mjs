@@ -57,6 +57,21 @@ const RUNTIME = [
   [/\.trim(Start|End)\(/, 66, ".trimStart() and .trimEnd()"],
 ];
 
+// The text after each "(" in a regex that opens a group: an escaped paren or one
+// inside a character class is only a character. Classes nest under the v flag alone.
+const groupHeads = (pattern, nests) => {
+  const heads = [];
+  let depth = 0;
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === "\\") i++;
+    else if (c === "[" && (depth === 0 || nests)) depth++;
+    else if (c === "]" && depth > 0) depth--;
+    else if (c === "(" && depth === 0) heads.push(pattern.slice(i + 1));
+  }
+  return heads;
+};
+
 for (const file of process.argv.slice(2)) {
   const src = readFileSync(file, "utf8");
   const found = new Map();
@@ -77,6 +92,10 @@ for (const file of process.argv.slice(2)) {
       if (/\(\?<[=!]/.test(pattern)) note("regex lookbehind", 62);
       if (/\(\?<[A-Za-z_$]/.test(pattern)) note("regex named group", 64);
       if (flags.includes("u") && /\\[pP]\{/.test(pattern)) note("regex \\p{} escape", 64);
+      const heads = groupHeads(pattern, flags.includes("v"));
+      if (heads.some((h) => /^\?(?:[ims]+(?:-[ims]*)?|-[ims]+):/.test(h))) note("regex modifiers (?i:)", 125);
+      const names = heads.map((h) => /^\?<([^=!>][^>]*)>/.exec(h)?.[1]).filter(Boolean);
+      if (new Set(names).size < names.length) note("regex duplicate named groups", 125);
     }
   };
   const sourceType = file.endsWith(".mjs") ? "module" : "script";
