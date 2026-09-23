@@ -1124,15 +1124,17 @@ function docInlinePicture(doc, fcPic) {
 /*
  * The picture in a record, if it is one: a blip, or a blip store entry, which is a
  * 36-byte description followed by the blip itself, or by nothing when the blip is kept
- * in the Data stream instead, at the offset the description gives.
+ * in the WordDocument stream instead, at the offset the description gives. That is
+ * where the drawings' store keeps its pictures, and not the Data stream, which holds
+ * the pictures in the text.
  */
 function docBlipRecord(doc, b, from, type, stop) {
   if (type >= 0xF018 && type <= 0xF117) return docBlip(b, from, stop);
   if (type !== 0xF007) return null;
   var blip = docBlip(b, from + 8 + 36, stop);
-  if (!blip && doc.data && b !== doc.data) {
+  if (!blip && b !== doc.data) {
     var foDelay = docU32(b, from + 8 + 28);
-    if (foDelay < doc.data.length) blip = docBlip(doc.data, foDelay, doc.data.length);
+    if (foDelay < doc.main.length) blip = docBlip(doc.main, foDelay, doc.main.length);
   }
   return blip;
 }
@@ -1184,7 +1186,18 @@ function docDrawings(doc) {
       from = stop;
     }
   }
-  walk(entry.fc, end, 0);
+  // The drawing group's container comes first, holding the blip store, and then each
+  // drawing: a byte saying whether it is the main text's or the headers', and the
+  // drawing's own container. Read as one run of records, that byte would begin a
+  // record, and the drawing with every shape in it would be skipped as its body
+  var record = entry.fc;
+  var lead = 0;
+  while (record + lead + 8 <= end) {
+    var next = Math.min(end, record + lead + 8 + docU32(b, record + lead + 4));
+    walk(record + lead, next, 0);
+    record = next;
+    lead = 1;
+  }
 
   // Which shape sits at which anchor character
   var spa = docPlc(doc, doc.at.spaMom, 26);
