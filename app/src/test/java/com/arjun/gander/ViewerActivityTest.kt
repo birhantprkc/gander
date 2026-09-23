@@ -786,6 +786,26 @@ class ViewerActivityTest {
     }
 
     /**
+     * The same with the user's number and its @ written as %40. Android reads the host from the
+     * authority as written, where there is no @ to split at, and finds the provider from the
+     * authority decoded, where there is: a gate that compared the host let the URI through to
+     * the exported viewer, which then read the archive it named with Gander's own access.
+     */
+    @Test
+    fun aFileInsideAZipIsRefusedWithItsAtSignEncodedToo() {
+        val entry = ArchiveProvider.uriFor(
+            context,
+            FixtureProvider.uriFor("archive.zip"),
+            ArchiveEntry("plain.txt", false, 0, EntryLocation(0, 8, 1, 1, 0)),
+        )
+        val spelled = entry.buildUpon().encodedAuthority("0%40" + entry.encodedAuthority).build()
+        assertThat(spelled.host).isNotEqualTo(ArchiveProvider.authority(context))
+        assertThat(spelled.authority).isEqualTo("0@" + ArchiveProvider.authority(context))
+        val controller = view(spelled, "text/plain")
+        assertThat(controller.get().isFinishing).isTrue()
+    }
+
+    /**
      * Share from a file in a zip leaves Gander out of the list, as the home screen's share does.
      * Picked, Gander would turn the file away at the gate above without a word.
      */

@@ -61,12 +61,15 @@ class ArchiveProvider : ContentProvider() {
         /**
          * Whether [uri] is one of these: a file inside an archive.
          *
-         * By host, not authority. Android takes "content://0@<authority>/..." for this same
-         * provider, the 0 being the phone's own user, and strips it before the provider sees
-         * the URI, so a check of the authority as written lets that spelling past.
+         * Read the way Android reads it to find the provider: the authority decoded, and
+         * whatever is before its last @ left off. "content://0@<authority>/..." is this same
+         * provider, the 0 being the phone's own user, and so is the same with the @ written as
+         * %40. The host alone let that second spelling past, since the host is split out of the
+         * authority as written, where there is no @ to split at.
          */
         fun isEntry(context: Context, uri: Uri): Boolean =
-            uri.scheme == ContentResolver.SCHEME_CONTENT && uri.host == authority(context)
+            uri.scheme == ContentResolver.SCHEME_CONTENT &&
+                uri.authority?.substringAfterLast('@') == authority(context)
 
         internal fun uriFor(context: Context, archive: Uri, entry: ArchiveEntry): Uri {
             val at = entry.location
