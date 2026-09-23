@@ -111,16 +111,22 @@ android {
             // assets directory. Without this it gets none of them, and every test
             // that inflates a layout or reads viewer/ fails on a missing resource.
             isIncludeAndroidResources = true
-            // ReleaseHygieneTest reads the changelog, the ProGuard rules and the
-            // store listing straight off the disk, where Gradle cannot see them.
-            // Declared as inputs, an edit to any of them on its own reruns the
-            // tests instead of leaving them up to date and unrun.
+            // Some tests read files straight off the disk, where Gradle cannot see
+            // them: ReleaseHygieneTest the changelog, the ProGuard rules, the store
+            // listing and this file, VendoredLibsTest docs/VENDORED.md and the fetch
+            // script, RangeParityTest the range cases. Declared as inputs, an edit to
+            // any of them on its own reruns the tests instead of leaving them up to
+            // date and unrun. The assets they read are inputs already.
             all { test ->
                 test.inputs.files(
                     rootProject.file("CHANGELOG.md"),
                     file("proguard-rules.pro"),
                     rootProject.fileTree("fastlane/metadata/android") { include("**/*.txt") },
-                ).withPropertyName("releaseMetadata")
+                    file("build.gradle.kts"),
+                    rootProject.file("docs/VENDORED.md"),
+                    rootProject.file("scripts/fetch-viewer-libs.sh"),
+                    rootProject.file("tests/fixtures/range-cases.json"),
+                ).withPropertyName("filesReadOffDisk")
             }
         }
     }
