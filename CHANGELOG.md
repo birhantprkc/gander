@@ -43,8 +43,9 @@
   through exactly as the file has them, which matters for the long ids these files carry.
   Sharing the file or saving a copy still gives you the original. A file that is not strictly
   JSON, an editor config with comments in it say, opens as it did before, and so does one
-  past about a megabyte, where laying it out would cost more in waiting for it to appear than
-  it gives back in reading.
+  past about a megabyte, or one whose layout would run past 150,000 lines or four million
+  characters, where laying it out would cost more in waiting for it to appear than it gives
+  back in reading.
 
 - Gander opens .zip files (thanks @DEWE-ex, who asked in #30). A zip opens as a list laid out
   like a folder, with pictures of its photos, and each file in it opens in its usual viewer, read

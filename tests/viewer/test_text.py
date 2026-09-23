@@ -236,6 +236,14 @@ def test_a_json_file_too_large_to_be_worth_drawing_is_shown_as_it_is(viewer, pag
     assert '"id": 0' not in content(page), "a file past the cap was laid out"
 
 
+def test_a_json_file_nested_too_deep_to_lay_out_is_shown_as_it_is(viewer, page, made):
+    """Rather than an error in place of it, which is what laying it out came to."""
+    deep = made("deep.json", "[" * 20000 + "]" * 20000)
+    viewer("text.html", deep)
+    wait_for_text(page)
+    assert content(page) == "[" * 20000 + "]" * 20000
+
+
 def test_a_later_page_that_parses_is_not_laid_out_either(viewer, page, made):
     """
     Whether to lay the file out is settled once, when it opens. A file that is

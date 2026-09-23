@@ -257,6 +257,19 @@ var VW_JSON_INDENT = "  ";
 var VW_JSON_MAX = 1024 * 1024;
 
 /*
+ * The most a layout may come to, past which the file is shown as it came.
+ *
+ * VW_JSON_MAX bounds what goes in, and what comes out can be far more. Every line
+ * is indented by its depth, so a file nested deep grows with the square of how
+ * deep: forty kilobytes of brackets inside brackets, which JSON.parse accepts, came
+ * to more characters than a string can hold, and the page opened on an error rather
+ * than on the file. And bare numbers are two characters a line, so a megabyte of
+ * them is five times the hundred thousand lines the cap was measured against.
+ */
+var VW_JSON_MAX_OUT = 4 * VW_JSON_MAX;
+var VW_JSON_MAX_LINES = 150 * 1000;
+
+/*
  * Lays a JSON document out over several lines, indented by depth. Answers null
  * if the text is not JSON, and the caller then shows the file as it is.
  *
@@ -289,18 +302,28 @@ function vwFormatJson(text) {
   var n = text.length;
   var depth = 0;
   var i = 0;
+  var size = n;
+  var lines = 1;
+
+  function newline() {
+    var indent = pad(depth);
+    out.push("\n", indent);
+    size += 1 + indent.length;
+    lines++;
+  }
 
   // A container that has just opened and is still empty. Breaking the line is
   // put off until something turns up inside it, so that {} and [] stay whole.
   var fresh = false;
   function begin() {
     if (fresh) {
-      out.push("\n", pad(depth));
+      newline();
       fresh = false;
     }
   }
 
   while (i < n) {
+    if (size > VW_JSON_MAX_OUT || lines > VW_JSON_MAX_LINES) return null;
     var c = text.charAt(i);
 
     if (c === '"') {
@@ -325,14 +348,16 @@ function vwFormatJson(text) {
     } else if (c === "}" || c === "]") {
       depth--;
       if (fresh) fresh = false;
-      else out.push("\n", pad(depth));
+      else newline();
       out.push(c);
       i++;
     } else if (c === ",") {
-      out.push(",\n", pad(depth));
+      out.push(",");
+      newline();
       i++;
     } else if (c === ":") {
       out.push(": ");
+      size++;
       i++;
     } else {
       // A number, or true, false or null. In sound JSON it runs until the next

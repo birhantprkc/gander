@@ -177,6 +177,34 @@ def test_an_escaped_quote_does_not_end_a_string(loaded):
     assert laid_out(loaded, '{"a":"x\\"y","b":1}') == '{\n  "a": "x\\"y",\n  "b": 1\n}'
 
 
+
+def test_nesting_too_deep_to_draw_is_declined_rather_than_thrown(loaded):
+    """
+    Every line is indented by its depth, so what laying out makes grows with the
+    square of how deep a file goes. Forty kilobytes of brackets inside brackets,
+    which JSON.parse accepts, came to more characters than a string can hold, and
+    the page opened on an error rather than on the file.
+    """
+    deep = "[" * 20000 + "]" * 20000
+    outcome = loaded.evaluate(
+        "(t) => { try { return vwFormatJson(t); } catch (e) { return 'threw ' + e; } }", deep)
+    assert outcome is None
+
+
+def test_a_layout_many_times_the_size_of_the_file_is_declined(loaded):
+    """3,000 deep lays out as eighteen million characters from six thousand."""
+    assert laid_out(loaded, "[" * 3000 + "]" * 3000) is None
+
+
+def test_a_layout_of_more_lines_than_are_worth_drawing_is_declined(loaded):
+    """
+    Bare numbers are two characters a line, five times the lines per megabyte of
+    the records VW_JSON_MAX was measured on, which is the drawing it exists to bound.
+    """
+    assert laid_out(loaded, "[" + ",".join(["0"] * 200000) + "]") is None
+    # And an ordinary nesting of a few levels is still laid out
+    assert laid_out(loaded, '{"a":[[1,[2]]]}') == '{\n  "a": [\n    [\n      1,\n      [\n        2\n      ]\n    ]\n  ]\n}'
+
 # Anything that is not JSON is declined, and the file is shown as it is.
 
 def test_text_that_is_not_json_is_declined(loaded):
