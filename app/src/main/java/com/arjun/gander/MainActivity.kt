@@ -526,9 +526,15 @@ class MainActivity : AppCompatActivity() {
                         .setTitle(R.string.remove_folder_title)
                         .setMessage(getString(R.string.remove_folder_message, label))
                         .setPositiveButton(R.string.remove) { _, _ ->
+                            // Write as well as read: a build that could rename files took both
+                            // for a folder, and giving back only the read half left the write
+                            // half behind, out of sight, since the list shows read grants only.
+                            // Releasing a half that is not held changes nothing.
                             runCatching {
                                 contentResolver.releasePersistableUriPermission(
-                                    perm.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    perm.uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                                 )
                             }
                             toastRemoved()

@@ -277,7 +277,7 @@ class MainActivityTest {
     // ---------------------------------------------------------------
 
     /** Grants a folder holding one subfolder and two files, and answers its tree URI. */
-    private fun grantedFolder(): android.net.Uri {
+    private fun grantedFolder(write: Boolean = false): android.net.Uri {
         FakeDocumentsProvider.install()
             .folder(
                 "root", "Documents",
@@ -288,7 +288,9 @@ class MainActivityTest {
             )
         val tree = FakeDocumentsProvider.treeUri()
         context.contentResolver.takePersistableUriPermission(
-            tree, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            tree,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                (if (write) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
         )
         return tree
     }
@@ -416,6 +418,23 @@ class MainActivityTest {
     private fun ActivityController<MainActivity>.longPressRow(title: String) {
         rowView(title).performLongClick()
         shadowOf(context.mainLooper).idle()
+    }
+
+    /**
+     * A folder added on a build that could rename files was granted write access as well as read.
+     * Removing it gave back the read half only, and the write half stayed, out of sight: the list
+     * shows read grants alone, so nothing on screen could reach it again.
+     */
+    @Test
+    fun removingAFolderGivesBackWriteAccessToo() {
+        val tree = grantedFolder(write = true)
+        val controller = home()
+        controller.longPressRow("Documents")
+
+        latestDialog()!!.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(context.mainLooper).idle()
+
+        assertThat(persistedUris()).doesNotContain(tree.toString())
     }
 
     private fun latestDialog(): AlertDialog? =

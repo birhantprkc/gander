@@ -44,13 +44,16 @@ object Recents {
     }
 
     /**
-     * Gives back the grant on [uri]. Android throws for a grant that is already
-     * gone, and that is the same outcome.
+     * Gives back the grant on [uri], write as well as read: a build that could rename a picked
+     * file took both, and giving back only the read half left the other behind, where the list,
+     * which shows read grants only, could never reach it again. Android throws for a grant that
+     * is already gone, and that is the same outcome.
      */
     private fun release(context: Context, uri: String) {
         runCatching {
             context.contentResolver.releasePersistableUriPermission(
-                uri.toUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION
+                uri.toUri(),
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         }
     }
