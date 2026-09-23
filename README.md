@@ -146,7 +146,7 @@ subfolder of Downloads instead.
 
 ## Build from source
 
-To build it yourself you need JDK 17+ and the Android SDK (platform 36). These are
+To build it yourself you need JDK 21+ and the Android SDK (platform 36). These are
 build requirements only. The installed app runs on Android 8.0 (API 26) and up.
 
 ```sh
