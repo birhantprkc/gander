@@ -197,16 +197,21 @@ class ReleaseHygieneTest {
     }
 
     /**
-     * The changelog names the shipped version, or carries an Unreleased
-     * section for work that has not gone out yet. One or the other is always
-     * true; neither means a release went out undocumented.
+     * The changelog has a heading for the version the build declares, in the
+     * form every release has used: `## 1.17 (2026-09-13)`. The release commit
+     * turns `## Unreleased` into it, so a commit that bumps versionName and
+     * leaves the notes under Unreleased fails here. An Unreleased section does
+     * not count, since between releases there always is one.
      */
     @Test
     fun theChangelogAccountsForTheCurrentVersion() {
-        val documented = CHANGELOG.contains("## $VERSION_NAME") ||
-            CHANGELOG.contains("## Unreleased")
-        assertThat("changelog covers $VERSION_NAME: $documented")
-            .isEqualTo("changelog covers $VERSION_NAME: true")
+        val heading = Regex(
+            """^## ${Regex.escape(VERSION_NAME)} \(\d{4}-\d{2}-\d{2}\)$""",
+            RegexOption.MULTILINE,
+        )
+        val documented = heading.containsMatchIn(CHANGELOG)
+        assertThat("changelog has ## $VERSION_NAME (YYYY-MM-DD): $documented")
+            .isEqualTo("changelog has ## $VERSION_NAME (YYYY-MM-DD): true")
     }
 
     /**
