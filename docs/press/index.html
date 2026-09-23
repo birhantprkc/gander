@@ -500,20 +500,23 @@ html[data-play="live"] .when-pending{display:none}
         any host that is not the internal asset host, and does nothing further with it. There is no
         path from document content to a browser.</td></tr>
       <tr><th scope="row" class="k">Open a URL some other way</th>
-        <td>The app opens exactly two URLs ever: the author's site and the source repository. Both
-        are hardcoded string resources, both fire from a tap in the About dialog, and neither takes
-        an argument. <code>openUrl</code> in <code>MainActivity.kt</code> has two call sites.</td></tr>
+        <td>The app only ever opens three URLs: the author's site and the source repository, from
+        the About dialog, and Gander's own Play listing, from Rate. All three are hardcoded and each
+        needs a tap. The listing is the only one with an argument, and that is Gander's package name.
+        <code>openUrl</code> in <code>MainActivity.kt</code> has three call sites. Rate tries the
+        Play Store app first, with a <code>market://</code> link.</td></tr>
       <tr><th scope="row" class="k">Leave a file for another app</th>
-        <td>No storage permission, and nothing is written to shared storage. The only file Gander
-        creates is a temporary copy for the share sheet, inside its own cache directory, and its
-        FileProvider is scoped to that directory alone.</td></tr>
+        <td>No storage permission. The only thing Gander writes to shared storage is a copy the user
+        saves through the system's create-document picker. Everything else stays private to the app.
+        The temporary copy for the share sheet, thumbnails and a copy of its licences sit in its own
+        cache directory, and its FileProvider only covers that directory.</td></tr>
       <tr><th scope="row" class="k">Enumerate what else is installed</th>
         <td>The manifest declares no <code>&lt;queries&gt;</code> element, so on Android 11 and
         newer the package list is not visible to it.</td></tr>
     </tbody>
   </table></div>
-  <p class="note">The share sheet is the one route a document can leave by, it is an explicit tap,
-  and it hands the file to whatever the user picks. That is a feature, and it is the only one.</p>
+  <p class="note">A document can only leave Gander through the share sheet or &ldquo;save a
+  copy&rdquo;. Both take a tap, and the user picks where the file goes.</p>
 </section>
 <section>
   <h2 id="how">How it works, for the technical write-up</h2>
@@ -524,11 +527,12 @@ html[data-play="live"] .when-pending{display:none}
   network stack.</p>
   <p>Because nothing is ever fetched, the app needs no <code>INTERNET</code> permission. Because
   files arrive through the system picker, an Open-with intent or a folder granted once, it needs no
-  storage permission either. There is no JavaScript bridge in either direction. The outbound intents
-  in the whole app are the share sheet, &ldquo;show this file's folder&rdquo;, &ldquo;save a
-  copy&rdquo; through the system's create-document picker, the two links in the About dialog, which
-  do open a browser, and, from 1.17, Rate and Share in the home screen's menu. Every one of them
-  fires only when the user presses the thing that fires it.</p>
+  storage permission either. There is no <code>addJavascriptInterface</code> bridge, just an HTML5
+  message channel. Text goes in, like a search query, and only integers come back. The outbound
+  intents in the whole app are the share sheet, &ldquo;show this file's
+  folder&rdquo;, &ldquo;save a copy&rdquo; through the system's create-document picker, the two
+  links in the About dialog, which do open a browser, and, from 1.17, Rate and Share in the home
+  screen's menu. Every one of them fires only when the user presses the thing that fires it.</p>
   <p class="note">The full list of vendored libraries, their versions and their licences is in
   <a href="https://github.com/mokshablr/gander/blob/main/docs/VENDORED.md">VENDORED.md</a>. There is
   a longer piece on the underlying question, <a href="../phone-home.html">can an app without the

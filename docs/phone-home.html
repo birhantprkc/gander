@@ -699,8 +699,9 @@
     <code>startActivity</code>. Write it that way and a hostile document has a
     one-tap path to route two below, taken by your app, in the user's name. Gander
     returns true and drops it. There is also no <code>addJavascriptInterface</code>,
-    the call that reflects a Java object into script running on the document; the
-    only channel into a page carries three integers.</p>
+    the call that reflects a Java object into script running on the document. All a
+    page gets is one message channel. Text goes in, like a search query, and only
+    integers come back.</p>
   </section>
 
   <section>
@@ -720,10 +721,11 @@
     generally cannot start an activity at all. So it cannot be done while you are not
     looking, which makes it close to useless as a covert channel.</p>
 
-    <p>Gander starts an activity in three places, each behind a tap you made: Share,
-    "show in folder", and the links on the About screen. There is no path from a
-    document to a browser, which is what the <code>shouldOverrideUrlLoading</code>
-    line in section 02 exists to guarantee.</p>
+    <p>Gander only starts an activity when you tap something: Share, "show in folder",
+    "save a copy", the system pickers for opening a file or adding a folder, the links
+    on the About screen, and Rate and Share in the home screen's menu. Nothing in a
+    document can reach a browser. That is what the <code>shouldOverrideUrlLoading</code>
+    line in section 02 is for.</p>
   </section>
 
   <section>
@@ -838,8 +840,9 @@
         reach the network through the user's browser, using route two, over your
         app's name. That is the single most common version of this bug.</li>
         <li>For Gander: the About screen asks Android for the app's own permission
-        list at runtime and prints whatever comes back, so what you read there is the
-        OS's answer and not mine.</li>
+        list at runtime and prints what comes back. It leaves out one entry, a
+        signature permission that androidx declares under Gander's own name. The rest
+        is the OS's answer, not mine.</li>
         <li>The build fails if a dependency adds a permission that has not been signed off,
         on the bundle uploaded to Play as well as the APK, since those are separate
         builds. Media3 contributes <code>ACCESS_NETWORK_STATE</code>; it is stripped
