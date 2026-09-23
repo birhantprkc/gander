@@ -48,7 +48,9 @@ trap 'rm -rf "$TMP"' EXIT
 ( cd "$ASSETS" && zip -X -q "$TMP/kit.zip" "${FILES[@]}" )
 mv "$TMP/kit.zip" "$OUT"
 
-BYTES=$(stat -f %z "$OUT" 2>/dev/null || stat -c %s "$OUT")
+# wc rather than stat: GNU stat reads -f as file system mode and %z as a second file,
+# so it printed the file system's details for $OUT before the fallback added the size.
+BYTES=$(wc -c < "$OUT" | tr -d ' ')
 printf '%s\n' "$OUT"
 printf '  %s files, %s bytes (%.1f MB)\n' "${#FILES[@]}" "$BYTES" "$(echo "$BYTES / 1000000" | bc -l)"
 printf '  update the ZIP size in docs/press/index.html if that number moved\n'
