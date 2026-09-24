@@ -480,6 +480,15 @@ function odtStartOf(listStyle, level) {
  * The document
  * ---------------------------------------------------------------------------------- */
 
+/*
+ * Whether a section is hidden. It can also be hidden on a condition, which is a formula
+ * over the document's fields that only a word processor can work out, so a section
+ * like that is shown.
+ */
+function odtHidden(section) {
+  return odtAttr(section, "text", "display") === "none";
+}
+
 /* The indexes a document can hold, each a title and its entries inside an index-body. */
 var ODT_INDEXES = /^(table-of-content|illustration-index|table-index|object-index|user-index|alphabetical-index|bibliography)$/;
 
@@ -497,7 +506,7 @@ function odtBlocks(state, el, into, ctx) {
       else if (n === "h") odtParagraph(state, c, into, ctx, "h");
       else if (n === "list") odtList(state, c, into, ctx);
       else if (n === "numbered-paragraph") odtNumbered(state, c, into, ctx);
-      else if (n === "section") odtBlocks(state, c, into, ctx);
+      else if (n === "section") { if (!odtHidden(c)) odtBlocks(state, c, into, ctx); }
       // An index's title is inside its body, in an index-title of its own
       else if (n === "index-body" || n === "index-title") odtBlocks(state, c, into, ctx);
       else if (ODT_INDEXES.test(n)) odtBlocks(state, c, into, ctx);
@@ -546,7 +555,8 @@ function odtFirstBlock(el) {
     var n = c.localName;
     if (n === "p" || n === "h") return c;
     if (n === "list" || n === "list-item" || n === "list-header" || n === "numbered-paragraph" ||
-        n === "section" || n === "index-body" || n === "index-title" || ODT_INDEXES.test(n)) {
+        (n === "section" && !odtHidden(c)) || n === "index-body" || n === "index-title" ||
+        ODT_INDEXES.test(n)) {
       var inner = odtFirstBlock(c);
       if (inner) return inner;
     }

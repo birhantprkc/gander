@@ -328,3 +328,24 @@ def test_the_first_sheet_is_the_page_the_first_block_names(viewer, page, made, b
                        ' style:master-page-name="Landscape"/>',
              **PAGES)
     assert sheet_shapes(page) == ["wide"]
+
+
+# ------------------------------------------------------------------------------------
+# OpenDocument: what is drawn
+# ------------------------------------------------------------------------------------
+
+def test_a_hidden_section_is_not_drawn(viewer, page, made):
+    """
+    A section can be hidden, which LibreOffice writes as text:display="none". Being not
+    drawn, it does not choose the first page either.
+    """
+    open_odt(viewer, page, made,
+             '<text:section text:name="S1" text:display="none">'
+             '<text:p text:style-name="Wide">Kept out of sight</text:p></text:section>'
+             '<text:p>Shown</text:p><text:section text:name="S2" text:display="none">'
+             '<text:p>Hidden too</text:p></text:section><text:p>and shown again</text:p>',
+             automatic='<style:style style:name="Wide" style:family="paragraph"'
+                       ' style:master-page-name="Landscape"/>',
+             **PAGES)
+    assert paper_text(page).split() == ["Shown", "and", "shown", "again"]
+    assert sheet_shapes(page) == ["tall"]
