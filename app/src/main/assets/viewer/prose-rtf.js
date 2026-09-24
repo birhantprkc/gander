@@ -1051,7 +1051,10 @@ function vwReadRtf(buffer, container) {
     vwProseSheet(prose, layout);
   };
 
+  // The document starts at its first brace. prose.js lets a byte order mark and blank
+  // space in ahead of it, as other programs do, and neither is text
   var n = bytes.length;
+  while (state.at < n && bytes[state.at] !== 0x7B) state.at++;
   while (state.at < n) {
     var b = bytes[state.at++];
     var g = state.group;

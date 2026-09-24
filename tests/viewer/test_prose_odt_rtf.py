@@ -441,3 +441,14 @@ def test_the_ibm_pc_code_pages_are_each_their_own(viewer, page, made, word, text
     open_rtf(viewer, page, made,
              r"{\rtf1\%s\deff0{\fonttbl{\f0\fmodern Courier;}}\f0 caf\'82 \'9b na\'8bve\par}" % word)
     assert paper_text(page).strip() == text
+
+
+def test_a_byte_order_mark_ahead_of_rich_text_is_not_text(viewer, page, made):
+    """
+    prose.js lets a file that starts with a UTF-8 byte order mark through as Rich Text, as
+    every other program does, and the reader then drew the mark as three letters.
+    """
+    mark = bytes([0xEF, 0xBB, 0xBF])
+    viewer("prose.html", made("t.rtf", mark + (RTF_HEAD + r"\pard Hello\par}").encode("latin-1")))
+    drawn(page)
+    assert paper_text(page).strip() == "Hello"
