@@ -688,6 +688,28 @@ function odtNumbered(state, node, into, ctx) {
  * Tables
  * ---------------------------------------------------------------------------------- */
 
+/*
+ * The most cells that repeats may add to a document, between all its tables. A row or
+ * a cell can be written once with the number of times it stands, and a few bytes can
+ * ask for a row a million times, which is how a spreadsheet reaches the end of its
+ * sheet. Past this the copies stop, and the document is drawn with what it has.
+ */
+var ODT_MAX_REPEATS = 10000;
+
+/*
+ * Draws a row or a cell into into as many times as the file says it stands. Each copy
+ * is drawn afresh and not cloned, since a copy has pictures and notes of its own, and
+ * every cell a copy holds counts against the budget, a table's inside it included.
+ */
+function odtRepeat(state, node, which, into, draw) {
+  var times = parseInt(odtAttr(node, "table", "number-" + which + "-repeated"), 10) || 1;
+  for (var i = 0; i < times && (i === 0 || state.repeats > 0); i++) {
+    var el = draw(node);
+    into.appendChild(el);
+    if (i) state.repeats -= 1 + el.getElementsByTagName("td").length;
+  }
+}
+
 function odtTable(state, node, into, ctx) {
   var prose = state.prose;
   var index = state.index;
@@ -747,25 +769,33 @@ function odtTable(state, node, into, ctx) {
   var body = document.createElement("tbody");
   table.appendChild(body);
 
+  function cell(c) {
+    var td = document.createElement("td");
+    td.className = vwProseClass(prose, odtCss(
+      odtBag(index, ctx.scope, "table-cell", odtAttr(c, "table", "style-name"))));
+    var across = parseInt(odtAttr(c, "table", "number-columns-spanned"), 10);
+    var down = parseInt(odtAttr(c, "table", "number-rows-spanned"), 10);
+    if (across > 1) td.colSpan = Math.min(across, 1000);
+    if (down > 1) td.rowSpan = Math.min(down, 65534);
+    odtBlocks(state, c, td, { scope: ctx.scope, level: 0 });
+    return td;
+  }
+
+  function row(r) {
+    var tr = document.createElement("tr");
+    tr.className = vwProseClass(prose, odtCss(
+      odtBag(index, ctx.scope, "table-row", odtAttr(r, "table", "style-name"))));
+    for (var c = r.firstElementChild; c; c = c.nextElementSibling) {
+      if (!odtIs(c, "table", "table-cell")) continue;
+      odtRepeat(state, c, "columns", tr, cell);
+    }
+    return tr;
+  }
+
   function rows(el) {
     for (var r = el.firstElementChild; r; r = r.nextElementSibling) {
       if (odtIs(r, "table", "table-row")) {
-        var tr = document.createElement("tr");
-        tr.className = vwProseClass(prose, odtCss(
-          odtBag(index, ctx.scope, "table-row", odtAttr(r, "table", "style-name"))));
-        for (var c = r.firstElementChild; c; c = c.nextElementSibling) {
-          if (!odtIs(c, "table", "table-cell")) continue;
-          var td = document.createElement("td");
-          td.className = vwProseClass(prose, odtCss(
-            odtBag(index, ctx.scope, "table-cell", odtAttr(c, "table", "style-name"))));
-          var across = parseInt(odtAttr(c, "table", "number-columns-spanned"), 10);
-          var down = parseInt(odtAttr(c, "table", "number-rows-spanned"), 10);
-          if (across > 1) td.colSpan = Math.min(across, 1000);
-          if (down > 1) td.rowSpan = Math.min(down, 65534);
-          odtBlocks(state, c, td, { scope: ctx.scope, level: 0 });
-          tr.appendChild(td);
-        }
-        body.appendChild(tr);
+        odtRepeat(state, r, "rows", body, row);
       } else if (/^table-(rows|header-rows|row-group)$/.test(r.localName)) {
         rows(r);
       }
@@ -1070,7 +1100,7 @@ function vwReadOdt(buffer, container) {
       index: odtIndexStyles(file.content, file.styles),
       zip: file.zip,
       pending: [], notes: [], listCounts: {}, lastCounts: {}, outlineCounts: [],
-      breakNext: false, first: null
+      breakNext: false, first: null, repeats: ODT_MAX_REPEATS
     };
 
     // What the document's default paragraph style says about characters is what every

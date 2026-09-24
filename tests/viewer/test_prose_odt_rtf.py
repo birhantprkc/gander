@@ -349,3 +349,42 @@ def test_a_hidden_section_is_not_drawn(viewer, page, made):
              **PAGES)
     assert paper_text(page).split() == ["Shown", "and", "shown", "again"]
     assert sheet_shapes(page) == ["tall"]
+
+
+# ------------------------------------------------------------------------------------
+# OpenDocument: tables
+# ------------------------------------------------------------------------------------
+
+def table_rows(page):
+    return page.evaluate(
+        "() => [...document.querySelectorAll('.vw-body > table > tbody > tr')]"
+        ".map(tr => [...tr.children].map(td => td.textContent))"
+    )
+
+
+def test_a_repeated_cell_or_row_is_drawn_as_often_as_it_says(viewer, page, made):
+    """A cell or a row written once with a count of repeats was drawn once."""
+    open_odt(viewer, page, made,
+             '<table:table table:name="T"><table:table-column table:number-columns-repeated="3"/>'
+             '<table:table-row><table:table-cell><text:p>a</text:p></table:table-cell>'
+             '<table:table-cell table:number-columns-repeated="2"><text:p>b</text:p></table:table-cell>'
+             '</table:table-row><table:table-row table:number-rows-repeated="2">'
+             '<table:table-cell table:number-columns-repeated="3"><text:p>c</text:p></table:table-cell>'
+             '</table:table-row></table:table>')
+    assert table_rows(page) == [["a", "b", "b"], ["c", "c", "c"], ["c", "c", "c"]]
+
+
+def test_a_row_repeated_a_million_times_is_not(viewer, page, made):
+    """
+    A few bytes can ask for a row a million times, which is a spreadsheet's way to reach
+    the end of its sheet. The copies stop at a budget for the whole document, well short
+    of taking the page down.
+    """
+    open_odt(viewer, page, made,
+             '<table:table table:name="T"><table:table-column table:number-columns-repeated="2"/>'
+             '<table:table-row table:number-rows-repeated="1000000">'
+             '<table:table-cell table:number-columns-repeated="2"><text:p>x</text:p></table:table-cell>'
+             '</table:table-row></table:table><text:p>After the table</text:p>')
+    rows = table_rows(page)
+    assert 1 < len(rows) <= 10000
+    assert paper_text(page).rstrip().endswith("After the table")
