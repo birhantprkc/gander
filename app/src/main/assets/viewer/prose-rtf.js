@@ -1113,6 +1113,11 @@ function vwReadRtf(buffer, container) {
         param *= sign;
         if (bytes[state.at] === 0x20) state.at++;
         rtfFlushBytes(state);
+        // A word that stands for a character can be the fallback after a \u character,
+        // as \bullet is in \u8226\bullet, and is then passed over like any other; drawn,
+        // it would make the character two. Any other word ends the fallback, since a
+        // writer that leaves the fallback out is likelier than a \par meant to be skipped
+        if (state.skip > 0 && RTF_CHARS[word]) { state.skip--; continue; }
         if (word !== "u") state.skip = 0;
         rtfWord(state, word, param, has);
       } else if (c === 0x2A) {              // \*

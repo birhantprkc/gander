@@ -471,3 +471,19 @@ def test_a_byte_order_mark_ahead_of_rich_text_is_not_text(viewer, page, made):
     viewer("prose.html", made("t.rtf", mark + (RTF_HEAD + r"\pard Hello\par}").encode("latin-1")))
     drawn(page)
     assert paper_text(page).strip() == "Hello"
+
+
+def test_a_word_for_a_character_after_a_unicode_character_is_its_fallback(viewer, page, made):
+    """
+    The characters that stand in for a \\u character, for readers without Unicode, can be
+    a word such as \\bullet, and it was drawn as well, which made every such character
+    two. Any other word ends the fallback, since a writer that leaves it out altogether
+    is more likely than a \\par meant to be passed over.
+    """
+    open_rtf(viewer, page, made,
+             RTF_HEAD + r"\uc1\pard A\u8226\bullet B\u8212\emdash C\u8220\ldblquote D\par"
+             r" caf\u233\par next\par}")
+    paragraphs = page.evaluate(
+        "() => [...document.querySelectorAll('.vw-body p')].map(p => p.textContent)"
+    )
+    assert paragraphs == ["A\u2022B\u2014C\u201cD", "caf\u00e9", "next"]
