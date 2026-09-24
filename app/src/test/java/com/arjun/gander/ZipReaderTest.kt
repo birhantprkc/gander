@@ -638,6 +638,45 @@ class ZipReaderTest {
         }
     }
 
+    /** [plain] encrypted the way ZipCrypto does it, with the key made from [password]. */
+    private fun zipCrypto(plain: ByteArray, password: ByteArray): ByteArray {
+        val keys = ZipCrypto.keyed(password)
+        return ByteArray(plain.size) { i ->
+            // The next byte of key stream is what a nought decrypts to, on a copy then dropped
+            val stream = byteArrayOf(0).also { keys.copy().decrypt(it, 0, 1) }[0]
+            val cipher = (plain[i].toInt() xor stream.toInt()).toByte()
+            // Decrypting the result moves the keys on by the byte it was, as encrypting would
+            keys.decrypt(byteArrayOf(cipher), 0, 1)
+            cipher
+        }
+    }
+
+    /**
+     * And in a code page the phone's language does not bring: a Polish Windows machine's
+     * CP852, on a phone set to English. It was tried only on a phone set to a Central European
+     * language, so everywhere else the right password was said to be wrong.
+     */
+    @Test
+    fun aPasswordInAnotherLanguagesCodePageStillOpens() {
+        val plain = "hello".toByteArray()
+        val crc = CRC32().apply { update(plain) }.value
+        // Eleven bytes of anything, then the top byte of the checksum, which a password is checked by
+        val header = ByteArray(11) { it.toByte() } + (crc ushr 24).toByte()
+        val password = "hasło".toByteArray(Charset.forName("IBM852"))
+        val bytes = oneEntry(
+            "hasło.txt".toByteArray(), zipCrypto(header + plain, password), crc = crc, size = plain.size, flags = 1,
+        )
+        val locale = Locale.getDefault()
+        Locale.setDefault(Locale.US)
+        try {
+            source(bytes).use { zip ->
+                assertThat(zip.read(ZipReader.entries(zip, Locale.US).single(), "hasło")).isEqualTo(plain)
+            }
+        } finally {
+            Locale.setDefault(locale)
+        }
+    }
+
     /**
      * AE-2 leaves the checksum at nought, so a damaged byte in the encrypted data is caught
      * only by the authentication code at the end. It has to be checked, or a damaged photo

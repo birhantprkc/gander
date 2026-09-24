@@ -25,8 +25,25 @@ import javax.crypto.spec.SecretKeySpec
 internal object ZipEncryption {
 
     /** Windows' own code pages for Western and Eastern European text, after the DOS ones. */
-    private val WINDOWS = listOf("windows-1252", "windows-1250", "windows-1251")
-        .mapNotNull { runCatching { Charset.forName(it) }.getOrNull() }
+    private val WINDOWS = charsets("windows-1252", "windows-1250", "windows-1251")
+
+    /**
+     * Everything else, last: every code page a reader can choose names in, which takes in the
+     * DOS ones for Central Europe, Greece and Turkey that are only guessed on a phone set to
+     * one of their languages, then Windows' own for Greek, Turkish, Hebrew, Arabic, Baltic,
+     * Vietnamese and Thai. Without them a password written in one opened only on a phone set
+     * to its language, or on none.
+     */
+    private val REST: List<Charset> by lazy {
+        ZipNames.CHOICES.map { it.second } + charsets(
+            "windows-1253", "windows-1254", "windows-1255", "windows-1256",
+            "windows-1257", "windows-1258", "windows-874",
+        )
+    }
+
+    /** Those of [names] the runtime has. */
+    private fun charsets(vararg names: String): List<Charset> =
+        names.mapNotNull { runCatching { Charset.forName(it) }.getOrNull() }
 
     /**
      * Every way [password] can have been turned into bytes, each once, the likeliest first.
@@ -34,12 +51,12 @@ internal object ZipEncryption {
      * The format never said. WinZip's AES and anything from a Mac or Linux uses UTF-8. The
      * older encryption on Windows took the password in the machine's own code page, the one
      * it wrote names in, so the phone's language comes next and then every other code page
-     * ZipNames knows. A password in plain ASCII is the same bytes in all of them and is tried
-     * once, which is nearly every password.
+     * ZipNames knows, and Windows' own. A password in plain ASCII is the same bytes in all of
+     * them and is tried once, which is nearly every password.
      */
     fun passwordBytes(password: String, locale: Locale = Locale.getDefault()): List<ByteArray> {
         val out = ArrayList<ByteArray>()
-        for (charset in listOf(Charsets.UTF_8) + ZipNames.codePages(locale) + WINDOWS) {
+        for (charset in listOf(Charsets.UTF_8) + ZipNames.codePages(locale) + WINDOWS + REST) {
             val bytes = strict(charset, password) ?: continue
             if (bytes.isNotEmpty() && out.none { it.contentEquals(bytes) }) out += bytes
         }
