@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Search in a spreadsheet finds matches on every sheet, not only the one on screen, and turns
+  to the sheet a match is on. In a text file too long to show at once, it finds what is in the
+  rest of the file as soon as you show more of it. It used to report nothing it had not drawn,
+  as if it had looked.
+
 - In night mode, everything around a PDF goes dark with the page, on a phone set to light as
   well: the bar with the file's name, the strips at the top and bottom of the screen, the search
   bar, the menu, and the Go to page box. They used to stay light, which put bright bars around a

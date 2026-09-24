@@ -217,4 +217,35 @@ class WebViewFloorTest {
     fun huaweiIsTheOneLockedProvider() {
         assertThat(LOCKED_WEBVIEW_PACKAGES).containsExactly("com.huawei.webview")
     }
+
+    // ---------------------------------------------------------------
+    // Which pages search their own text, through find.js
+    // ---------------------------------------------------------------
+
+    /**
+     * The six that have find.js do, from the engine that can mark what it found; below it they
+     * keep Chromium's own find. A PDF has no other search to fall back to, and the rest have
+     * nothing to search or are not pages at all.
+     */
+    @Test
+    fun pagesSearchThemselvesWhereTheEngineCanMarkWhatItFound() {
+        val finders = listOf(
+            FileKind.DOCX, FileKind.PROSE, FileKind.MD, FileKind.TEXT, FileKind.XLSX, FileKind.PPTX
+        )
+        for (kind in finders) {
+            assertThat(searchesInPage(kind, HIGHLIGHT_MIN_CHROMIUM_MAJOR)).isTrue()
+            assertThat(searchesInPage(kind, HIGHLIGHT_MIN_CHROMIUM_MAJOR - 1)).isFalse()
+            // A version that could not be read is taken as new enough, as the floors take it
+            assertThat(searchesInPage(kind, null)).isTrue()
+        }
+        assertThat(searchesInPage(FileKind.PDF, 90)).isTrue()
+        val rest = FileKind.entries - finders.toSet() - FileKind.PDF
+        for (kind in rest) assertThat(searchesInPage(kind, 150)).isFalse()
+    }
+
+    @Test
+    fun theHighlightApiArrivedInChromium105() {
+        assertThat(HIGHLIGHT_MIN_CHROMIUM_MAJOR).isEqualTo(105)
+    }
 }
+
