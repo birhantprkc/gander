@@ -448,11 +448,18 @@ function rtfCloseTable(state, flow) {
 /*
  * Where a flow's paragraphs go. For the body that is the current sheet, and the first
  * sheet is made here, at the first paragraph, because the paper size, the default font
- * and the header all arrive before it and a sheet is made with all three.
+ * and the header all arrive before it and a sheet is made with all three. A section
+ * break waits here for the same reason: the next sheet is made when the section after
+ * the break has its first paragraph, by which time it has said whether it starts a new
+ * page at all and what its header is. A break with nothing after it makes no sheet.
  */
 function rtfTarget(state, flow) {
   if (!flow.top) return flow.container;
   if (!state.prose.body) state.sheet();
+  else if (state.sectionBreak && !state.sectionRunsOn && state.prose.body.firstChild) {
+    vwProseSheet(state.prose);
+  }
+  state.sectionBreak = false;
   return state.prose.body;
 }
 
@@ -614,9 +621,13 @@ function rtfWord(state, word, param, has) {
       if (g.flow.top && rtfTarget(state, g.flow).firstChild) vwProseSheet(state.prose);
       return;
     case "sect":
+      // The kind of break, and the header over the sheet it makes, belong to the section
+      // that starts here, and are written after this word; so the sheet waits for that
+      // section's first paragraph, in rtfTarget
       rtfClosePara(state, g.flow, g.pf, true);
-      if (g.flow.top && !state.sectionRunsOn && rtfTarget(state, g.flow).firstChild) {
-        vwProseSheet(state.prose);
+      if (g.flow.top) {
+        rtfCloseTable(state, g.flow);
+        state.sectionBreak = true;
       }
       return;
     case "sbknone": state.sectionRunsOn = true; return;
@@ -907,7 +918,7 @@ function vwReadRtf(buffer, container) {
     pending: [], pendingCodePage: 1252, skip: 0,
     layout: { width: 612, height: 792, left: 90, right: 90, top: 72, bottom: 72 },
     row: { cells: [], pending: {} }, border: null, styleName: "", styleNumber: null,
-    sectionRunsOn: false, pict: null, font: null, rgb: null, sheet: null
+    sectionRunsOn: false, sectionBreak: false, pict: null, font: null, rgb: null, sheet: null
   };
   var body = rtfFlow(null, true);
   state.group = { dest: "body", cf: rtfNewChar(state), pf: rtfNewPara(), uc: 1, flow: body, fresh: false };

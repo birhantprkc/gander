@@ -10,6 +10,8 @@ of the same files, except where a docstring says otherwise.
 import io
 import zipfile
 
+import pytest
+
 from helpers import status_text
 
 
@@ -64,3 +66,49 @@ def test_a_backslash_before_a_line_end_ends_a_paragraph_in_a_footnote(viewer, pa
         "() => [...document.querySelectorAll('.vw-notes p')].map(p => p.textContent.trim())"
     )
     assert paragraphs == ["1 First line", "Second line"]
+
+
+# ------------------------------------------------------------------------------------
+# Rich Text: sections
+# ------------------------------------------------------------------------------------
+
+RTF_HEAD = r"{\rtf1\ansi\deff0{\fonttbl{\f0\froman Times New Roman;}}"
+
+
+def sheet_words(page):
+    """The words on each sheet, sheet by sheet."""
+    return page.evaluate(
+        "() => [...document.querySelectorAll('.vw-paper > section')]"
+        ".map(s => s.querySelector('.vw-body').innerText.split(/\\s+/).filter(Boolean))"
+    )
+
+
+@pytest.mark.parametrize("sections, sheets", [
+    (r"\sectd\sbknone\pard One\par\sect\sectd\pard Two\par", [["One"], ["Two"]]),
+    (r"\sectd\pard One\par\sect\sectd\sbknone\pard Two\par", [["One", "Two"]]),
+], ids=["first-runs-on", "second-runs-on"])
+def test_a_section_break_is_the_kind_the_new_section_asks_for(viewer, page, made, sections, sheets):
+    """
+    Word and LibreOffice write a section's \\sbk after the \\sect that ends the one before
+    it, so the break between two sections is the second one's. The first one's was used:
+    a continuous first section ran the second on, and a continuous second one did not.
+    """
+    open_rtf(viewer, page, made, RTF_HEAD + sections + "}")
+    assert sheet_words(page) == sheets
+
+
+def test_a_header_set_after_a_section_break_heads_the_sheet_that_section_starts(viewer, page, made):
+    """The sheet was made at \\sect, before the new section's header had been read."""
+    open_rtf(viewer, page, made,
+             RTF_HEAD + r"\sectd{\header\pard First head\par}\pard One\par"
+             r"\sect\sectd{\header\pard Second head\par}\pard Two\par}")
+    headers = page.evaluate(
+        "() => [...document.querySelectorAll('.vw-paper > section .vw-header')]"
+        ".map(h => h.textContent.trim())"
+    )
+    assert headers == ["First head", "Second head"]
+
+
+def test_a_section_break_at_the_very_end_leaves_no_empty_sheet(viewer, page, made):
+    open_rtf(viewer, page, made, RTF_HEAD + r"\sectd\pard One\par\sect}")
+    assert sheet_words(page) == [["One"]]
