@@ -424,3 +424,20 @@ def test_a_space_after_a_tab_a_line_break_or_a_run_of_spaces_is_kept(viewer, pag
         "() => [...document.querySelectorAll('.vw-body p')].map(p => p.innerText)"
     )
     assert paragraphs == ["[tab\t x]", "[br\n x]", "[s  x]", "[span x]"]
+
+
+# ------------------------------------------------------------------------------------
+# Rich Text: bytes
+# ------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("word, text", [("pc", "café ¢ naïve"), ("pca", "café ø naïve")],
+                         ids=["437", "850"])
+def test_the_ibm_pc_code_pages_are_each_their_own(viewer, page, made, word, text):
+    """
+    \\pc is the IBM PC's code page 437 and \\pca is 850, which was the PC's in Western
+    Europe. Both were read as 866, the Russian one, the only one of the three a browser
+    knows, which made "café" read "cafВ".
+    """
+    open_rtf(viewer, page, made,
+             r"{\rtf1\%s\deff0{\fonttbl{\f0\fmodern Courier;}}\f0 caf\'82 \'9b na\'8bve\par}" % word)
+    assert paper_text(page).strip() == text

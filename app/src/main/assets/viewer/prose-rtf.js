@@ -37,7 +37,8 @@ function rtfPt(twips) {
  */
 var RTF_CHARSETS = {
   0: 1252, 77: 10000, 128: 932, 129: 949, 130: 949, 134: 936, 136: 950, 161: 1253,
-  162: 1254, 163: 1258, 177: 1255, 178: 1256, 186: 1257, 204: 1251, 222: 874, 238: 1250
+  162: 1254, 163: 1258, 177: 1255, 178: 1256, 186: 1257, 204: 1251, 222: 874, 238: 1250,
+  254: 437
 };
 
 /* What TextDecoder calls each of them. Anything else is read as 1252. */
@@ -50,11 +51,51 @@ var RTF_DECODER_NAMES = {
 
 var RTF_DECODERS = {};
 
+/*
+ * The IBM PC's own code pages, which \pc and \pca name: 437, the PC's first, and 850,
+ * the one it had in Western Europe. TextDecoder knows neither, so here is each one's
+ * half above ASCII, the characters for the bytes 0x80 to 0xFF in order.
+ */
+var RTF_OEM_PAGES = {
+  437:
+    "\u00C7\u00FC\u00E9\u00E2\u00E4\u00E0\u00E5\u00E7\u00EA\u00EB\u00E8\u00EF\u00EE\u00EC\u00C4\u00C5" +
+    "\u00C9\u00E6\u00C6\u00F4\u00F6\u00F2\u00FB\u00F9\u00FF\u00D6\u00DC\u00A2\u00A3\u00A5\u20A7\u0192" +
+    "\u00E1\u00ED\u00F3\u00FA\u00F1\u00D1\u00AA\u00BA\u00BF\u2310\u00AC\u00BD\u00BC\u00A1\u00AB\u00BB" +
+    "\u2591\u2592\u2593\u2502\u2524\u2561\u2562\u2556\u2555\u2563\u2551\u2557\u255D\u255C\u255B\u2510" +
+    "\u2514\u2534\u252C\u251C\u2500\u253C\u255E\u255F\u255A\u2554\u2569\u2566\u2560\u2550\u256C\u2567" +
+    "\u2568\u2564\u2565\u2559\u2558\u2552\u2553\u256B\u256A\u2518\u250C\u2588\u2584\u258C\u2590\u2580" +
+    "\u03B1\u00DF\u0393\u03C0\u03A3\u03C3\u00B5\u03C4\u03A6\u0398\u03A9\u03B4\u221E\u03C6\u03B5\u2229" +
+    "\u2261\u00B1\u2265\u2264\u2320\u2321\u00F7\u2248\u00B0\u2219\u00B7\u221A\u207F\u00B2\u25A0\u00A0",
+  850:
+    "\u00C7\u00FC\u00E9\u00E2\u00E4\u00E0\u00E5\u00E7\u00EA\u00EB\u00E8\u00EF\u00EE\u00EC\u00C4\u00C5" +
+    "\u00C9\u00E6\u00C6\u00F4\u00F6\u00F2\u00FB\u00F9\u00FF\u00D6\u00DC\u00F8\u00A3\u00D8\u00D7\u0192" +
+    "\u00E1\u00ED\u00F3\u00FA\u00F1\u00D1\u00AA\u00BA\u00BF\u00AE\u00AC\u00BD\u00BC\u00A1\u00AB\u00BB" +
+    "\u2591\u2592\u2593\u2502\u2524\u00C1\u00C2\u00C0\u00A9\u2563\u2551\u2557\u255D\u00A2\u00A5\u2510" +
+    "\u2514\u2534\u252C\u251C\u2500\u253C\u00E3\u00C3\u255A\u2554\u2569\u2566\u2560\u2550\u256C\u00A4" +
+    "\u00F0\u00D0\u00CA\u00CB\u00C8\u0131\u00CD\u00CE\u00CF\u2518\u250C\u2588\u2584\u00A6\u00CC\u2580" +
+    "\u00D3\u00DF\u00D4\u00D2\u00F5\u00D5\u00B5\u00FE\u00DE\u00DA\u00DB\u00D9\u00FD\u00DD\u00AF\u00B4" +
+    "\u00AD\u00B1\u2017\u00BE\u00B6\u00A7\u00F7\u00B8\u00B0\u00A8\u00B7\u00B9\u00B3\u00B2\u25A0\u00A0"
+};
+
+/* A decoder for one of RTF_OEM_PAGES, which does what TextDecoder does for the rest. */
+function rtfOemDecoder(high) {
+  return {
+    decode: function (bytes) {
+      var out = "";
+      for (var i = 0; i < bytes.length; i++) {
+        out += bytes[i] < 0x80 ? String.fromCharCode(bytes[i]) : high.charAt(bytes[i] - 0x80);
+      }
+      return out;
+    }
+  };
+}
+
 function rtfDecoder(codePage) {
   if (!RTF_DECODERS[codePage]) {
     var made;
     try {
-      made = new TextDecoder(RTF_DECODER_NAMES[codePage] || "windows-1252");
+      made = RTF_OEM_PAGES[codePage] ? rtfOemDecoder(RTF_OEM_PAGES[codePage])
+        : new TextDecoder(RTF_DECODER_NAMES[codePage] || "windows-1252");
     } catch (e) {
       made = new TextDecoder("windows-1252");
     }
@@ -753,7 +794,8 @@ function rtfWord(state, word, param, has) {
     /* The document */
     case "ansicpg": state.codePage = param; return;
     case "mac": state.codePage = 10000; return;
-    case "pc": case "pca": state.codePage = 866; return;
+    case "pc": state.codePage = 437; return;
+    case "pca": state.codePage = 850; return;
     case "deff":
       state.defaultFont = param;
       g.cf = rtfCopy(g.cf);
