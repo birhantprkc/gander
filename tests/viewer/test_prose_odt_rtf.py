@@ -112,3 +112,74 @@ def test_a_header_set_after_a_section_break_heads_the_sheet_that_section_starts(
 def test_a_section_break_at_the_very_end_leaves_no_empty_sheet(viewer, page, made):
     open_rtf(viewer, page, made, RTF_HEAD + r"\sectd\pard One\par\sect}")
     assert sheet_words(page) == [["One"]]
+
+
+# ------------------------------------------------------------------------------------
+# OpenDocument
+# ------------------------------------------------------------------------------------
+
+ODT_NS = (
+    'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+    'xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" '
+    'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" '
+    'xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+    'xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" '
+    'xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" '
+    'xmlns:xlink="http://www.w3.org/1999/xlink" '
+    'xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" '
+    'office:version="1.3"'
+)
+
+
+def odt(body, automatic="", styles="", layouts="", masters='<style:master-page style:name="Standard"/>'):
+    """
+    An .odt whose text is body. automatic is content.xml's automatic styles; styles,
+    layouts and masters are styles.xml's named styles, page layouts and master pages.
+    """
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f'<office:document-content {ODT_NS}>'
+        f'<office:automatic-styles>{automatic}</office:automatic-styles>'
+        f'<office:body><office:text>{body}</office:text></office:body>'
+        '</office:document-content>'
+    )
+    named = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f'<office:document-styles {ODT_NS}><office:styles>'
+        '<style:default-style style:family="paragraph">'
+        '<style:text-properties fo:font-size="12pt"/></style:default-style>'
+        f'<style:style style:name="Standard" style:family="paragraph"/>{styles}'
+        f'</office:styles><office:automatic-styles>{layouts}</office:automatic-styles>'
+        f'<office:master-styles>{masters}</office:master-styles></office:document-styles>'
+    )
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr(zipfile.ZipInfo("mimetype"), "application/vnd.oasis.opendocument.text")
+        z.writestr("content.xml", content, zipfile.ZIP_DEFLATED)
+        z.writestr("styles.xml", named, zipfile.ZIP_DEFLATED)
+    return out.getvalue()
+
+
+def open_odt(viewer, page, made, body, name="t.odt", **parts):
+    viewer("prose.html", made(name, odt(body, **parts)))
+    drawn(page)
+    assert not page.query_selector(".vw-error"), status_text(page)
+
+
+def test_the_title_of_a_table_of_contents_is_drawn(viewer, page, made):
+    """
+    An index keeps its title inside its body, in an index-title of its own, and only the
+    entries under the title were read. The template in the index's source is not drawn:
+    it is what a word processor would title the index if it were made again.
+    """
+    open_odt(viewer, page, made,
+             '<text:table-of-content text:name="Contents1">'
+             '<text:table-of-content-source text:outline-level="10">'
+             '<text:index-title-template>Template title</text:index-title-template>'
+             '</text:table-of-content-source><text:index-body>'
+             '<text:index-title text:name="Contents1_Head"><text:p>Contents of the survey</text:p>'
+             '</text:index-title><text:p>Intro<text:tab/>1</text:p>'
+             '</text:index-body></text:table-of-content>'
+             '<text:h text:outline-level="1">Intro</text:h>')
+    lines = [line for line in paper_text(page).split("\n") if line.strip()]
+    assert lines == ["Contents of the survey", "Intro\t1", "Intro"]

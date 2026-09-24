@@ -482,7 +482,8 @@ function odtBlocks(state, el, into, ctx) {
       else if (n === "list") odtList(state, c, into, ctx);
       else if (n === "numbered-paragraph") odtNumbered(state, c, into, ctx);
       else if (n === "section") odtBlocks(state, c, into, ctx);
-      else if (n === "index-body") odtBlocks(state, c, into, ctx);
+      // An index's title is inside its body, in an index-title of its own
+      else if (n === "index-body" || n === "index-title") odtBlocks(state, c, into, ctx);
       else if (/^(table-of-content|illustration-index|table-index|object-index|user-index|alphabetical-index|bibliography)$/.test(n)) {
         odtBlocks(state, c, into, ctx);
       }
