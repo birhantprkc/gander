@@ -276,6 +276,13 @@ function odtReadStyle(index, node) {
     if (v === "middle" || v === "bottom" || v === "top") bag.valign = v;
   }
 
+  // A table breaks the page the way a paragraph does, from its own properties
+  var tp = odtChild(node, "style", "table-properties");
+  if (tp) {
+    if (odtAttr(tp, "fo", "break-before") === "page") bag._breakBefore = true;
+    if (odtAttr(tp, "fo", "break-after") === "page") bag._breakAfter = true;
+  }
+
   var r = odtChild(node, "style", "table-row-properties");
   if (r) {
     var rowFill = odtAttr(r, "fo", "background-color");
@@ -473,6 +480,9 @@ function odtStartOf(listStyle, level) {
  * The document
  * ---------------------------------------------------------------------------------- */
 
+/* The indexes a document can hold, each a title and its entries inside an index-body. */
+var ODT_INDEXES = /^(table-of-content|illustration-index|table-index|object-index|user-index|alphabetical-index|bibliography)$/;
+
 /*
  * The children of el that are blocks: paragraphs, headings, lists, tables, sections
  * and indexes. ctx carries what a block inherits from where it sits: which file's
@@ -490,13 +500,11 @@ function odtBlocks(state, el, into, ctx) {
       else if (n === "section") odtBlocks(state, c, into, ctx);
       // An index's title is inside its body, in an index-title of its own
       else if (n === "index-body" || n === "index-title") odtBlocks(state, c, into, ctx);
-      else if (/^(table-of-content|illustration-index|table-index|object-index|user-index|alphabetical-index|bibliography)$/.test(n)) {
-        odtBlocks(state, c, into, ctx);
-      }
+      else if (ODT_INDEXES.test(n)) odtBlocks(state, c, into, ctx);
       // tracked-changes holds the text that was deleted, and the declarations hold
       // nothing to read: both are passed over, along with anything unknown
     } else if (odtIs(c, "table", "table")) {
-      odtTable(state, c, odtTarget(state, into, ctx), ctx);
+      odtTable(state, c, into, ctx);
     } else if (c.namespaceURI === ODT_NS.draw) {
       // A frame anchored to the page rather than to a paragraph sits here, between them
       var holder = document.createElement("p");
@@ -518,15 +526,39 @@ function odtBreak(state, master) {
   vwProseSheet(state.prose, master ? odtLayout(state, master) : null);
 }
 
+/*
+ * A new sheet for a block at the top of the document, a paragraph or a table, if its
+ * style or the block before it asks for one. Naming a page style asks for one too. The
+ * document's first block never does: the first sheet was made with its page, and a
+ * frame anchored to the page may be on that sheet before it.
+ */
+function odtPageBreak(state, node, bag) {
+  var started = node !== state.first && state.prose.body.firstChild != null;
+  if (started && (bag._breakBefore || bag._master || state.breakNext)) odtBreak(state, bag._master);
+  state.breakNext = !!bag._breakAfter;
+}
+
+/* The block the document starts with: the paragraph or table odtBlocks draws first. */
+function odtFirstBlock(el) {
+  for (var c = el.firstElementChild; c; c = c.nextElementSibling) {
+    if (odtIs(c, "table", "table")) return c;
+    if (c.namespaceURI !== ODT_NS.text) continue;
+    var n = c.localName;
+    if (n === "p" || n === "h") return c;
+    if (n === "list" || n === "list-item" || n === "list-header" || n === "numbered-paragraph" ||
+        n === "section" || n === "index-body" || n === "index-title" || ODT_INDEXES.test(n)) {
+      var inner = odtFirstBlock(c);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
 function odtParagraph(state, node, into, ctx, kind) {
   var prose = state.prose;
   var bag = odtBag(state.index, ctx.scope, "paragraph", odtAttr(node, "text", "style-name"));
 
-  if (ctx.top) {
-    var started = prose.body.firstChild != null;
-    if (started && (bag._breakBefore || bag._master || state.breakNext)) odtBreak(state, bag._master);
-    state.breakNext = !!bag._breakAfter;
-  }
+  if (ctx.top) odtPageBreak(state, node, bag);
 
   var tag = "p";
   var level = 0;
@@ -650,8 +682,10 @@ function odtTable(state, node, into, ctx) {
   var prose = state.prose;
   var index = state.index;
   var table = document.createElement("table");
-  var tableNode = odtStyleNode(index, ctx.scope, "table", odtAttr(node, "table", "style-name"));
+  var styleName = odtAttr(node, "table", "style-name");
+  var tableNode = odtStyleNode(index, ctx.scope, "table", styleName);
   var props = tableNode && odtChild(tableNode, "style", "table-properties");
+  if (ctx.top) odtPageBreak(state, node, odtBag(index, ctx.scope, "table", styleName));
 
   var widths = [];
   var known = true;
@@ -728,7 +762,7 @@ function odtTable(state, node, into, ctx) {
     }
   }
   rows(node);
-  into.appendChild(table);
+  odtTarget(state, into, ctx).appendChild(table);
 }
 
 /* ------------------------------------------------------------------------------------
@@ -1026,7 +1060,7 @@ function vwReadOdt(buffer, container) {
       index: odtIndexStyles(file.content, file.styles),
       zip: file.zip,
       pending: [], notes: [], listCounts: {}, lastCounts: {}, outlineCounts: [],
-      breakNext: false
+      breakNext: false, first: null
     };
 
     // What the document's default paragraph style says about characters is what every
@@ -1037,10 +1071,13 @@ function vwReadOdt(buffer, container) {
       font: base.font, size: base.size, color: base.color
     });
 
-    // The first paragraph's style names the page the document starts on
-    var first = body.getElementsByTagNameNS(ODT_NS.text, "p")[0];
-    var firstBag = first
-      ? odtBag(state.index, "content", "paragraph", odtAttr(first, "text", "style-name")) : {};
+    // The first block's style names the page the document starts on, and the first
+    // block can be a heading or a table as well as a paragraph
+    var first = state.first = odtFirstBlock(body);
+    var firstBag = !first ? {}
+      : odtIs(first, "table", "table")
+        ? odtBag(state.index, "content", "table", odtAttr(first, "table", "style-name"))
+        : odtBag(state.index, "content", "paragraph", odtAttr(first, "text", "style-name"));
     vwProseSheet(state.prose, odtLayout(state, firstBag._master || "Standard"));
 
     odtBlocks(state, body, null, { scope: "content", top: true, level: 0 });

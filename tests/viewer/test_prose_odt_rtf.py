@@ -252,3 +252,79 @@ def test_a_table_inside_a_table_is_drawn_inside_its_cell(viewer, page, made):
     assert outer["first"] == ["P", "TABLE", "P"]
     assert outer["inner"] == [["N1", "N2"], ["N3", "N4"]]
     assert paper_text(page).rstrip().endswith("After table")
+
+
+# ------------------------------------------------------------------------------------
+# OpenDocument: pages
+# ------------------------------------------------------------------------------------
+
+PAGES = {
+    "layouts": (
+        '<style:page-layout style:name="pm1"><style:page-layout-properties fo:page-width="21cm"'
+        ' fo:page-height="29.7cm" fo:margin="2cm"/></style:page-layout>'
+        '<style:page-layout style:name="pm2"><style:page-layout-properties fo:page-width="29.7cm"'
+        ' fo:page-height="21cm" style:print-orientation="landscape" fo:margin="2cm"/></style:page-layout>'
+    ),
+    "masters": (
+        '<style:master-page style:name="Standard" style:page-layout-name="pm1"/>'
+        '<style:master-page style:name="Landscape" style:page-layout-name="pm2"/>'
+    ),
+}
+
+TABLE = ('<table:table table:name="T" table:style-name="T"><table:table-column/><table:table-row>'
+         '<table:table-cell><text:p>In the table</text:p></table:table-cell></table:table-row></table:table>')
+
+
+def sheet_shapes(page):
+    return page.evaluate(
+        "() => [...document.querySelectorAll('.vw-paper > section')]"
+        ".map(s => parseFloat(s.style.width) > parseFloat(s.style.minHeight) ? 'wide' : 'tall')"
+    )
+
+
+@pytest.mark.parametrize("table_style, shapes, words", [
+    ('style:master-page-name="Landscape"><style:table-properties style:width="20cm"/>',
+     ["tall", "wide", "tall"], [["Before"], ["In", "the", "table"], ["After"]]),
+    ('><style:table-properties style:width="10cm" fo:break-before="page"/>',
+     ["tall", "tall"], [["Before"], ["In", "the", "table", "After"]]),
+    ('><style:table-properties style:width="10cm" fo:break-after="page"/>',
+     ["tall", "tall"], [["Before", "In", "the", "table"], ["After"]]),
+], ids=["page-style", "break-before", "break-after"])
+def test_a_table_can_start_a_page_as_a_paragraph_can(viewer, page, made, table_style, shapes, words):
+    """
+    A table's style can name a page style, or break the page before or after it, the way
+    a paragraph's can; LibreOffice puts a wide table on a landscape page that way. Only
+    a paragraph's were read. The paragraph after goes back to the portrait page by
+    naming it.
+    """
+    open_odt(viewer, page, made,
+             '<text:p>Before</text:p>' + TABLE + '<text:p text:style-name="Back">After</text:p>',
+             automatic='<style:style style:name="T" style:family="table" ' + table_style + '</style:style>'
+                       '<style:style style:name="Back" style:family="paragraph"'
+                       + (' style:master-page-name="Standard"' if "Landscape" in table_style else '')
+                       + '/>',
+             **PAGES)
+    assert sheet_shapes(page) == shapes
+    assert sheet_words(page) == words
+
+
+@pytest.mark.parametrize("body", [
+    TABLE + '<text:p>After</text:p>',
+    '<text:h text:style-name="Wide" text:outline-level="1">In a heading</text:h><text:p>After</text:p>',
+    '<draw:frame text:anchor-type="page" svg:width="5cm"><draw:text-box><text:p>Boxed</text:p>'
+    '</draw:text-box></draw:frame><text:p text:style-name="Wide">After</text:p>',
+], ids=["table", "heading", "frame-before-it"])
+def test_the_first_sheet_is_the_page_the_first_block_names(viewer, page, made, body):
+    """
+    The first sheet took its page from the first text:p anywhere in the document, which
+    passed over a heading or a table that came first and could be a paragraph inside
+    that table. And the first block that named a page made a sheet of its own after a
+    frame anchored to the page, as if it were not the first.
+    """
+    open_odt(viewer, page, made, body,
+             automatic='<style:style style:name="T" style:family="table"'
+                       ' style:master-page-name="Landscape"/>'
+                       '<style:style style:name="Wide" style:family="paragraph"'
+                       ' style:master-page-name="Landscape"/>',
+             **PAGES)
+    assert sheet_shapes(page) == ["wide"]
