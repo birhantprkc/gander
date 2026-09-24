@@ -254,6 +254,25 @@ def test_a_table_inside_a_table_is_drawn_inside_its_cell(viewer, page, made):
     assert paper_text(page).rstrip().endswith("After table")
 
 
+def test_a_page_break_straight_after_a_table_leaves_the_table_where_it_was(viewer, page, made):
+    """
+    A table is only put on the page when something outside it comes along, and \\page
+    did not count: the table waited, and went onto the sheet the break had just made.
+    """
+    open_rtf(viewer, page, made,
+             RTF_HEAD + r"\pard Before\par\trowd\cellx2000\pard\intbl In the table\cell\row"
+             r"\pard\page After\par}")
+    assert sheet_words(page) == [["Before", "In", "the", "table"], ["After"]]
+
+
+def test_a_page_break_inside_a_table_row_is_passed_over(viewer, page, made):
+    """A sheet cannot break a table in two, so the table stays whole where it began."""
+    open_rtf(viewer, page, made,
+             RTF_HEAD + r"\pard Before\par\trowd\cellx2000\cellx4000\pard\intbl A\page\cell B\cell\row"
+             r"\pard After\par}")
+    assert sheet_words(page) == [["Before", "A", "B", "After"]]
+
+
 # ------------------------------------------------------------------------------------
 # OpenDocument: pages
 # ------------------------------------------------------------------------------------

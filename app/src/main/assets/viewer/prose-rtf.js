@@ -715,8 +715,14 @@ function rtfWord(state, word, param, has) {
 
     case "line": rtfInlineNode(state, document.createElement("br")); return;
     case "page":
+      // A table that has just ended goes on the page before the break, where it waited
+      // to be put until something outside it came along. One part way through a row
+      // cannot be broken, and keeps its break to itself
       rtfClosePara(state, g.flow, g.pf, false);
-      if (g.flow.top && rtfTarget(state, g.flow).firstChild) vwProseSheet(state.prose);
+      if (g.flow.top && !(g.flow.cells.length || g.flow.cell || g.flow.nested.length)) {
+        rtfCloseTable(state, g.flow);
+        if (rtfTarget(state, g.flow).firstChild) vwProseSheet(state.prose);
+      }
       return;
     case "sect":
       // The kind of break, and the header over the sheet it makes, belong to the section
