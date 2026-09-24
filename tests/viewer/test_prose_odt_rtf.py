@@ -409,3 +409,18 @@ def test_a_list_can_count_from_zero(viewer, page, made):
              automatic='<text:list-style style:name="L1"><text:list-level-style-number text:level="1"'
                        ' style:num-format="1" style:num-suffix="." text:start-value="0"/></text:list-style>')
     assert labels(page) == ["0.", "1.", "2."]
+
+
+def test_a_space_after_a_tab_a_line_break_or_a_run_of_spaces_is_kept(viewer, page, made):
+    """
+    A tab, a line break and a run of spaces are written as elements so that the text's
+    own white space can be collapsed around them, and they are not white space for that
+    collapsing: a space after one is a space. It was dropped as if it followed another.
+    """
+    open_odt(viewer, page, made,
+             '<text:p>[tab<text:tab/> x]</text:p><text:p>[br<text:line-break/> x]</text:p>'
+             '<text:p>[s<text:s/> x]</text:p><text:p>[span <text:span> x</text:span>]</text:p>')
+    paragraphs = page.evaluate(
+        "() => [...document.querySelectorAll('.vw-body p')].map(p => p.innerText)"
+    )
+    assert paragraphs == ["[tab\t x]", "[br\n x]", "[s  x]", "[span x]"]

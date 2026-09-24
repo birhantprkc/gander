@@ -856,16 +856,16 @@ function odtInlineNode(state, c, into, ctx) {
     odtInline(state, c, span, {
       scope: ctx.scope, symbol: bag.font ? bag._symbol : ctx.symbol, space: ctx.space
     });
-  } else if (n === "s") {
-    var spaces = Math.min(parseInt(odtAttr(c, "text", "c"), 10) || 1, 1000);
-    into.appendChild(document.createTextNode(new Array(spaces + 1).join(" ")));
-    ctx.space.held = true;
-  } else if (n === "tab") {
-    into.appendChild(document.createTextNode("\t"));
-    ctx.space.held = true;
-  } else if (n === "line-break") {
-    into.appendChild(document.createElement("br"));
-    ctx.space.held = true;
+  } else if (n === "s" || n === "tab" || n === "line-break") {
+    // These are the white space the collapsing leaves alone, and are not white space to
+    // it either: a space after one is a space, as it is in LibreOffice
+    if (n === "s") {
+      var spaces = Math.min(parseInt(odtAttr(c, "text", "c"), 10) || 1, 1000);
+      into.appendChild(document.createTextNode(new Array(spaces + 1).join(" ")));
+    } else {
+      into.appendChild(n === "tab" ? document.createTextNode("\t") : document.createElement("br"));
+    }
+    ctx.space.held = false;
   } else if (n === "a") {
     // Drawn as a link and leading nowhere: nothing in a document opens a web page
     // from Gander, which is one of the four ways out that the app keeps shut
