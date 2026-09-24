@@ -45,12 +45,13 @@
 </head>
 <body>
 <div id="vw-status" class="vw-status vw-wait">Loading…</div>
-<pre id="content"></pre>
+<pre id="content" data-vw-find></pre>
 <div class="more" id="more" hidden>
   <p id="moreNote" aria-live="polite"></p>
   <button type="button" id="moreBtn">Show more</button>
 </div>
 <script src="app.js"></script>
+<script src="find.js"></script>
 <script>
 var content = document.getElementById("content");
 var more = document.getElementById("more");

@@ -65,8 +65,9 @@
 <body>
 <div id="vw-status" class="vw-status vw-wait">Loading spreadsheet…</div>
 <div id="tabs" style="display:none"></div>
-<div id="sheet"></div>
+<div id="sheet" data-vw-find></div>
 <script src="app.js"></script>
+<script src="find.js"></script>
 <script>
 vwFetchDoc("buffer")
   .then(function (buf) {
@@ -88,6 +89,27 @@ vwFetchDoc("buffer")
     });
     if (wb.SheetNames.length > 1) tabs.style.display = "";
     show(0);
+
+    /* Find reaches every sheet, not only the one drawn: see find.js. A sheet not on the page is
+       drawn into an element of its own to be read, the same drawing show() makes, so what is
+       searched is what will be shown. */
+    var current = 0;
+    var drawn = show;
+    show = function (idx) { current = idx; drawn(idx); };
+    var offPage = [];
+    window.vwFindParts = {
+      count: function () { return wb.SheetNames.length; },
+      root: function (i) {
+        if (i === current) return sheetDiv;
+        if (!offPage[i]) {
+          offPage[i] = document.createElement("div");
+          offPage[i].innerHTML = XLSX.utils.sheet_to_html(wb.Sheets[wb.SheetNames[i]], { editable: false });
+        }
+        return offPage[i];
+      },
+      show: function (i) { if (i !== current) show(i); return sheetDiv; },
+      shown: function () { return current; }
+    };
     vwStatusDone();
   })
   .catch(function (e) { vwError("Could not open this spreadsheet", String(e)); });

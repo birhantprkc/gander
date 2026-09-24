@@ -44,6 +44,27 @@ internal const val DOCX_PREVIEW_MIN_CHROMIUM_MAJOR = 80
 internal const val MARKED_MIN_CHROMIUM_MAJOR = 92
 
 /**
+ * Chromium major version the find in page of find.js needs, which marks what it found with the
+ * CSS Custom Highlight API: that arrived in 105. Unlike the three above it is not a floor below
+ * which a document cannot open. Below it those pages keep Chromium's own find, which marks
+ * matches itself but sees only what is in the DOM.
+ */
+internal const val HIGHLIGHT_MIN_CHROMIUM_MAJOR = 105
+
+/**
+ * Whether a page of this [kind] searches its own text, through find.js and the channel pdf.html
+ * searches through, on an engine of [major], null when it could not be read. A PDF always does,
+ * and has no other way to. The rest only where the engine can mark what was found; an unreadable
+ * version is taken as new enough, as the floors above take it.
+ */
+internal fun searchesInPage(kind: FileKind, major: Int?): Boolean = when (kind) {
+    FileKind.PDF -> true
+    FileKind.DOCX, FileKind.PROSE, FileKind.MD, FileKind.TEXT, FileKind.XLSX, FileKind.PPTX ->
+        major == null || major >= HIGHLIGHT_MIN_CHROMIUM_MAJOR
+    FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> false
+}
+
+/**
  * The floor of whatever draws [kind], or null for a format with none. Every other
  * viewer's scripts parse as ES2015, and each of them opened its files on WebView 66.
  *

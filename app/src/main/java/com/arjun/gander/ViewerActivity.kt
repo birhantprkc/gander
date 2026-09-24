@@ -107,6 +107,12 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private var webView: ScrollProbeWebView? = null
+
+    /**
+     * Whether the page on show searches its own text over the channel, see [searchesInPage],
+     * rather than being searched by Chromium's own find. Decided once the WebView exists.
+     */
+    private var pageSearches = false
     private var player: ExoPlayer? = null
 
     /** The list of what is in a zip, when this is one. */
@@ -436,14 +442,17 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Where a search goes. Two of these, because PDF cannot use the other one.
+     * Where a search goes. Two of these, because native find cannot see a whole document.
      *
-     * Every other WebView format is found with findAllAsync, Chromium's own
-     * find-in-page, which searches the DOM. pdf.html holds only about eleven pages of
-     * a document in the DOM at once, so native find would report matches from the
-     * part of it currently on screen and silently miss the rest, which is worse than
-     * offering no search at all. PDF therefore searches in the page, over text it
-     * extracts itself, and reports back over a message port.
+     * findAllAsync is Chromium's own find-in-page, which searches the DOM. pdf.html holds
+     * only about eleven pages of a document in the DOM at once, so native find would
+     * report matches from the part of it currently on screen and silently miss the rest,
+     * which is worse than offering no search at all. PDF therefore searches in the page,
+     * over text it extracts itself, and reports back over a message port. So do the Word,
+     * prose, Markdown, text, spreadsheet and slide pages, through find.js, for the same
+     * reason on a smaller scale: a workbook draws one sheet at a time and a long text file
+     * its first pages. Native find is what those fall back to on an engine too old to mark
+     * matches for them, see [searchesInPage], and what everything else is searched with.
      */
     private interface Finder {
         fun query(q: String)
@@ -994,7 +1003,7 @@ class ViewerActivity : AppCompatActivity() {
         ViewCompat.setSystemGestureExclusionRects(track, want?.let { listOf(it) } ?: emptyList())
     }
 
-    /** In-document search: findAllAsync for most formats, a message port for PDF. */
+    /** In-document search: a message port where the page searches itself, findAllAsync otherwise. */
     private fun setUpSearch(toolbar: MaterialToolbar, kind: FileKind) {
         val bar = findViewById<LinearLayout>(R.id.searchBar)
         val input = findViewById<EditText>(R.id.searchInput)
@@ -1042,7 +1051,7 @@ class ViewerActivity : AppCompatActivity() {
         }
 
         val finder: Finder
-        if (kind == FileKind.PDF) {
+        if (pageSearches) {
             onSearchCount = { active, total, settled -> show(active, total, settled) }
             finder = PortFinder()
         } else {
@@ -1112,7 +1121,7 @@ class ViewerActivity : AppCompatActivity() {
      */
     private var pendingQuery: String = ""
 
-    /** One letter of command, then the payload. Read by onCommand() in pdf.html. */
+    /** One letter of command, then the payload. Read by onCommand() in pdf.html and find.js. */
     private inner class PortFinder : Finder {
         private fun send(s: String) {
             searchPort?.postMessage(WebMessageCompat(s))
@@ -1136,7 +1145,7 @@ class ViewerActivity : AppCompatActivity() {
                 WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK)
 
     /**
-     * Hand pdf.html one end of a message channel.
+     * Hand the page one end of a message channel: pdf.html, or a page that finds with find.js.
      *
      * This is the only channel from this app into a page, and it is deliberately not
      * addJavascriptInterface. That call reflects a Java object into script running on
@@ -1149,7 +1158,7 @@ class ViewerActivity : AppCompatActivity() {
      * Posted on page finished rather than at load, because the listener that takes it
      * lives in the page and is not there until the page has run.
      */
-    private fun openSearchChannel(web: WebView) {
+    private fun openSearchChannel(web: WebView, kind: FileKind) {
         if (!canPortSearch() || searchPort != null) return
         val ends = WebViewCompat.createWebMessageChannel(web)
         val mine = ends[0]
@@ -1158,7 +1167,9 @@ class ViewerActivity : AppCompatActivity() {
             object : WebMessagePortCompat.WebMessageCallbackCompat() {
                 override fun onMessage(port: WebMessagePortCompat, message: WebMessageCompat?) {
                     when (val said = parsePortMessage(message?.data)) {
-                        is PortMessage.Page -> {
+                        // Only a PDF has pages to report. Any other page saying so is its
+                        // document talking, and is not given a readout to write in.
+                        is PortMessage.Page -> if (kind == FileKind.PDF) {
                             if (pageTotal == 0) goToPageItem?.isVisible = true
                             pageAt = said.n
                             pageTotal = said.of
@@ -1384,6 +1395,8 @@ class ViewerActivity : AppCompatActivity() {
     private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
         val web = ScrollProbeWebView(this)
         webView = web
+        pageSearches = canPortSearch() &&
+            searchesInPage(kind, webViewChromiumMajor(web.settings.userAgentString))
 
         with(web.settings) {
             javaScriptEnabled = true
@@ -1438,9 +1451,8 @@ class ViewerActivity : AppCompatActivity() {
 
         web.webViewClient = object : WebViewClientCompat() {
             override fun onPageFinished(view: WebView, url: String) {
-                // PDF is the only viewer that searches from inside the page, so it is
-                // the only one that needs a way to answer.
-                if (kind == FileKind.PDF) openSearchChannel(view)
+                // The viewers that search from inside the page need a way to answer
+                if (pageSearches) openSearchChannel(view, kind)
             }
 
             /**
