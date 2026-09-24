@@ -332,10 +332,7 @@ internal object ZipReader {
             // FAT, HPFS, NTFS and VFAT: the hosts that separate folders with a backslash
             val dos = host == 0 || host == 6 || host == 10 || host == 14
             val nameBytes = index.copyOfRange(nameAt, extraAt)
-            val lastByte = nameBytes.lastOrNull()?.toInt()
-            val directory = lastByte == '/'.code ||
-                (dos && lastByte == '\\'.code) ||
-                (host == 3 && ((external ushr 16) and 0xF000) == 0x4000L) ||
+            val folder = (host == 3 && ((external ushr 16) and 0xF000) == 0x4000L) ||
                 (dos && external and 0x10 != 0L && size == 0L)
             val lock = when {
                 flags and FLAG_ENCRYPTED == 0 -> if (method == METHOD_AES) Lock.UNSUPPORTED else Lock.NONE
@@ -350,7 +347,7 @@ internal object ZipReader {
             }
             raw += RawName(nameBytes, flags and 0x800 != 0, unicodePath)
             parsed += Parsed(
-                dos, directory, lock, if (method == METHOD_AES && aesMethod >= 0) aesMethod else method,
+                dos, folder, lock, if (method == METHOD_AES && aesMethod >= 0) aesMethod else method,
                 crc, compressed, size,
                 offset + end.shift, if (modified != 0L) modified else dosTime(date, time)
             )
@@ -360,11 +357,15 @@ internal object ZipReader {
         val decoded = ZipNames.read(raw, locale, codePage)
         val entries = parsed.indices.mapNotNull { i ->
             val e = parsed[i]
-            val path = normalise(decoded.names[i], e.dos)
+            val name = decoded.names[i]
+            val path = normalise(name, e.dos)
             if (path.isEmpty()) return@mapNotNull null
             ArchiveEntry(
                 path = path,
-                isDirectory = e.directory,
+                // Read off the decoded name, not its last byte: in Shift_JIS and Big5 that can
+                // be 0x5C, a backslash, as the second half of a character. 表 is 95 5C, and a
+                // file called 予定表 in a zip from Windows listed as an empty folder.
+                isDirectory = e.folder || name.endsWith('/') || (e.dos && name.endsWith('\\')),
                 modified = e.modified,
                 location = EntryLocation(e.offset, e.method, e.compressed, e.size, e.crc, e.lock),
             )
@@ -375,7 +376,8 @@ internal object ZipReader {
     /** What the index says about one entry, held until its name can be decoded. */
     private class Parsed(
         val dos: Boolean,
-        val directory: Boolean,
+        /** Whether its attributes say it is a folder. A name ending in a separator says so too. */
+        val folder: Boolean,
         val lock: Lock,
         val method: Int,
         val crc: Long,

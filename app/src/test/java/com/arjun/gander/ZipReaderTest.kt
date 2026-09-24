@@ -5,9 +5,11 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.Charset
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+import java.util.zip.CRC32
 import java.util.zip.ZipException
 import org.junit.After
 import org.junit.Assert.assertThrows
@@ -729,6 +731,55 @@ class ZipReaderTest {
             // The mark that would have turned the rest of the name round is shown for what it is
             "photo\uFFFDgpj.apk",
         ).inOrder()
+    }
+
+    /** A zip of one stored entry, written as given: a name in any code page, any host, any attributes. */
+    private fun oneEntry(
+        name: ByteArray,
+        data: ByteArray,
+        crc: Long = CRC32().apply { update(data) }.value,
+        size: Int = data.size,
+        flags: Int = 0,
+        madeBy: Int = 20,
+        external: Int = 0,
+    ): ByteArray {
+        val indexStart = 30 + name.size + data.size
+        val indexSize = 46 + name.size
+        return ByteBuffer.allocate(indexStart + indexSize + 22).order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(0x04034b50).putShort(20).putShort(flags.toShort()).putShort(0).putInt(0)
+            .putInt(crc.toInt()).putInt(data.size).putInt(size).putShort(name.size.toShort()).putShort(0)
+            .put(name).put(data)
+            .putInt(0x02014b50).putShort(madeBy.toShort()).putShort(20).putShort(flags.toShort()).putShort(0)
+            .putInt(0).putInt(crc.toInt()).putInt(data.size).putInt(size).putShort(name.size.toShort())
+            .putShort(0).putShort(0).putShort(0).putShort(0).putInt(external).putInt(0).put(name)
+            .putInt(0x06054b50).putShort(0).putShort(0).putShort(1).putShort(1)
+            .putInt(indexSize).putInt(indexStart).putShort(0)
+            .array()
+    }
+
+    /**
+     * A name's last byte can be 0x5C, a backslash, as the second half of a character in
+     * Shift_JIS or Big5: 表 is 95 5C. Read off that byte, a file called 予定表 in a zip from
+     * Windows, where a backslash at the end does make a folder, listed as an empty one.
+     */
+    @Test
+    fun aNameEndingInHalfACharacterThatIsABackslashIsNotAFolder() {
+        val shiftJis = Charset.forName("windows-31j")
+        val name = "予定表".toByteArray(shiftJis)
+        assertThat(name.last()).isEqualTo('\\'.code.toByte())
+        // Made on FAT, with the archive attribute Explorer gives every file
+        source(oneEntry(name, "hello".toByteArray(), madeBy = 0x0014, external = 0x20)).use { zip ->
+            val entry = ZipReader.entries(zip, Locale.JAPAN).single()
+            assertThat(entry.path).isEqualTo("予定表")
+            assertThat(entry.isDirectory).isFalse()
+            assertThat(zip.read(entry)).isEqualTo("hello".toByteArray())
+        }
+        // One that ends in a backslash of its own is still a folder
+        source(oneEntry("予定表\\".toByteArray(shiftJis), ByteArray(0), madeBy = 0x0014)).use { zip ->
+            val entry = ZipReader.entries(zip, Locale.JAPAN).single()
+            assertThat(entry.path).isEqualTo("予定表")
+            assertThat(entry.isDirectory).isTrue()
+        }
     }
 
     @Test
