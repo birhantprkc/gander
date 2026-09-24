@@ -443,7 +443,8 @@ function odtLabel(state, listStyle, level, counts) {
       for (var l = Math.max(1, level - show + 1); l <= level; l++) {
         var at = l === level ? node : odtLevelStyle(listStyle, l);
         var f = at ? odtAttr(at, "style", "num-format") : "1";
-        if (f) parts.push(vwProseNumber(counts[l] || 1, ODT_NUM_FORMATS[f] || "decimal"));
+        // A list can count from 0, so only a level with no count yet is taken as 1
+        if (f) parts.push(vwProseNumber(counts[l] != null ? counts[l] : 1, ODT_NUM_FORMATS[f] || "decimal"));
       }
       out.text = (odtAttr(node, "style", "num-prefix") || "") + parts.join(".") +
         (odtAttr(node, "style", "num-suffix") || "");

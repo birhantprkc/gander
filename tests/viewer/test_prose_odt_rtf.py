@@ -388,3 +388,24 @@ def test_a_row_repeated_a_million_times_is_not(viewer, page, made):
     rows = table_rows(page)
     assert 1 < len(rows) <= 10000
     assert paper_text(page).rstrip().endswith("After the table")
+
+
+# ------------------------------------------------------------------------------------
+# OpenDocument: lists and white space
+# ------------------------------------------------------------------------------------
+
+def labels(page):
+    return page.evaluate(
+        "() => [...document.querySelectorAll('.vw-paper .vw-label')].map(l => l.textContent.trim())"
+    )
+
+
+def test_a_list_can_count_from_zero(viewer, page, made):
+    """A list that starts at 0 read 1, 1, 2: a count of 0 was taken for no count at all."""
+    items = "".join(f"<text:list-item><text:p>{word}</text:p></text:list-item>"
+                    for word in ["zero", "one", "two"])
+    open_odt(viewer, page, made,
+             f'<text:list text:style-name="L1">{items}</text:list>',
+             automatic='<text:list-style style:name="L1"><text:list-level-style-number text:level="1"'
+                       ' style:num-format="1" style:num-suffix="." text:start-value="0"/></text:list-style>')
+    assert labels(page) == ["0.", "1.", "2."]
