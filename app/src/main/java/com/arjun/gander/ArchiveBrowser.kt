@@ -39,56 +39,80 @@ import java.util.concurrent.Executors
  */
 internal class ArchiveTree(private val entries: List<ArchiveEntry>) {
 
-    /** Folder path, "" for the top, to the names of the folders in it. */
-    private val folders = HashMap<String, MutableSet<String>>()
+    /**
+     * One folder: the folders in it by name, and its files as indexes into [entries]. Each
+     * folder holds its own name once, in the folder above, and never its whole path. Keyed by
+     * path, a name tens of thousands of folders deep kept every path on the way down to it,
+     * which is the square of its length: a zip of one 60 KB name asked for two gigabytes.
+     */
+    private class Folder {
+        val folders = LinkedHashMap<String, Folder>()
+        val files = ArrayList<Int>()
+    }
 
-    /** Folder path to the entries of the files in it, as indexes into [entries]. */
-    private val files = HashMap<String, MutableList<Int>>()
+    private val top = Folder()
+    private var count = 0
 
     init {
-        folders[""] = LinkedHashSet()
+        // Most files share a folder with the one before, so that one is kept to hand rather
+        // than walked down to again: walking to every file's folder was a third of the time
+        // a 100,000 entry archive took to list.
+        var lastPath = ""
+        var last = top
         entries.forEachIndexed { i, entry ->
             val path = entry.path
             if (path == MACOS_FORKS || path.startsWith("$MACOS_FORKS/")) return@forEachIndexed
             if (entry.isDirectory) {
-                addFolder(path)
+                walk(path, make = true)
             } else {
                 val parent = path.substringBeforeLast('/', "")
-                addFolder(parent)
-                files.getOrPut(parent) { ArrayList() }.add(i)
+                if (parent != lastPath) {
+                    last = walk(parent, make = true)!!
+                    lastPath = parent
+                }
+                last.files += i
             }
         }
     }
 
     /**
-     * [path] and every folder above it that is not there yet. Most files share a folder with the
-     * one before, so this is usually a single lookup; building every parent path for every file
-     * was a third of the time a 100,000 entry archive took to list. A loop and not recursion,
-     * since a name can be tens of thousands of folders deep.
+     * The folder at [path], "" for the top, a name at a time, making each one that is not
+     * there yet if [make] says so. A loop and not recursion, since a name can be tens of
+     * thousands of folders deep.
+     *
+     * Every folder made is counted against [MAX_FOLDERS]. An index holds up to 32 MB of
+     * names, and names that each start a chain of short folders of their own made millions of
+     * them, well past what a phone's heap holds; past the limit the archive is too large to
+     * list, as it is past ZipReader's own on entries.
      */
-    private fun addFolder(path: String) {
-        if (path in folders) return
-        val missing = ArrayList<String>()
-        var at = path
-        while (at !in folders) {
-            missing += at
-            at = at.substringBeforeLast('/', "")
-        }
-        for (folder in missing.asReversed()) {
-            folders.getValue(folder.substringBeforeLast('/', "")).add(folder.substringAfterLast('/'))
-            folders[folder] = LinkedHashSet()
+    private fun walk(path: String, make: Boolean): Folder? {
+        var at = top
+        if (path.isEmpty()) return at
+        var start = 0
+        while (true) {
+            val end = path.indexOf('/', start).let { if (it < 0) path.length else it }
+            val name = path.substring(start, end)
+            at = at.folders[name] ?: if (!make) {
+                return null
+            } else {
+                if (++count > MAX_FOLDERS) throw ZipReader.TooLarge()
+                Folder().also { at.folders[name] = it }
+            }
+            if (end == path.length) return at
+            start = end + 1
         }
     }
 
-    fun has(folder: String) = folder in folders
+    fun has(folder: String) = walk(folder, make = false) != null
 
     /**
      * The folders and files directly inside [folder], ordered and filtered exactly as the
      * folder browser orders and filters a folder on the phone, by the same function.
      */
     fun list(folder: String): Pair<List<String>, List<ArchiveEntry>> {
-        val children = folders[folder].orEmpty().map { ChildDoc(it, it, MIME_DIR, 0, 0) } +
-            files[folder].orEmpty().map { i ->
+        val at = walk(folder, make = false) ?: return emptyList<String>() to emptyList()
+        val children = at.folders.keys.map { ChildDoc(it, it, MIME_DIR, 0, 0) } +
+            at.files.map { i ->
                 val entry = entries[i]
                 ChildDoc(i.toString(), entry.name, "", entry.size, entry.modified)
             }
@@ -98,6 +122,9 @@ internal class ArchiveTree(private val entries: List<ArchiveEntry>) {
 
     private companion object {
         const val MACOS_FORKS = "__MACOSX"
+
+        /** As many folders as ZipReader lists entries, which no real archive comes near. */
+        const val MAX_FOLDERS = 200_000
     }
 }
 

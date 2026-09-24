@@ -1,0 +1,18 @@
+// Prints the Java the app's unit tests run on and their classpath, one a line, having built
+// what the classpath holds. fuzz.py starts ZipFuzz, which is compiled with those tests, as a
+// program on the two:
+//
+//     ./gradlew -q -I scripts/zip-fuzz/classpath.gradle :app:zipFuzzClasspath
+allprojects { project ->
+    project.plugins.withId("com.android.application") {
+        project.tasks.register("zipFuzzClasspath") { task ->
+            // Looked up when it runs: the Android plugin makes its test tasks after this
+            def test = { project.tasks.getByName("testDebugUnitTest") }
+            task.dependsOn { test().classpath }
+            task.doLast {
+                println test().javaLauncher.get().executablePath.asFile.absolutePath
+                println test().classpath.asPath
+            }
+        }
+    }
+}

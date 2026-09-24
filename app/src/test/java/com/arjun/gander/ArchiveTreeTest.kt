@@ -3,6 +3,7 @@ package com.arjun.gander
 import com.google.common.truth.Truth.assertThat
 import java.io.RandomAccessFile
 import java.util.Locale
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
@@ -24,6 +25,19 @@ class ArchiveTreeTest {
     private fun ArchiveTree.folders(path: String) = list(path).first
 
     private fun ArchiveTree.files(path: String) = list(path).second.map { it.name }
+
+    private fun file(path: String) = ArchiveEntry(path, false, 0, EntryLocation(0, 0, 0, 0, 0))
+
+    /**
+     * Bytes this thread has allocated. By reflection, since the tests compile against
+     * android.jar, which has no java.lang.management, and run on a JVM that has it.
+     */
+    private fun allocated(): Long {
+        val threads = Class.forName("java.lang.management.ManagementFactory")
+            .getMethod("getThreadMXBean").invoke(null)
+        return Class.forName("com.sun.management.ThreadMXBean")
+            .getMethod("getCurrentThreadAllocatedBytes").invoke(threads) as Long
+    }
 
     @Test
     fun theTopHoldsFoldersFirstThenFiles() {
@@ -80,5 +94,37 @@ class ArchiveTreeTest {
         assertThat(tree.has("nowhere")).isFalse()
         assertThat(tree.folders("nowhere")).isEmpty()
         assertThat(tree.files("nowhere")).isEmpty()
+    }
+
+    /**
+     * One name 30,000 folders deep, which is as deep as a zip's 64 KB name goes. Found by
+     * scripts/zip-fuzz: kept as paths, every folder on the way down held a path of its own,
+     * the square of the name's length, and listing this asked for two gigabytes.
+     */
+    @Test
+    fun aNameThirtyThousandFoldersDeepListsWithoutTheSquareOfItsLength() {
+        val folder = "a/".repeat(29_999) + "a"
+        val before = allocated()
+        val tree = ArchiveTree(listOf(file("$folder/f.txt")))
+        assertThat(allocated() - before).isLessThan(64L * 1024 * 1024)
+        assertThat(tree.has(folder)).isTrue()
+        assertThat(tree.files(folder)).containsExactly("f.txt")
+        assertThat(tree.folders("a/a")).containsExactly("a")
+    }
+
+    /**
+     * A thousand names, each starting a chain of 201 folders of its own: 201,000 folders, one
+     * past a limit no real archive comes near, and far short of what the same 32 MB index can
+     * make, which is millions. Refused as too large to list rather than filling the heap.
+     */
+    @Test
+    fun moreFoldersThanTheLimitIsTooLargeToList() {
+        val chain = "a/".repeat(200)
+        assertThrows(ZipReader.TooLarge::class.java) {
+            ArchiveTree((0 until 1000).map { file("d$it/${chain}f") })
+        }
+        // And one short of the limit still lists
+        val tree = ArchiveTree((0 until 995).map { file("d$it/${chain}f") })
+        assertThat(tree.files("d994/$chain".dropLast(1))).containsExactly("f")
     }
 }
