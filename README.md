@@ -62,16 +62,16 @@ It cannot phone home because it does not even hold the INTERNET permission.
 | Category | Formats | Renderer |
 | --- | --- | --- |
 | Documents | PDF | pdf.js, offline in a sandboxed WebView |
-| | Word `.docx` | docx-preview, offline in a sandboxed WebView |
+| | Word `.docx` `.docm` `.dotx` | docx-preview, offline in a sandboxed WebView |
 | | Word 97-2003 `.doc`, OpenDocument `.odt`, Rich Text `.rtf` | Gander's own readers, offline in a sandboxed WebView |
-| Spreadsheets | `.xlsx` `.xls` `.xlsm` `.xlsb` `.csv` `.ods` | SheetJS, offline |
-| Slides | PowerPoint `.pptx` | PPTXjs, offline |
+| Spreadsheets | `.xlsx` `.xls` `.xlsm` `.xlsb` `.xltx` `.csv` `.ods` | SheetJS, offline |
+| Slides | PowerPoint `.pptx` `.ppsx` `.pptm` `.potx` | PPTXjs, offline |
 | Photos | JPG, PNG, WebP, BMP, HEIC/HEIF | Tiled deep-zoom image view, EXIF aware |
 | | GIF (animated), SVG, AVIF, ICO | WebView |
 | Video | MP4, M4V, MOV, MKV, WebM, 3GP, AVI, FLV, MPEG-TS | Media3 ExoPlayer |
 | Audio | MP3, M4A, AAC, FLAC, WAV, OGG, Opus, AMR | Media3 ExoPlayer |
 | Markdown | `.md` rendered as formatted HTML | marked + DOMPurify, offline |
-| Text and code | `.txt` `.json` `.xml` logs, most source files | Text viewer |
+| Text and code | `.txt` `.json` `.xml` logs, subtitles (`.srt` `.vtt`), `.m3u` playlists, `.nfo`, most source files | Text viewer |
 | Archives | `.zip` | Listed like a folder, entries opened in place |
 
 A `.zip` opens as a list laid out like a folder, and each file in it opens in the viewer it

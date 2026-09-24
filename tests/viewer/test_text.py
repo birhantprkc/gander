@@ -5,6 +5,10 @@ binary, so it is read a page at a time.
 
 import json
 
+import pytest
+
+from helpers import wait_until_done
+
 VW_TEXT_PAGE = 5 * 1024 * 1024
 VW_JSON_MAX = 1024 * 1024
 
@@ -35,6 +39,26 @@ def test_an_accented_character_decodes(viewer, page):
     viewer("text.html", "plain.txt")
     wait_for_text(page)
     assert "café" in content(page)
+
+
+# ---------------------------------------------------------------------------
+# Text under other names, which FileKind sends here by extension
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "fixture", ["captions.srt", "captions.vtt", "playlist.m3u", "release.nfo"]
+)
+def test_subtitles_a_playlist_and_an_nfo_are_shown_as_written(
+    viewer, page, fixture_path, fixture
+):
+    """
+    Nothing is made of what they are: the timings, the playlist's tags and the
+    notes' layout all come through exactly as the file has them.
+    """
+    viewer("text.html", fixture)
+    wait_for_text(page)
+    wait_until_done(page)
+    assert content(page) == fixture_path(fixture).read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

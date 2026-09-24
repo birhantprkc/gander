@@ -18,7 +18,7 @@ Needs `reportlab python-docx openpyxl python-pptx pillow cryptography`.
 Three tiers read the same files: JVM and Robolectric tests take them as test
 resources, instrumented tests as assets in the test APK, and the Python viewer
 tests straight off disk. CI would otherwise need the whole Python document
-stack installed for the Android job as well. They come to about 150 KB.
+stack installed for the Android job as well. They come to about 500 KB.
 
 ## The rule about invented content
 
@@ -47,11 +47,17 @@ should stay obviously so.
 | `budget.xlsx` | Three sheets, so the sheet tabs have something to switch between. |
 | `budget.csv` | The same rows as the first sheet. Routes to the spreadsheet viewer, not the text one. |
 | `deck.pptx` | Three slides, for the PPTXjs completion poll. |
+| `report.docm`, `report.dotx` | Word's relatives: `report.docx` with its main part declared as a macro-enabled document's and as a template's, which is all that tells them apart. There are no macros in it. |
+| `budget.xltx` | `budget.xlsx` declared as an Excel template. |
+| `deck.ppsx`, `deck.pptm`, `deck.potx` | `deck.pptx` declared as a slide show, a macro-enabled presentation and a template. |
 | `notes.md` | Markdown rendering and DOMPurify: contains a `<script>` and an `onerror` that must not survive. |
 | `plain.txt` | Text viewer, UTF-8. |
 | `snapshot.json` | Issue #32. A .json file as they arrive, all on one line. Its id is 2<sup>53</sup>+1, the smallest whole number a double cannot hold, so laying it out by parsing and restringifying would round it and be caught. Carries an accent and an emoji, both inside strings the formatter copies through. |
 | `utf16le.txt`, `utf16be.txt` | `vwEncodingOf` byte order mark sniffing. The mark itself must not appear in the output. |
 | `unknown.xyz` | An extension nothing claims, so the unsupported page offers to read it as text. |
+| `captions.srt`, `captions.vtt` | The same two captions as SubRip and as WebVTT, which the text viewer shows as written. |
+| `playlist.m3u` | A playlist of tracks that are not there. Android labels it audio, and Gander shows it as text. |
+| `release.nfo` | The notes that come with a download, as text. |
 | `legacy.doc` | A Word 97 file written by hand: a compound file with its text in UTF-16, a bold run and a two-by-two table. LibreOffice opens it. |
 | `letter.odt` | The same document as OpenDocument: a heading style, a bold span, a bulleted list, a shaded table, a footnote, a picture, a page break and an A4 page with a header. |
 | `memo.rtf` | The same document as Rich Text, the way Word writes one: a code page, `\u` escapes for the Hindi, a Wingdings bullet, a footnote, a `\pngblip` picture and a page break. |

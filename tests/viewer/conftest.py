@@ -1,6 +1,8 @@
 """Fixtures shared by every viewer test."""
 
+import re
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -79,6 +81,24 @@ def made(tmp_path):
 @pytest.fixture
 def fixture_path():
     return lambda name: FIXTURES / name
+
+
+@pytest.fixture
+def main_part():
+    """
+    What an Office fixture's [Content_Types].xml declares its main part to be.
+
+    That one line is all that tells a template, a slide show or a macro-enabled
+    file from its format, so a test of one reads it off the file first rather
+    than trusting the name, and cannot quietly be testing a .docx renamed.
+
+        main_part("report.docm")
+    """
+    def read(name):
+        with zipfile.ZipFile(FIXTURES / name) as z:
+            types = z.read("[Content_Types].xml").decode("utf-8")
+        return re.findall(r'ContentType="([^"]+\.main\+xml)"', types)
+    return read
 
 
 @pytest.fixture(scope="session")

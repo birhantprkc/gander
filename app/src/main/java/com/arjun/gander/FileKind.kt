@@ -29,10 +29,15 @@ enum class FileKind(val page: String) {
     companion object {
         private val imageExt = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
         private val imageWebExt = setOf("gif", "svg", "avif", "ico")
-        private val wordExt = setOf("docx")
+
+        // Each Office format's relatives are its own package with the main part declared as
+        // something else: a template, a slide show, or a file allowed macros, which no viewer
+        // here runs. The renderers read them as they read the format itself, and
+        // tests/viewer opens one of each to prove it.
+        private val wordExt = setOf("docx", "docm", "dotx")
         private val proseExt = setOf("odt", "ott", "fodt", "rtf", "doc", "dot")
-        private val sheetExt = setOf("xlsx", "xls", "xlsm", "xlsb", "csv", "ods")
-        private val slideExt = setOf("pptx")
+        private val sheetExt = setOf("xlsx", "xls", "xlsm", "xlsb", "xltx", "csv", "ods")
+        private val slideExt = setOf("pptx", "ppsx", "pptm", "potx")
         private val mdExt = setOf("md", "markdown")
         private val archiveExt = setOf("zip")
         private val videoExt = setOf(
@@ -45,7 +50,11 @@ enum class FileKind(val page: String) {
             "txt", "log", "json", "xml", "yaml", "yml",
             "kt", "java", "py", "js", "ts", "html", "htm", "css", "sh", "zsh", "bash",
             "c", "cpp", "h", "hpp", "rs", "go", "rb", "php", "sql", "swift", "dart",
-            "gradle", "properties", "toml", "ini", "cfg", "conf", "tex", "r", "csv"
+            "gradle", "properties", "toml", "ini", "cfg", "conf", "tex", "r", "csv",
+            // Subtitles, a playlist and the notes that come with a download, all text under
+            // another name. The playlist is text even when it is labelled audio: see
+            // playlistMimes.
+            "srt", "vtt", "m3u", "nfo"
         )
 
         private const val MIME_DOCX =
@@ -64,9 +73,52 @@ enum class FileKind(val page: String) {
         /** What Windows calls a zip, and so what one attached on Windows often arrives as. */
         private const val MIME_ZIP_WINDOWS = "application/x-zip-compressed"
 
+        // The Office relatives by type, written in lower case because that is how route()
+        // compares: see detect().
+        private val wordMimes = setOf(
+            MIME_DOCX,
+            "application/vnd.ms-word.document.macroenabled.12",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+        )
+        private val sheetMimes = setOf(
+            MIME_XLSX,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+            "application/vnd.ms-excel",
+            "text/csv",
+            MIME_ODS,
+        )
+        private val slideMimes = setOf(
+            MIME_PPTX,
+            "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+            "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+            "application/vnd.openxmlformats-officedocument.presentationml.template",
+        )
+
+        /** Text whose type is not text/. SubRip's is the one Android 10 and later give a .srt. */
+        private val textMimes = setOf("application/json", "application/xml", "application/x-subrip")
+
+        /**
+         * An .m3u playlist, which Android labels as audio. It is a list of where its tracks
+         * are, as paths beside it or as links, and the player can follow neither: Gander
+         * holds a grant for the playlist alone and has no network. So one that arrives with
+         * no extension opens as text too, which at least lists what was on it.
+         */
+        private val playlistMimes = setOf("audio/x-mpegurl", "audio/mpegurl")
+
         fun isAudioExt(ext: String) = ext in audioExt
 
-        fun detect(ext: String, mime: String?): FileKind = when {
+        /**
+         * Where a file goes: by its extension, and failing that by the type its provider gave.
+         *
+         * The type is lowercased first. MIME types are case-insensitive, and the spellings
+         * that reach Gander differ: Android 10 and later report every type in lower case,
+         * while the registered one for a .docm or a .pptm says macroEnabled, and an app that
+         * passes on the type a file was sent with can hand over either. That is also why the
+         * manifest, whose matching is case-sensitive, claims those two in both spellings.
+         */
+        fun detect(ext: String, mime: String?): FileKind = route(ext, mime?.lowercase())
+
+        private fun route(ext: String, mime: String?): FileKind = when {
             // .ts is TypeScript unless the provider says it is a video container
             ext == "ts" && mime?.startsWith("video/") == true -> PLAYER
             ext in imageExt -> IMAGE
@@ -81,16 +133,17 @@ enum class FileKind(val page: String) {
             ext in textExt -> TEXT
             ext in archiveExt -> ARCHIVE
             mime == "application/pdf" -> PDF
+            // Ahead of the audio branch, which would otherwise take it
+            mime in playlistMimes -> TEXT
             mime?.startsWith("video/") == true || mime?.startsWith("audio/") == true -> PLAYER
-            mime == MIME_DOCX -> DOCX
+            mime in wordMimes -> DOCX
             mime in proseMimes -> PROSE
-            mime == MIME_XLSX || mime == "application/vnd.ms-excel" ||
-                mime == "text/csv" || mime == MIME_ODS -> XLSX
-            mime == MIME_PPTX -> PPTX
+            mime in sheetMimes -> XLSX
+            mime in slideMimes -> PPTX
             mime == MIME_ZIP || mime == MIME_ZIP_WINDOWS -> ARCHIVE
             mime?.startsWith("image/") == true -> IMAGE_WEB
             mime?.startsWith("text/") == true -> TEXT
-            mime == "application/json" || mime == "application/xml" -> TEXT
+            mime in textMimes -> TEXT
             else -> UNSUPPORTED
         }
     }

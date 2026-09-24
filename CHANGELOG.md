@@ -12,6 +12,12 @@
   rest of the file as soon as you show more of it. It used to report nothing it had not drawn,
   as if it had looked.
 
+- Gander opens more of Office's formats, each in the viewer its family already had: Word's
+  macro-enabled documents and templates (.docm, .dotx), Excel templates (.xltx), and PowerPoint
+  slide shows, macro-enabled presentations and templates (.ppsx, .pptm, .potx). Macros are never
+  run. Subtitles (.srt, .vtt), .m3u playlists and .nfo files open as text. A playlist used to go
+  to the player, which could reach none of the tracks on it, and now shows the list.
+
 - In night mode, everything around a PDF goes dark with the page, on a phone set to light as
   well: the bar with the file's name, the strips at the top and bottom of the screen, the search
   bar, the menu, and the Go to page box. They used to stay light, which put bright bars around a

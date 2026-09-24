@@ -52,6 +52,9 @@ class FileKindTest {
 
             "docx" to DOCX,
 
+            // Word's relatives: the same package with the main part declared otherwise
+            "docm" to DOCX, "dotx" to DOCX,
+
             // Read by Gander's own readers, issues #4 and #13; the page asks the bytes
             "odt" to PROSE, "ott" to PROSE, "fodt" to PROSE, "rtf" to PROSE,
             "doc" to PROSE, "dot" to PROSE,
@@ -59,9 +62,9 @@ class FileKindTest {
             // Spreadsheets. csv is here and not in the text list: see
             // csvIsASpreadsheetBecauseSheetsAreCheckedFirst below.
             "xlsx" to XLSX, "xls" to XLSX, "xlsm" to XLSX, "xlsb" to XLSX,
-            "csv" to XLSX, "ods" to XLSX,
+            "xltx" to XLSX, "csv" to XLSX, "ods" to XLSX,
 
-            "pptx" to PPTX,
+            "pptx" to PPTX, "ppsx" to PPTX, "pptm" to PPTX, "potx" to PPTX,
 
             "md" to MD, "markdown" to MD,
 
@@ -77,6 +80,9 @@ class FileKindTest {
             "ini" to TEXT, "cfg" to TEXT, "conf" to TEXT, "tex" to TEXT,
             "r" to TEXT,
 
+            // Text under other names: subtitles, a playlist, a download's notes
+            "srt" to TEXT, "vtt" to TEXT, "m3u" to TEXT, "nfo" to TEXT,
+
             // Listed rather than drawn, issue #30
             "zip" to ARCHIVE,
         )
@@ -88,6 +94,8 @@ class FileKindTest {
         const val MIME_PPTX =
             "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         const val MIME_ODS = "application/vnd.oasis.opendocument.spreadsheet"
+        const val MIME_DOCM = "application/vnd.ms-word.document.macroEnabled.12"
+        const val MIME_PPTM = "application/vnd.ms-powerpoint.presentation.macroEnabled.12"
     }
 
     @Test
@@ -99,8 +107,8 @@ class FileKindTest {
 
     /** A count, so a silently deleted table row is noticed. */
     @Test
-    fun theTableCoversEightyFiveExtensions() {
-        assertThat(EXPECTED).hasSize(85)
+    fun theTableCoversNinetyFiveExtensions() {
+        assertThat(EXPECTED).hasSize(95)
     }
 
     @Test
@@ -162,19 +170,28 @@ class FileKindTest {
             "video/mp4" to PLAYER,
             "audio/mpeg" to PLAYER,
             MIME_DOCX to DOCX,
+            MIME_DOCM to DOCX,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.template" to DOCX,
             "application/vnd.oasis.opendocument.text" to PROSE,
             "application/msword" to PROSE,
             "application/rtf" to PROSE,
             "text/rtf" to PROSE,
             MIME_XLSX to XLSX,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.template" to XLSX,
             "application/vnd.ms-excel" to XLSX,
             "text/csv" to XLSX,
             MIME_ODS to XLSX,
             MIME_PPTX to PPTX,
+            "application/vnd.openxmlformats-officedocument.presentationml.slideshow" to PPTX,
+            MIME_PPTM to PPTX,
+            "application/vnd.openxmlformats-officedocument.presentationml.template" to PPTX,
             "image/png" to IMAGE_WEB,
             "text/plain" to TEXT,
             "application/json" to TEXT,
             "application/xml" to TEXT,
+            "application/x-subrip" to TEXT,
+            "text/vtt" to TEXT,
+            "text/x-nfo" to TEXT,
             "application/zip" to ARCHIVE,
             "application/x-zip-compressed" to ARCHIVE,
         )
@@ -197,6 +214,47 @@ class FileKindTest {
     fun openDocumentSpreadsheetsRouteByMimeAsWellAsByExtension() {
         assertThat(FileKind.detect("ods", null)).isEqualTo(XLSX)
         assertThat(FileKind.detect("", MIME_ODS)).isEqualTo(XLSX)
+    }
+
+    /**
+     * Android 10 and later report every type in lower case, while the registered spelling
+     * of the macro-enabled Office types has capitals in it, and an app can pass that on as
+     * it was given. Either has to reach the same viewer, and so does any other type in a
+     * case nobody expected.
+     */
+    @Test
+    fun aTypeRoutesWhateverItsCase() {
+        assertThat(FileKind.detect("", MIME_DOCM)).isEqualTo(DOCX)
+        assertThat(FileKind.detect("", MIME_DOCM.lowercase())).isEqualTo(DOCX)
+        assertThat(FileKind.detect("", MIME_PPTM)).isEqualTo(PPTX)
+        assertThat(FileKind.detect("", MIME_PPTM.lowercase())).isEqualTo(PPTX)
+        assertThat(FileKind.detect("", "Application/PDF")).isEqualTo(PDF)
+    }
+
+    /**
+     * An .m3u is labelled audio by Android, and by name it is text all the same, because
+     * the extension is asked before the type, as everywhere else. The last case is a type
+     * that is not a playlist's at all, so that nothing but the extension can decide it.
+     */
+    @Test
+    fun anM3uIsTextWhateverItIsLabelled() {
+        assertThat(FileKind.detect("m3u", "audio/x-mpegurl")).isEqualTo(TEXT)
+        assertThat(FileKind.detect("m3u", "audio/mpegurl")).isEqualTo(TEXT)
+        assertThat(FileKind.detect("m3u", "audio/mpeg")).isEqualTo(TEXT)
+    }
+
+    /**
+     * With no name to go on, a playlist's type still says audio. The player can only fail
+     * on one, since its tracks are paths and links Gander cannot follow, so the two playlist
+     * types are taken out ahead of the audio branch, and nothing else that says audio is.
+     */
+    @Test
+    fun aPlaylistWithNoExtensionIsTextAndOtherAudioIsNot() {
+        assertThat(FileKind.detect("", "audio/x-mpegurl")).isEqualTo(TEXT)
+        assertThat(FileKind.detect("", "audio/mpegurl")).isEqualTo(TEXT)
+        assertThat(FileKind.detect("", "AUDIO/X-MPEGURL")).isEqualTo(TEXT)
+        assertThat(FileKind.detect("", "audio/mpeg")).isEqualTo(PLAYER)
+        assertThat(FileKind.detect("", "audio/x-wav")).isEqualTo(PLAYER)
     }
 
     @Test

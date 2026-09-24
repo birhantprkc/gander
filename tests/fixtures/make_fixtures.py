@@ -507,6 +507,53 @@ def pptx() -> None:
     written(OUT / "deck.pptx")
 
 
+# What [Content_Types].xml declares each format's main part to be. The rest of a
+# package is the same across a family, so this one line is all that tells a
+# template, a slide show or a macro-enabled file from its format, and a reader
+# that looks its main part up by type is the one that would refuse it.
+MAIN_PARTS = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+    "docm": "application/vnd.ms-word.document.macroEnabled.main+xml",
+    "dotx": "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+    "xltx": "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
+    "ppsx": "application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml",
+    "pptm": "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml",
+    "potx": "application/vnd.openxmlformats-officedocument.presentationml.template.main+xml",
+}
+
+
+def retyped(source: str, ext: str) -> None:
+    """Writes the fixture [source] again as .[ext], its main part declared as that format's.
+
+    Nothing else changes. A .docm or a .pptm with macros in it carries them as a
+    part of their own as well, which no viewer here reads, so none is invented.
+    """
+    stem, was = source.rsplit(".", 1)
+    old, new = MAIN_PARTS[was].encode(), MAIN_PARTS[ext].encode()
+    target = OUT / f"{stem}.{ext}"
+    with zipfile.ZipFile(OUT / source) as z:
+        items = [(i.filename, z.read(i.filename)) for i in z.infolist()]
+    with zipfile.ZipFile(target, "w") as z:
+        for name, data in items:
+            if name == "[Content_Types].xml":
+                assert data.count(old) == 1, f"{source} does not declare its main part once"
+                data = data.replace(old, new)
+            z.writestr(name, data)
+    normalize_zip(target)
+    written(target)
+
+
+def relatives() -> None:
+    """One of each Office format's relatives, made from the fixtures above."""
+    for ext in ("docm", "dotx"):
+        retyped("report.docx", ext)
+    retyped("budget.xlsx", "xltx")
+    for ext in ("ppsx", "pptm", "potx"):
+        retyped("deck.pptx", ext)
+
+
 # ---------------------------------------------------------------------------
 # Text
 # ---------------------------------------------------------------------------
@@ -564,6 +611,49 @@ Text after the injected markup, so the sanitiser can be seen to have kept it.
     # An extension nothing claims, so the viewer offers to read it as text.
     (OUT / "unknown.xyz").write_bytes(bytes(range(32, 127)) * 4 + b"\n")
     written(OUT / "unknown.xyz")
+
+    # Text under other names, which the text viewer shows as it is: subtitles
+    # as SubRip and as WebVTT, a playlist of tracks that are not here, as one
+    # always arrives, and the notes that come with a download.
+    captions = [
+        ("00:00:01", "000", "00:00:03", "500", "The ferry leaves Willowmere at nine."),
+        ("00:00:04", "000", "00:00:06", "250", "Bring the survey maps, and a coat."),
+    ]
+    srt = "\n".join(
+        f"{n}\n{a},{ams} --> {b},{bms}\n{line}\n"
+        for n, (a, ams, b, bms, line) in enumerate(captions, start=1)
+    )
+    (OUT / "captions.srt").write_text(srt, encoding="utf-8")
+    written(OUT / "captions.srt")
+    vtt = "WEBVTT\n\n" + "\n".join(
+        f"{a}.{ams} --> {b}.{bms}\n{line}\n" for a, ams, b, bms, line in captions
+    )
+    (OUT / "captions.vtt").write_text(vtt, encoding="utf-8")
+    written(OUT / "captions.vtt")
+
+    playlist = (
+        "#EXTM3U\n"
+        "#EXTINF:187,Willowmere Field Recordings - Rain on the Survey Hut\n"
+        "Music/Willowmere/01 Rain on the Survey Hut.mp3\n"
+        "#EXTINF:204,Willowmere Field Recordings - The Drainage Ditch at Dusk\n"
+        "Music/Willowmere/02 The Drainage Ditch at Dusk.mp3\n"
+    )
+    (OUT / "playlist.m3u").write_text(playlist, encoding="utf-8")
+    written(OUT / "playlist.m3u")
+
+    nfo = (
+        "  WILLOWMERE FIELD RECORDINGS\n"
+        "  ---------------------------\n"
+        "\n"
+        "  Recorded ....: January 2026\n"
+        "  Tracks ......: 2\n"
+        "  Format ......: MP3, 192 kbps\n"
+        "\n"
+        "  Two recordings made up for a test, so that the text\n"
+        "  viewer has something to show. None of it is real.\n"
+    )
+    (OUT / "release.nfo").write_text(nfo, encoding="utf-8")
+    written(OUT / "release.nfo")
 
 
 
@@ -1587,7 +1677,8 @@ def prose() -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, texts, images, audio, zips, prose):
+    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, relatives, texts, images, audio,
+                 zips, prose):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
     count = sum(1 for p in OUT.iterdir() if p.is_file())
