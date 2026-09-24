@@ -82,6 +82,12 @@ class ViewerActivityTest {
     private fun ActivityController<ViewerActivity>.loadedUrl(): String =
         shadowOf(webView()!!).lastLoadedUrl
 
+    /** The viewer page a file was given, or that it was given none and went to a native view. */
+    private fun ActivityController<ViewerActivity>.pageName(): String {
+        val web = webView() ?: return "a native view"
+        return shadowOf(web).lastLoadedUrl.substringAfter("viewer/").substringBefore('?')
+    }
+
     // ---------------------------------------------------------------
     // Which surface a file gets
     // ---------------------------------------------------------------
@@ -110,6 +116,40 @@ class ViewerActivityTest {
             assertThat("$fixture -> ${url.substringAfter("viewer/").substringBefore('?')}")
                 .isEqualTo("$fixture -> $page")
         }
+    }
+
+    /**
+     * Opened with the type Android gives each extension, as a file manager opens them. For
+     * the playlist that type is audio, and it still gets the text viewer rather than the
+     * player.
+     */
+    @Test
+    fun theOfficeRelativesAndTextUnderOtherNamesGetTheirFormatsPage() {
+        mapOf(
+            "report.docm" to "docx.html",
+            "report.dotx" to "docx.html",
+            "budget.xltx" to "xlsx.html",
+            "deck.ppsx" to "pptx.html",
+            "deck.pptm" to "pptx.html",
+            "deck.potx" to "pptx.html",
+            "captions.srt" to "text.html",
+            "captions.vtt" to "text.html",
+            "playlist.m3u" to "text.html",
+            "release.nfo" to "text.html",
+        ).forEach { (fixture, page) ->
+            assertThat("$fixture -> ${open(fixture).pageName()}").isEqualTo("$fixture -> $page")
+        }
+    }
+
+    /**
+     * A playlist whose name has lost its extension still arrives labelled audio, and is shown
+     * as text rather than handed to a player that could follow none of its entries.
+     */
+    @Test
+    fun aPlaylistWithNoExtensionIsShownAsText() {
+        val uri = FixtureProvider.uriNamed("playlist.m3u", "playlist")
+        assertThat(context.contentResolver.getType(uri)).isEqualTo("audio/x-mpegurl")
+        assertThat(view(uri).pageName()).isEqualTo("text.html")
     }
 
     /** A photo gets the tiling view, not a WebView. */

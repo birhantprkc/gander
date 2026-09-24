@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,6 +32,12 @@ class FormatRegistryTest {
 
     private companion object {
         val MANIFEST = File("src/main/AndroidManifest.xml").readText()
+
+        /** The two Office types whose registered spelling is not all lower case. */
+        val MACRO_ENABLED = mapOf(
+            "application/vnd.ms-word.document.macroEnabled.12" to FileKind.DOCX,
+            "application/vnd.ms-powerpoint.presentation.macroEnabled.12" to FileKind.PPTX,
+        )
 
         /** Every mimeType the manifest claims, in declaration order with duplicates. */
         fun claimedMimes(): List<String> =
@@ -151,10 +158,37 @@ class FormatRegistryTest {
             "application/vnd.ms-excel" to FileKind.XLSX,
             "application/zip" to FileKind.ARCHIVE,
             "application/x-zip-compressed" to FileKind.ARCHIVE,
-        )
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.template"
+                to FileKind.DOCX,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.template"
+                to FileKind.XLSX,
+            "application/vnd.openxmlformats-officedocument.presentationml.slideshow"
+                to FileKind.PPTX,
+            "application/vnd.openxmlformats-officedocument.presentationml.template"
+                to FileKind.PPTX,
+            "application/x-subrip" to FileKind.TEXT,
+        ) + MACRO_ENABLED.flatMap { (mime, kind) ->
+            listOf(mime to kind, mime.lowercase() to kind)
+        }
         shouldBeOffered.forEach { (mime, kind) ->
             assertThat("$mime claimed: ${mime in claimed}").isEqualTo("$mime claimed: true")
             assertThat(FileKind.detect("", mime)).isEqualTo(kind)
+        }
+    }
+
+    /**
+     * A filter matches a type exactly, case and all. Android 10 and later report a .docm or
+     * a .pptm in lower case, and the registered spelling says macroEnabled, so each is
+     * claimed both ways. Without one of the two lines Gander is missing from the chooser for
+     * whichever spelling that was, in the one place nothing else would notice.
+     */
+    @Test
+    fun theMacroEnabledTypesAreOfferedInBothSpellings() {
+        MACRO_ENABLED.keys.flatMap { listOf(it, it.lowercase()) }.forEach { mime ->
+            listOf(Intent.ACTION_VIEW, Intent.ACTION_SEND).forEach { action ->
+                assertWithMessage("$action offers the viewer for $mime")
+                    .that(resolves(action, mime)).isTrue()
+            }
         }
     }
 
