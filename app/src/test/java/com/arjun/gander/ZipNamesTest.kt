@@ -150,8 +150,9 @@ class ZipNamesTest {
      * and everyday Chinese or Japanese one. "Größe.xlsx" came out "Gr批e.xlsx" and "Año
      * 2024.xlsx" came out "A寸 2024.xlsx", on every phone but a Turkish or Central European
      * one, because both readings are made of characters people write and the tie went by the
-     * order of the candidates. What gives it away is again where they sit: alone against a
-     * word of English letters, where these languages are written in runs of their own.
+     * order of the candidates. What gives it away is again where they sit, alone against a
+     * word of English letters, and that the character's own bytes still spell the accented
+     * letter and the one after it when read the Western way.
      */
     @Test
     fun aWesternNameFromWindowsIsNotReadAsChineseOrJapanese() {
@@ -166,6 +167,22 @@ class ZipNamesTest {
         }
     }
 
+    /**
+     * And in the shapes file names take. An underscore after a word's last letter can be the
+     * second half of a character, and a rule that counted only a letter after the accented one
+     * read the first two as "Pi誉bello.txt" and "Irm鑰2024.jpg". Words run together put a
+     * capital straight after a small letter, and a rule that counted no capital there read the
+     * third as "Malm認oto.jpg".
+     */
+    @Test
+    fun aWesternNameWithAnUnderscoreOrRunTogetherIsNotReadAsChineseOrJapanese() {
+        listOf(english, chinese, japanese, korean, taiwan).forEach { locale ->
+            listOf("Più_bello.txt", "Irmã_2024.jpg", "MalmöFoto.jpg").forEach { name ->
+                assertThat(decode(listOf(name), "IBM850", locale)).containsExactly(name)
+            }
+        }
+    }
+
     /** And a name that really is written in one of them still reads as itself on those phones. */
     @Test
     fun aNameThatIsReallyCjkStillReadsAsItself() {
@@ -174,6 +191,43 @@ class ZipNamesTest {
             assertThat(decode(listOf("会議資料.docx"), "windows-31j", locale)).containsExactly("会議資料.docx")
             assertThat(decode(listOf("iPhone写真.jpg"), "windows-31j", locale)).containsExactly("iPhone写真.jpg")
             assertThat(decode(listOf("工作总结.docx"), "GBK", locale)).containsExactly("工作总结.docx")
+        }
+    }
+
+    /**
+     * One character against an English word is how a great many real names are written: an
+     * edition, a file, a plan, a proposal. Where it stood was once the whole test for a
+     * Western name misread, and these came out as whatever else their bytes spell, even on a
+     * phone set to their own language: "PDF░ц.pdf", "WordАЙ.docx". What tells them apart is
+     * that their bytes do not spell an accented letter in its word when read the Western way.
+     */
+    @Test
+    fun oneCharacterAgainstAnEnglishWordStillReadsAsItself() {
+        listOf(english, chinese, japanese, korean).forEach { locale ->
+            assertThat(decode(listOf("Word檔.docx"), "Big5", locale)).containsExactly("Word檔.docx")
+            assertThat(decode(listOf("B안.docx"), "x-windows-949", locale)).containsExactly("B안.docx")
+            assertThat(decode(listOf("A案.pptx"), "windows-31j", locale)).containsExactly("A案.pptx")
+        }
+        // Not on a Korean phone, where the same two bytes are 경, a syllable as everyday as 版
+        // is a character, and one name leaves the phone's language to settle it
+        listOf(english, chinese, japanese).forEach { locale ->
+            assertThat(decode(listOf("PDF版.pdf"), "GBK", locale)).containsExactly("PDF版.pdf")
+        }
+    }
+
+    /**
+     * Read the Western way, each of these characters is two letters, "AÄð", "Webùp", "ITòö" and
+     * "WordãÃ", but not as any word has them: a capital then a small letter in a word of
+     * capitals, a grave u before another letter, a small letter after a word of capitals, and
+     * a small letter then an accented capital.
+     */
+    @Test
+    fun oneCharacterWhoseBytesAreLettersOutOfPlaceStillReadsAsItself() {
+        listOf(english, chinese, japanese, korean).forEach { locale ->
+            listOf("A社.pdf", "Web用.docx", "IT部.xlsx").forEach { name ->
+                assertThat(decode(listOf(name), "windows-31j", locale)).containsExactly(name)
+            }
+            assertThat(decode(listOf("Word판.docx"), "x-windows-949", locale)).containsExactly("Word판.docx")
         }
     }
 

@@ -62,8 +62,8 @@ internal class DecodedNames(
  * Western Europe and those same code pages are the other such pair, the other way about. An
  * accented letter and the letter beside it are two bytes, and two bytes are one character of a
  * language written that way, so "Größe.xlsx" reads as "Gr批e.xlsx" as readily as itself, out of
- * characters just as everyday. What separates those two is where the character sits: see
- * [wedgedAgainstAnAsciiWord].
+ * characters just as everyday. What separates those two is where the character sits and what its
+ * bytes spell read the Western way: see [westernLetterPairedUp].
  *
  * A guess can still be wrong, most of all for an archive of one short name, so the reader
  * can also say which code page it is: [CHOICES].
@@ -307,13 +307,14 @@ internal object ZipNames {
             val width = Character.charCount(cp)
             if (cp >= 0x80) {
                 counted++
+                val own = if (c.script.doubleByte) encode(encoder, text, i, width) else null
                 sum += when {
-                    c.script.doubleByte && wedgedAgainstAnAsciiWord(text, i, width) -> 0.0
+                    own != null && westernLetterPairedUp(text, i, width, own) -> 0.0
                     else -> when (c.script) {
-                        Script.GB -> gb(cp, encode(encoder, text, i, width))
-                        Script.BIG5 -> big5(cp, encode(encoder, text, i, width))
-                        Script.SJIS -> sjis(cp, encode(encoder, text, i, width))
-                        Script.KOREAN -> korean(cp, encode(encoder, text, i, width))
+                        Script.GB -> gb(cp, own)
+                        Script.BIG5 -> big5(cp, own)
+                        Script.SJIS -> sjis(cp, own)
+                        Script.KOREAN -> korean(cp, own)
                         Script.CYRILLIC -> letterOf(Character.UnicodeScript.CYRILLIC, cp, text, i, width)
                         Script.GREEK -> letterOf(Character.UnicodeScript.GREEK, cp, text, i, width)
                         Script.LATIN -> latin(cp)
@@ -325,15 +326,72 @@ internal object ZipNames {
         return if (counted == 0) 0.0 else sum / counted
     }
 
+    /** IBM850 and IBM437, the code pages a Western name from Windows is in; see [westernLetterPairedUp]. */
+    private val WESTERN_READINGS = listOfNotNull(DOS_WESTERN.charset, DOS_US.charset)
+
+    /**
+     * Whether the character at [at], which is [own] in its code page, is what a Western name's
+     * accented letter becomes when the name is read two bytes to a character.
+     *
+     * The accented letter pairs up with the letter after it, and "Größe" comes out as "Gr批e",
+     * "Año" as "A寸": characters as everyday as the letters, so the two readings score the same,
+     * and the tie went to the one nobody wrote. It takes two things to give such a character
+     * away. It stands alone against a word of ASCII letters, see [wedgedAgainstAnAsciiWord], and
+     * its own bytes, read one to a character in IBM850 or IBM437, spell an accented letter and
+     * what follows one in a word, see [spellsWestern]. The first alone was the whole test once,
+     * and a great many real names put one character against an English word: "PDF版.pdf",
+     * "Word檔.docx", "B안.docx" and "A社.pdf" all came out as whatever else their bytes spell,
+     * even on phones set to their own language.
+     */
+    private fun westernLetterPairedUp(text: String, at: Int, width: Int, own: ByteArray): Boolean =
+        wedgedAgainstAnAsciiWord(text, at, width) &&
+            WESTERN_READINGS.any { spellsWestern(String(own, it), text, at) }
+
+    /**
+     * Whether [letters], a character's bytes read one to a character, could be an accented
+     * letter and what came after it in a Western name, standing where [at] does in [text].
+     *
+     * The first has to be a letter, and the second a letter, or the underscore that can follow
+     * a word's last letter: "Più_bello". Then the two have to sit in their word the way letters
+     * do, in its case, which is where most real names that get that far give themselves away.
+     * A capital can start a new word anywhere, as in camel case, so only what no word does is
+     * ruled out.
+     */
+    private fun spellsWestern(letters: String, text: String, at: Int): Boolean {
+        if (letters.isEmpty() || letters.length > 2) return false
+        val first = letters[0]
+        val second = letters.getOrNull(1)
+        if (!casedLatin(first)) return false
+        if (second != null && !casedLatin(second) && second != '_') return false
+        // Italian and French put a grave on u and i only at the end of a word: "Webùp" is Web用
+        if (first in "ùì" && second?.isLowerCase() == true) return false
+        val before = text.getOrNull(at - 1)?.takeIf(::isAsciiLetter)
+        val inCapitals = before?.isUpperCase() == true &&
+            text.getOrNull(at - 2)?.let { isAsciiLetter(it) && it.isUpperCase() } == true
+        return when {
+            // A small letter straight after a word in capitals: "ITòö" is IT部
+            first.isLowerCase() && inCapitals -> false
+            // A capital then a small letter, the capital after another: "AÄð" is A社
+            first.isUpperCase() && second?.isLowerCase() == true && before?.isUpperCase() == true -> false
+            // A small letter then an accented capital: "WordãÃ" is Word판
+            first.isLowerCase() && second != null && second.code >= 0x80 && second.isUpperCase() -> false
+            else -> true
+        }
+    }
+
+    /** A letter of the Latin alphabet with a capital and a small form, which leaves out ª and º. */
+    private fun casedLatin(c: Char): Boolean =
+        (c.category == CharCategory.UPPERCASE_LETTER || c.category == CharCategory.LOWERCASE_LETTER) &&
+            Character.UnicodeScript.of(c.code) == Character.UnicodeScript.LATIN
+
+    private fun isAsciiLetter(c: Char): Boolean = c.code < 0x80 && c.isLetter()
+
     /**
      * Whether the character at [at] stands alone against a word of ASCII letters.
      *
-     * That is what a Western name's accented letter becomes when the name is read two bytes to
-     * a character: it pairs up with the letter beside it, and "Größe" comes out as "Gr批e",
-     * "Año" as "A寸". These languages are written in runs of their own characters, so one of
-     * them alone against an English word is a reading nobody wrote, however everyday the
-     * character itself is. Otherwise the two readings score the same, and the tie went to the
-     * one nobody wrote.
+     * That is where a Western name's accented letter lands when the name is read two bytes to a
+     * character, see [westernLetterPairedUp]. It is also where a real name in any of these
+     * languages puts one character against an English word, so it is not enough on its own.
      */
     private fun wedgedAgainstAnAsciiWord(text: String, at: Int, width: Int): Boolean {
         val before = text.getOrNull(at - 1)
