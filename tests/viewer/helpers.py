@@ -72,6 +72,20 @@ def status_visible(page):
     )
 
 
+def wait_until_done(page, timeout=20000):
+    """
+    Waits for the status card to go, which the Office and text pages take down
+    only once the document is drawn. A failure leaves it up with the error in
+    it instead, so text on the page alone does not prove the page got to the end.
+    """
+    page.wait_for_function(
+        "() => { const e = document.getElementById('vw-status');"
+        "return !e || getComputedStyle(e).display === 'none'; }",
+        timeout=timeout,
+    )
+    return page
+
+
 def text_layer(page):
     return page.evaluate(
         "() => [...document.querySelectorAll('#pages .pg .textLayer')]"

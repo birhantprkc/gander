@@ -1,6 +1,8 @@
 """docx.html: docx-preview, plus the private-use bullet fix."""
 
-from helpers import status_text
+import pytest
+
+from helpers import status_text, wait_until_done
 
 
 def wait_for_document(page, timeout=25000):
@@ -46,6 +48,34 @@ def test_the_text_around_the_bullet_is_untouched(viewer, page):
     wait_for_document(page)
     assert "A bullet that arrives as a private use codepoint." \
         in page.text_content("#container")
+
+
+# ---------------------------------------------------------------------------
+# Word's relatives, which FileKind sends here by extension
+# ---------------------------------------------------------------------------
+
+WORD_RELATIVES = {
+    "report.docm": "application/vnd.ms-word.document.macroEnabled.main+xml",
+    "report.dotx": "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+}
+
+
+@pytest.mark.parametrize("fixture", sorted(WORD_RELATIVES))
+def test_a_macro_enabled_document_and_a_template_render_as_a_docx_does(
+    viewer, page, main_part, fixture
+):
+    """
+    Each is report.docx with its main part declared as its own format's, which
+    is all that tells them apart. docx-preview reaches that part through the
+    package's relationships and never asks what it was declared as.
+    """
+    assert main_part(fixture) == [WORD_RELATIVES[fixture]]
+    viewer("docx.html", fixture)
+    wait_for_document(page)
+    wait_until_done(page)
+    text = page.text_content("#container")
+    assert "Field Survey, Willowmere" in text
+    assert text.index("A short report") < text.index("The paragraph after it")
 
 
 # ---------------------------------------------------------------------------
