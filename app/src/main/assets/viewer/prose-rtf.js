@@ -18,11 +18,11 @@
  * shows the numbers its writer worked out and they cannot come out wrong.
  *
  * What is drawn: character and paragraph formatting, headings, lists, tables with
- * merged cells, borders and shading, PNG and JPEG pictures, footnotes and endnotes,
- * headers and footers, page size and margins, page breaks, and text in any of the
- * Windows code pages a file can declare. What is not: Windows metafile pictures, which
- * get a box saying so; drawn shapes, whose text is kept; tab stops set by hand; columns;
- * and a table inside a table, whose text is kept and laid out in the cell that holds it.
+ * merged cells, borders and shading, and tables inside their cells, PNG and JPEG
+ * pictures, footnotes and endnotes, headers and footers, page size and margins, page
+ * breaks, and text in any of the Windows code pages a file can declare. What is not:
+ * Windows metafile pictures, which get a box saying so; drawn shapes, whose text is
+ * kept; tab stops set by hand; and columns.
  */
 
 /* Twentieths of a point, which is what Rich Text measures everything but type in. */
@@ -96,7 +96,9 @@ var RTF_SKIPPED = {
   keywords: 1, category: 1, company: 1, manager: 1, creatim: 1, revtim: 1, printim: 1,
   buptim: 1, userprops: 1, formfield: 1, ffdata: 1, ffname: 1, ffdeftext: 1, ffl: 1,
   list: 1, listlevel: 1, leveltext: 1, levelnumbers: 1, listname: 1, listoverride: 1,
-  lfolevel: 1, listpicture: 1, protusertbl: 1, docvar: 1, wgrffmtfilter: 1, mmath: 1
+  lfolevel: 1, listpicture: 1, protusertbl: 1, docvar: 1, wgrffmtfilter: 1, mmath: 1,
+  // What a table inside a table is for a reader that cannot draw one, which this can
+  nonesttables: 1
 };
 
 function rtfNewChar(state) {
@@ -120,7 +122,7 @@ function rtfCopy(bag) {
  */
 function rtfFlow(container, top) {
   return { container: container, top: top, para: null, run: null, runKey: null,
-    label: null, rows: [], cells: [], cell: null, fresh: true };
+    label: null, rows: [], cells: [], cell: null, nested: [], fresh: true };
 }
 
 /* ------------------------------------------------------------------------------------
@@ -268,9 +270,11 @@ function rtfClosePara(state, flow, pf, always) {
     flow.label = null;
   }
 
-  if (pf.inTable) {
-    if (!flow.cell) flow.cell = document.createDocumentFragment();
-    flow.cell.appendChild(para);
+  var depth = rtfDepth(pf);
+  if (depth) {
+    var table = rtfTableAt(state, flow, depth);
+    if (!table.cell) table.cell = document.createDocumentFragment();
+    table.cell.appendChild(para);
   } else {
     rtfCloseTable(state, flow);
     if (flow.top && pf.pageBreakBefore && state.prose.body && state.prose.body.firstChild) {
@@ -299,22 +303,62 @@ function rtfClosePara(state, flow, pf, always) {
  * ---------------------------------------------------------------------------------- */
 
 /*
- * \cell: the paragraph in progress ends and so does the cell it is in. A cell with
- * nothing in it still counts, so an empty paragraph is made for one.
+ * Tables inside tables. A paragraph says how deep in them it is with \itap: 1 is a cell
+ * of a table, 2 a cell of a table inside that cell, and so on; a writer from before
+ * tables could nest says only \intbl, which is 1. Deeper than this is still drawn, as
+ * this deep, so that a file cannot ask for a million tables one inside another.
  */
-function rtfEndCell(state, flow, pf) {
-  // Whatever \cell ends was in the table, whether or not its writer said \intbl
-  if (!pf.inTable) { pf = rtfCopy(pf); pf.inTable = true; }
-  rtfClosePara(state, flow, pf, !flow.cell);
-  flow.cells.push(flow.cell || document.createDocumentFragment());
-  flow.cell = null;
+var RTF_MAX_DEPTH = 16;
+
+function rtfDepth(pf) {
+  var depth = pf.itap > 0 ? pf.itap : 0;
+  if (pf.inTable && depth < 1) depth = 1;
+  return Math.min(depth, RTF_MAX_DEPTH);
 }
 
-/* \row: the cells gathered since the last one, with the row definition in force. */
-function rtfEndRow(state, flow) {
+/*
+ * The table being gathered at a depth. The flow's own rows and cells are the table at
+ * depth 1, and flow.nested holds one table for each depth under it. Any table deeper
+ * than the one asked for is finished and put into the cell that holds it, since what
+ * comes next is outside it.
+ */
+function rtfTableAt(state, flow, depth) {
+  while (flow.nested.length > depth - 1) {
+    var inner = rtfBuildTable(state, flow.nested.pop());
+    var holder = flow.nested.length ? flow.nested[flow.nested.length - 1] : flow;
+    if (inner) {
+      if (!holder.cell) holder.cell = document.createDocumentFragment();
+      holder.cell.appendChild(inner);
+    }
+  }
+  while (flow.nested.length < depth - 1) flow.nested.push({ rows: [], cells: [], cell: null });
+  return depth > 1 ? flow.nested[depth - 2] : flow;
+}
+
+/*
+ * \cell, or \nestcell in a table inside a table: the paragraph in progress ends and so
+ * does the cell it is in, at the depth given. A cell with nothing in it still counts,
+ * so an empty paragraph is made for one.
+ */
+function rtfEndCell(state, flow, pf, depth) {
+  // Whatever ends a cell was in a table that deep, whatever its writer said
+  if (rtfDepth(pf) !== depth) { pf = rtfCopy(pf); pf.inTable = true; pf.itap = depth; }
+  var table = rtfTableAt(state, flow, depth);
+  rtfClosePara(state, flow, pf, !table.cell);
+  table.cells.push(table.cell || document.createDocumentFragment());
+  table.cell = null;
+}
+
+/*
+ * \row, or \nestrow: the cells gathered since the last one, with the row definition in
+ * force. A table inside a table gives each row's definition after the row's cells,
+ * which rtfEnter keeps apart from the definition of the row outside it.
+ */
+function rtfEndRow(state, flow, depth) {
   var def = state.row;
-  flow.rows.push({
-    cells: flow.cells,
+  var table = rtfTableAt(state, flow, depth);
+  table.rows.push({
+    cells: table.cells,
     defs: def.cells.slice(),
     left: def.left || 0,
     pad: [def.padTop, def.padRight, def.padBottom, def.padLeft],
@@ -322,28 +366,38 @@ function rtfEndRow(state, flow) {
     align: def.align,
     height: def.height
   });
-  flow.cells = [];
-  flow.cell = null;
+  table.cells = [];
+  table.cell = null;
 }
 
 /*
- * Turns the rows gathered so far into a table, when something that is not in a table
- * comes along. It cannot be built row by row, because Rich Text gives every row its own
- * column edges and an HTML table has one set for all of them. So the edges of every row
- * are pooled into one grid, and each cell spans however many grid columns lie between
- * its own two edges.
+ * Puts the rows gathered so far on the page as a table, when something that is not in
+ * a table comes along, with any tables inside its cells in their places.
  */
 function rtfCloseTable(state, flow) {
+  rtfTableAt(state, flow, 1);
+  var table = rtfBuildTable(state, flow);
+  if (table) rtfTarget(state, flow).appendChild(table);
+}
+
+/*
+ * The table for the rows gathered in t, which is a flow or one of its nested tables, or
+ * null if there are none. It cannot be built row by row, because Rich Text gives every
+ * row its own column edges and an HTML table has one set for all of them. So the edges
+ * of every row are pooled into one grid, and each cell spans however many grid columns
+ * lie between its own two edges.
+ */
+function rtfBuildTable(state, t) {
   // Cells that never met their \row still hold text, which is kept as paragraphs
-  if (flow.cells.length || flow.cell) {
-    if (flow.cell) flow.cells.push(flow.cell);
-    flow.rows.push({ cells: flow.cells, defs: [], left: 0, pad: [] });
-    flow.cells = [];
-    flow.cell = null;
+  if (t.cells.length || t.cell) {
+    if (t.cell) t.cells.push(t.cell);
+    t.rows.push({ cells: t.cells, defs: [], left: 0, pad: [] });
+    t.cells = [];
+    t.cell = null;
   }
-  if (!flow.rows.length) return;
-  var rows = flow.rows;
-  flow.rows = [];
+  if (!t.rows.length) return null;
+  var rows = t.rows;
+  t.rows = [];
 
   var edges = [];
   function edge(x) {
@@ -445,7 +499,7 @@ function rtfCloseTable(state, flow) {
     }
     body.appendChild(tr);
   }
-  rtfTarget(state, flow).appendChild(table);
+  return table;
 }
 
 /*
@@ -517,7 +571,7 @@ function rtfDestination(word) {
   switch (word) {
     case "fonttbl": case "colortbl": case "stylesheet": case "pict": case "fldinst":
     case "listtext": case "footnote": case "header": case "footer": case "headerr":
-    case "footerr":
+    case "footerr": case "nesttableprops":
       return word;
     case "pntext":
       return "listtext";
@@ -664,9 +718,11 @@ function rtfWord(state, word, param, has) {
     case "clcbpat": state.row.pending.shade = param; return;
     case "clvertalc": state.row.pending.valign = "middle"; return;
     case "clvertalb": state.row.pending.valign = "bottom"; return;
-    case "cell": case "nestcell": rtfEndCell(state, g.flow, g.pf); return;
-    case "row": rtfEndRow(state, g.flow); return;
-    case "nestrow": return;
+    case "itap": pf = rtfCopy(g.pf); pf.itap = param; g.pf = pf; return;
+    case "cell": rtfEndCell(state, g.flow, g.pf, 1); return;
+    case "row": rtfEndRow(state, g.flow, 1); return;
+    case "nestcell": rtfEndCell(state, g.flow, g.pf, Math.max(2, rtfDepth(g.pf))); return;
+    case "nestrow": rtfEndRow(state, g.flow, Math.max(2, rtfDepth(g.pf))); return;
 
     /* Borders: a word that names a side, then words that describe the line on it */
     case "clbrdrt": state.border = state.row.pending.borderTop = {}; return;
@@ -766,6 +822,7 @@ function rtfNoteMark(state) {
 /* What opening a destination sets up. Closing it is rtfLeave. */
 function rtfEnter(state, dest, word) {
   var g = state.group;
+  var inherited = g.dest;
   g.dest = dest;
   g.opened = dest;
 
@@ -786,6 +843,12 @@ function rtfEnter(state, dest, word) {
     g.opened = dest.charAt(0) === "h" ? "header" : "footer";
   } else if (dest === "listtext") {
     g.flow.label = null;
+  } else if (dest === "nesttableprops") {
+    // The definition of a row of a table inside a table, which comes after the row's
+    // cells, is read as any other, but in place of the outer row's until it ends
+    g.dest = inherited;
+    g.outerRow = state.row;
+    state.row = { cells: [], pending: {} };
   }
 }
 
@@ -804,6 +867,8 @@ function rtfLeave(state, g) {
     if (g.flow.container.textContent.trim() || g.flow.container.querySelector("img")) {
       state.layout[g.opened + "Source"] = g.flow.container;
     }
+  } else if (g.opened === "nesttableprops") {
+    state.row = g.outerRow;
   }
 }
 

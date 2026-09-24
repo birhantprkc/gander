@@ -221,3 +221,34 @@ def test_a_rich_text_superscript_is_smaller_whatever_size_its_text_is(viewer, pa
     open_rtf(viewer, page, made, RTF_HEAD + r"\pard\plain\fs22 Area in m{\super 2}\par}")
     share = font_size(page, "2") / font_size(page, "Area in m")
     assert abs(share - 0.58) < 0.01
+
+
+# ------------------------------------------------------------------------------------
+# Rich Text: tables
+# ------------------------------------------------------------------------------------
+
+def test_a_table_inside_a_table_is_drawn_inside_its_cell(viewer, page, made):
+    """
+    Word writes the cells of a table inside a table with \\nestcell, and each of its rows'
+    definitions after the row, inside \\nesttableprops. \\nestcell was read as \\cell, so
+    the inner table's cells became more cells of the outer table's row.
+    """
+    nested_row = (r"\pard\intbl\itap2 N1\nestcell N2\nestcell"
+                  r"{\*\nesttableprops\trowd\cellx2000\cellx3500\nestrow}{\nonesttables\par}")
+    open_rtf(viewer, page, made,
+             RTF_HEAD + r"\trowd\cellx4000\cellx8000\pard\intbl Outer A1\par"
+             + nested_row + nested_row.replace("N1", "N3").replace("N2", "N4")
+             + r"\pard\intbl\itap1 after nested\cell Outer B1\cell"
+             r"\pard\intbl{\trowd\cellx4000\cellx8000\row}\pard After table\par}")
+    outer = page.evaluate(
+        "() => { const row = document.querySelector('.vw-body > table > tbody > tr');"
+        "const cells = [...row.children];"
+        "return { first: [...cells[0].children].map(e => e.tagName),"
+        "  inner: [...cells[0].querySelectorAll('tr')].map(tr =>"
+        "    [...tr.children].map(td => td.textContent.trim())),"
+        "  text: cells.map(td => td.innerText.trim().split(/\\s+/).join(' ')) }; }"
+    )
+    assert outer["text"] == ["Outer A1 N1 N2 N3 N4 after nested", "Outer B1"]
+    assert outer["first"] == ["P", "TABLE", "P"]
+    assert outer["inner"] == [["N1", "N2"], ["N3", "N4"]]
+    assert paper_text(page).rstrip().endswith("After table")
