@@ -251,6 +251,54 @@ class ZipReaderTest {
         }
     }
 
+    /**
+     * [files] empty files, stored, in a zip with no ZIP64 record, whose end record keeps only
+     * the last 16 bits of how many there are. That is what macOS's ditto writes for an archive
+     * of more than 65,535 entries.
+     */
+    private fun manyFiles(files: Int): ByteArray {
+        val names = List(files) { "f%06d.txt".format(it).toByteArray() }
+        val localSize = names.sumOf { 30 + it.size }
+        val indexSize = names.sumOf { 46 + it.size }
+        val out = ByteBuffer.allocate(localSize + indexSize + 22).order(ByteOrder.LITTLE_ENDIAN)
+        val offsets = names.map { name ->
+            out.position().also {
+                out.putInt(0x04034b50).putShort(10).putShort(0).putShort(0).putInt(0)
+                    .putInt(0).putInt(0).putInt(0).putShort(name.size.toShort()).putShort(0).put(name)
+            }
+        }
+        names.forEachIndexed { i, name ->
+            out.putInt(0x02014b50).putShort(0x031E).putShort(10).putShort(0).putShort(0).putInt(0)
+                .putInt(0).putInt(0).putInt(0).putShort(name.size.toShort()).putShort(0).putShort(0)
+                .putShort(0).putShort(0).putInt(0).putInt(offsets[i]).put(name)
+        }
+        out.putInt(0x06054b50).putShort(0).putShort(0).putShort(files.toShort()).putShort(files.toShort())
+            .putInt(indexSize).putInt(localSize).putShort(0)
+        return out.array()
+    }
+
+    /**
+     * Read as the count it gives, such an archive listed a fraction of itself and said nothing
+     * of the rest: 66,000 files from ditto, 132,001 entries, listed as 929.
+     */
+    @Test
+    fun anIndexLongerThanItsEndRecordCountsIsListedWhole() {
+        source(manyFiles(65_539)).use { zip ->
+            val all = ZipReader.entries(zip, Locale.US)
+            assertThat(all).hasSize(65_539)
+            assertThat(all.last().path).isEqualTo("f065538.txt")
+            assertThat(zip.read(all.last())).isEmpty()
+        }
+    }
+
+    /** And read past its count, an index is still held to how many entries Gander will list. */
+    @Test
+    fun anIndexReadPastItsCountIsStillRefusedPastTooMany() {
+        source(manyFiles(200_001)).use { zip ->
+            assertThrows(ZipReader.TooLarge::class.java) { ZipReader.entries(zip, Locale.US) }
+        }
+    }
+
     @Test
     fun whatIsNotAZipIsRefused() {
         source("plain.txt").use { zip ->

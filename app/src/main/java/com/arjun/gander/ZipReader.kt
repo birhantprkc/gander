@@ -265,7 +265,12 @@ internal object ZipReader {
         val raw = ArrayList<RawName>()
         val parsed = ArrayList<Parsed>()
         var p = 0
-        repeat(end.count.toInt()) {
+        // Without ZIP64 the count can fall short of the real one, see [End.count], so past it
+        // another entry is read for as long as one starts where the last one ended
+        while (parsed.size < end.count ||
+            (!end.exact && p <= index.size - 4 && u32(index, p) == SIG_CENTRAL)
+        ) {
+            if (parsed.size >= MAX_ENTRIES) throw TooLarge()
             if (p > index.size - CENTRAL_SIZE || u32(index, p) != SIG_CENTRAL) {
                 throw ZipException("damaged index")
             }
@@ -380,7 +385,21 @@ internal object ZipReader {
         val modified: Long,
     )
 
-    private class End(val count: Long, val indexStart: Long, val indexSize: Long, val shift: Long)
+    private class End(
+        /**
+         * How many entries the index holds, or when [exact] is false, how many it holds at the
+         * least. The end record's own field is 16 bits, and a writer that adds no ZIP64 record
+         * for a count too large for it keeps only what is left past the last multiple of
+         * 65,536: macOS's ditto, which adds a __MACOSX entry for every file, zips 66,000 files
+         * as 132,001 entries that say 929.
+         */
+        val count: Long,
+        /** Whether [count] came from a ZIP64 record, whose field is wide enough to be the number. */
+        val exact: Boolean,
+        val indexStart: Long,
+        val indexSize: Long,
+        val shift: Long,
+    )
 
     /**
      * The end record, and through it where the index is.
@@ -447,7 +466,7 @@ internal object ZipReader {
         // prefixed. The index ends where the end record starts, so the gap is that.
         val shift = indexEnd - (indexOffset + indexSize)
         if (shift < 0) throw ZipException("index runs past its end record")
-        return End(count, indexOffset + shift, indexSize, shift)
+        return End(count, recordStart != null, indexOffset + shift, indexSize, shift)
     }
 
     /**
