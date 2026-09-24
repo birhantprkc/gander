@@ -960,8 +960,11 @@ function vwReadRtf(buffer, container) {
         var hex = parseInt(String.fromCharCode(bytes[state.at], bytes[state.at + 1]), 16);
         state.at += 2;
         g.fresh = false;
-        if (g.dest === "body" || g.dest === "listtext" || g.dest === "fonttbl") {
-          if (!isNaN(hex)) rtfByte(state, hex);
+        // Every group whose text is kept takes the byte, a footnote's as much as the
+        // body's, and so uses up the fallback a \u character before it leaves
+        if (!isNaN(hex) && g.dest !== "skip" && g.dest !== "shapevalue" &&
+            g.dest !== "fldinst" && g.dest !== "pict") {
+          rtfByte(state, hex);
         }
       } else if ((c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A)) {
         var start = state.at - 1;
@@ -985,8 +988,9 @@ function vwReadRtf(buffer, container) {
       } else if (c === 0x2A) {              // \*
         g.starred = true;
       } else if (c === 0x0A || c === 0x0D) {
+        // A backslash before a line end is \par, in a footnote as in the body
         rtfFlushBytes(state);
-        if (g.dest === "body") rtfClosePara(state, g.flow, g.pf, true);
+        if (g.dest === "body" || g.dest === "footnote") rtfClosePara(state, g.flow, g.pf, true);
       } else {
         g.fresh = false;
         var symbol = c === 0x7E ? "\u00A0" : c === 0x2D ? "\u00AD" : c === 0x5F ? "\u2011"
