@@ -674,8 +674,9 @@ internal object ZipReader {
         }
 
         override fun read(b: ByteArray, off: Int, len: Int): Int {
-            if (ended) return -1
+            // Asked for nothing, a stream reads nothing, at its end as anywhere else
             if (len == 0) return 0
+            if (ended) return -1
             // One byte past what is left, never more: that byte is how an entry larger than it
             // claims is caught, without inflating whatever else it had in store. Compared before
             // the one is added, because a size of Long.MAX_VALUE overflows into asking for

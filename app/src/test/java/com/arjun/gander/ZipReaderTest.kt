@@ -486,6 +486,20 @@ class ZipReaderTest {
         }
     }
 
+    /** InputStream's word on a read of no bytes is 0, at the end too, where this said -1. */
+    @Test
+    fun readingNothingReadsNothingEvenAtTheEnd() {
+        source("archive.zip").use { zip ->
+            val entry = ZipReader.entries(zip, Locale.US).named("plain.txt")
+            ZipReader.open(zip, entry.location).use { input ->
+                assertThat(input.read(ByteArray(0), 0, 0)).isEqualTo(0)
+                assertThat(input.readBytes()).isEqualTo(Fixtures.bytes("plain.txt"))
+                assertThat(input.read(ByteArray(1), 0, 1)).isEqualTo(-1)
+                assertThat(input.read(ByteArray(0), 0, 0)).isEqualTo(0)
+            }
+        }
+    }
+
     // ---------------------------------------------------------------
     // Under a password
     // ---------------------------------------------------------------
