@@ -137,7 +137,10 @@ function rtfCharBag(state, cf) {
   if (cf.caps) bag.caps = true;
   if (cf.smallCaps) bag.smallCaps = true;
   if (cf.spacing) bag.spacing = rtfPt(cf.spacing);
-  if (cf.size && cf.size !== 12) bag.size = cf.size;
+  // Raised or lowered text is smaller too, by the 58% LibreOffice takes, and its size is
+  // always given: the run carries its text's full size, which would otherwise stand
+  if (cf.position) bag.size = (cf.size || 12) * 0.58;
+  else if (cf.size && cf.size !== 12) bag.size = cf.size;
   if (cf.color && state.colors[cf.color]) bag.color = state.colors[cf.color];
   var mark = cf.highlight || cf.background;
   if (mark && state.colors[mark]) bag.background = state.colors[mark];

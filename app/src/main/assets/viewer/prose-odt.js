@@ -212,15 +212,16 @@ function odtReadStyle(index, node) {
       bag._symbol = vwProseSymbolFont(face.family);
     }
 
+    // The second number is the raised text's size as a share of the size around it.
+    // Without one, LibreOffice takes 58%, and so does this
     var position = odtAttr(t, "style", "text-position");
     if (position) {
       var shift = position.trim().split(/\s+/);
       var by = odtPercent(shift[0]);
       bag.position = shift[0] === "super" || by > 0 ? "super" :
         shift[0] === "sub" || by < 0 ? "sub" : null;
-      if (bag.position && odtPercent(shift[1]) != null && odtPercent(shift[1]) < 100) {
-        bag._shrink = odtPercent(shift[1]);
-      }
+      var share = shift.length > 1 ? odtPercent(shift[1]) : 58;
+      if (bag.position && share != null && share < 100) bag._shrink = share;
     }
     if (odtAttr(t, "fo", "font-variant") === "small-caps") bag.smallCaps = true;
     if (odtAttr(t, "fo", "text-transform") === "uppercase") bag.caps = true;
@@ -329,7 +330,12 @@ function odtBag(index, scope, family, name) {
       bag._named = odtAttr(chain[i], "style", "name");
     }
   }
-  if (bag._shrink && !bag.size) bag.sizePercent = bag._shrink;
+  // Raised or lowered text is its share of whatever size it would otherwise be, and
+  // LibreOffice gives that size alongside when the text came from Word
+  if (bag._shrink) {
+    if (bag.size) bag.size = bag.size * bag._shrink / 100;
+    else bag.sizePercent = (bag.sizePercent || 100) * bag._shrink / 100;
+  }
   index.bags[key] = bag;
   return bag;
 }

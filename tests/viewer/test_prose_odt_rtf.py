@@ -183,3 +183,41 @@ def test_the_title_of_a_table_of_contents_is_drawn(viewer, page, made):
              '<text:h text:outline-level="1">Intro</text:h>')
     lines = [line for line in paper_text(page).split("\n") if line.strip()]
     assert lines == ["Contents of the survey", "Intro\t1", "Intro"]
+
+
+# ------------------------------------------------------------------------------------
+# Raised and lowered text
+# ------------------------------------------------------------------------------------
+
+def font_size(page, text):
+    """The drawn size, in CSS pixels, of the innermost element whose text is text."""
+    return page.evaluate(
+        "(text) => { const all = [...document.querySelectorAll('.vw-paper span, .vw-paper p')];"
+        "const el = all.reverse().find(e => e.textContent === text);"
+        "return parseFloat(getComputedStyle(el).fontSize); }",
+        text,
+    )
+
+
+def test_an_opendocument_superscript_with_a_size_of_its_own_is_drawn_at_its_share_of_it(viewer, page, made):
+    """
+    LibreOffice writes a superscript as a position and a share of the size, super 58%,
+    and when the text came from Word it writes the full size beside them. The share was
+    only taken when there was no size, so that superscript was drawn full size.
+    """
+    open_odt(viewer, page, made,
+             '<text:p>Area in m<text:span text:style-name="T1">2</text:span></text:p>',
+             automatic='<style:style style:name="T1" style:family="text"><style:text-properties'
+                       ' style:text-position="super 58%" fo:font-size="12pt"/></style:style>')
+    share = font_size(page, "2") / font_size(page, "Area in m2")
+    assert abs(share - 0.58) < 0.01
+
+
+def test_a_rich_text_superscript_is_smaller_whatever_size_its_text_is(viewer, page, made):
+    """
+    \\super was drawn smaller only when the text was the default 12 points, since any
+    other size was written into the run and the superscript kept it.
+    """
+    open_rtf(viewer, page, made, RTF_HEAD + r"\pard\plain\fs22 Area in m{\super 2}\par}")
+    share = font_size(page, "2") / font_size(page, "Area in m")
+    assert abs(share - 0.58) < 0.01

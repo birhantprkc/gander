@@ -183,6 +183,9 @@ function vwProseDeclare(s, bag) {
   else if (bag.sizePercent) s.fontSize = bag.sizePercent + "%";
   if (bag.font) s.fontFamily = bag.font;
 
+  // A size that comes with a position is the size to draw the raised or lowered text
+  // at, which its reader has already made smaller by as much as its format says; the
+  // 0.7em is for raised text that comes with no size at all
   if (bag.position) {
     s.verticalAlign = bag.position === "sub" ? "sub" : "super";
     if (!bag.size && !bag.sizePercent) s.fontSize = "0.7em";
