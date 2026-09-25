@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each
+  other and from the cream behind them. They used to run together into one white shape.
+
 - Gander's icon joins in with themed icons on Android 13 and later, and is drawn in the
   wallpaper's colours when they are turned on. It used to keep its own colours.
 

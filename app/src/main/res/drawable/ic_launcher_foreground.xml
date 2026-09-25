@@ -19,9 +19,15 @@
             android:pathData="M55.6,26.2 a1.0,1.0 0 1,0 0.01,0 Z" />
     </group>
 
+    <!-- Each card is edged in the folds' grey. White on the cream background is 1.13:1,
+         so without an edge the three cards ran together into one white shape. -->
+
     <!-- back left card, blue badge -->
     <group android:rotation="-16" android:pivotX="43" android:pivotY="61">
         <path android:fillColor="#FFFFFFFF"
+            android:strokeColor="#FFC9CFD6"
+            android:strokeWidth="0.8"
+            android:strokeLineJoin="round"
             android:pathData="M33,44 h14 l9,9 v22 q0,3 -3,3 h-20 q-3,0 -3,-3 v-28 q0,-3 3,-3 Z" />
         <path android:fillColor="#FFC9CFD6" android:pathData="M47,44 l9,9 h-9 Z" />
         <path android:fillColor="#FF1565C0" android:pathData="M35,52 h9 v9 h-9 Z" />
@@ -32,6 +38,9 @@
     <!-- back right card, green badge -->
     <group android:rotation="14" android:pivotX="65" android:pivotY="61">
         <path android:fillColor="#FFFFFFFF"
+            android:strokeColor="#FFC9CFD6"
+            android:strokeWidth="0.8"
+            android:strokeLineJoin="round"
             android:pathData="M55,44 h14 l9,9 v22 q0,3 -3,3 h-20 q-3,0 -3,-3 v-28 q0,-3 3,-3 Z" />
         <path android:fillColor="#FFC9CFD6" android:pathData="M69,44 l9,9 h-9 Z" />
         <path android:fillColor="#FF2E7D32" android:pathData="M57,52 h9 v9 h-9 Z" />
@@ -42,6 +51,9 @@
     <!-- front card, red badge -->
     <group android:rotation="-2" android:pivotX="54" android:pivotY="54">
         <path android:fillColor="#FFFFFFFF"
+            android:strokeColor="#FFC9CFD6"
+            android:strokeWidth="0.8"
+            android:strokeLineJoin="round"
             android:pathData="M44,37 h14 l9,9 v22 q0,3 -3,3 h-20 q-3,0 -3,-3 v-28 q0,-3 3,-3 Z" />
         <path android:fillColor="#FFC9CFD6" android:pathData="M58,37 l9,9 h-9 Z" />
         <path android:fillColor="#FFD32F2F" android:pathData="M46,45 h9 v9 h-9 Z" />
