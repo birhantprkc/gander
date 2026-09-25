@@ -42,7 +42,7 @@ It cannot phone home because it does not even hold the INTERNET permission.
 
 ## Features
 
-- **One viewer for everything**: documents, spreadsheets, slides, images, video, audio, Markdown, code
+- **One viewer for everything**: documents, spreadsheets, slides, images, video, audio, Markdown, code, 3D models
 - **Opens `.zip` files**: a zip lists like a folder, and each file in it opens in its usual viewer, read straight out of the archive with nothing unzipped to the phone
 - **Pinch zoom and smooth scrolling** everywhere, with deep zoom into huge photos (tiled decoding)
 - **Recent files** with thumbnail previews (image, video frame, PDF first page)
@@ -73,6 +73,12 @@ It cannot phone home because it does not even hold the INTERNET permission.
 | Markdown | `.md` rendered as formatted HTML | marked + DOMPurify, offline |
 | Text and code | `.txt` `.json` `.xml` logs, subtitles (`.srt` `.vtt`), `.m3u` playlists, `.nfo`, most source files | Text viewer |
 | Archives | `.zip` | Listed like a folder, entries opened in place |
+| 3D models | STL `.stl`, binary and text | Gander's own WebGL viewer, offline |
+
+An `.stl`, the file 3D printers take, opens as a solid you can turn with one finger and zoom
+or move with two; a double tap puts it back. Its size in millimetres is shown underneath. A
+phone can open models of up to about half a million triangles for each gigabyte of memory it
+has.
 
 A `.zip` opens as a list laid out like a folder, and each file in it opens in the viewer it
 would get on its own, read straight out of the archive: nothing is unzipped or written to the

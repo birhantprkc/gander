@@ -38,13 +38,20 @@ internal val AUD_BADGE = "AUD" to 0xFF00838F.toInt()
 internal val MD_BADGE = "MD" to 0xFF455A64.toInt()
 internal val TXT_BADGE = "TXT" to 0xFF616161.toInt()
 
+/**
+ * A 3D model. Indigo, in the widest gap the palette leaves: 32 degrees of hue from DOC's
+ * blue and 38 from IMG's purple, with the accent over a hundred away. 7.91:1 against its
+ * white label.
+ */
+internal val MODEL_BADGE = "3D" to 0xFF4338CA.toInt()
+
 /** What an unsupported file falls back to. */
 internal val FILE_BADGE = "FILE" to 0xFF607884.toInt()
 
 /**
  * The last tile of the welcome grid, standing for everything Gander opens that has no tile of
- * its own: text and code, and zips. In the grey the TXT tile had in that place, so the grid
- * reads exactly as it did and only the word has changed.
+ * its own: text and code, zips, and 3D models. In the grey the TXT tile had in that place, so
+ * the grid reads exactly as it did and only the word has changed.
  *
  * Three letters, as every other tile is. The tile is a fixed square and its label grows with
  * the phone's font size, and a fourth letter wrapped it at 150% and cut it off at 200%.
@@ -109,6 +116,7 @@ internal fun badgeFor(name: String, mime: String?): Pair<String, Int> {
         FileKind.PLAYER -> if (FileKind.isAudioExt(ext)) AUD_BADGE else VID_BADGE
         FileKind.MD -> MD_BADGE
         FileKind.TEXT -> TXT_BADGE
+        FileKind.MODEL -> MODEL_BADGE
         FileKind.ARCHIVE -> ZIP_BADGE
         FileKind.UNSUPPORTED -> FILE_BADGE
     }

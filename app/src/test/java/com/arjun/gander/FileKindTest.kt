@@ -5,6 +5,7 @@ import com.arjun.gander.FileKind.DOCX
 import com.arjun.gander.FileKind.IMAGE
 import com.arjun.gander.FileKind.IMAGE_WEB
 import com.arjun.gander.FileKind.MD
+import com.arjun.gander.FileKind.MODEL
 import com.arjun.gander.FileKind.PDF
 import com.arjun.gander.FileKind.PLAYER
 import com.arjun.gander.FileKind.PPTX
@@ -85,6 +86,9 @@ class FileKindTest {
 
             // Listed rather than drawn, issue #30
             "zip" to ARCHIVE,
+
+            // A 3D model, the file a 3D printer's slicer takes
+            "stl" to MODEL,
         )
 
         const val MIME_DOCX =
@@ -107,8 +111,8 @@ class FileKindTest {
 
     /** A count, so a silently deleted table row is noticed. */
     @Test
-    fun theTableCoversNinetyFiveExtensions() {
-        assertThat(EXPECTED).hasSize(95)
+    fun theTableCoversNinetySixExtensions() {
+        assertThat(EXPECTED).hasSize(96)
     }
 
     @Test
@@ -194,10 +198,29 @@ class FileKindTest {
             "text/x-nfo" to TEXT,
             "application/zip" to ARCHIVE,
             "application/x-zip-compressed" to ARCHIVE,
+            "model/stl" to MODEL,
+            "model/x.stl-binary" to MODEL,
+            "model/x.stl-ascii" to MODEL,
+            "application/sla" to MODEL,
+            "application/vnd.ms-pki.stl" to MODEL,
         )
         byMime.forEach { (mime, kind) ->
             assertThat(FileKind.detect("", mime)).isEqualTo(kind)
         }
+    }
+
+    /**
+     * An STL is a model whatever it is labelled, and a text one is often labelled text. Only
+     * the STL types are taken for one: model/ also covers formats nothing here draws.
+     */
+    @Test
+    fun anStlIsAModelWhateverItIsLabelled() {
+        assertThat(FileKind.detect("stl", "text/plain")).isEqualTo(MODEL)
+        assertThat(FileKind.detect("stl", "application/octet-stream")).isEqualTo(MODEL)
+        assertThat(FileKind.detect("", "Model/STL")).isEqualTo(MODEL)
+        assertThat(FileKind.detect("", "model/obj")).isEqualTo(UNSUPPORTED)
+        assertThat(FileKind.detect("obj", null)).isEqualTo(UNSUPPORTED)
+        assertThat(FileKind.detect("3mf", null)).isEqualTo(UNSUPPORTED)
     }
 
     /**

@@ -121,6 +121,8 @@ class ViewerActivityTest {
             "plain.txt" to "text.html",
             "icon.svg" to "imgweb.html",
             "anim.gif" to "imgweb.html",
+            "bracket.stl" to "model.html",
+            "bracket-ascii.stl" to "model.html",
             "unknown.xyz" to "unsupported.html",
         ).forEach { (fixture, page) ->
             val url = open(fixture).loadedUrl()
@@ -161,6 +163,30 @@ class ViewerActivityTest {
         val uri = FixtureProvider.uriNamed("playlist.m3u", "playlist")
         assertThat(context.contentResolver.getType(uri)).isEqualTo("audio/x-mpegurl")
         assertThat(view(uri).pageName()).isEqualTo("text.html")
+    }
+
+    /**
+     * An STL whose name has lost its extension arrives with the type Android gives a .stl,
+     * which is a Windows certificate trust list's, and is drawn as a model all the same.
+     */
+    @Test
+    fun aModelWithNoExtensionIsDrawnByTheTypeAndroidGivesIt() {
+        val uri = FixtureProvider.uriNamed("bracket.stl", "bracket")
+        assertThat(context.contentResolver.getType(uri)).isEqualTo("application/vnd.ms-pki.stl")
+        assertThat(view(uri).pageName()).isEqualTo("model.html")
+    }
+
+    /**
+     * A model is drawn on a canvas, and the only words on its page are its size, so there is
+     * nothing to search for and no search button. A text file is the control: the same
+     * button on the same toolbar, offered.
+     */
+    @Test
+    fun aModelOffersNoSearch() {
+        fun search(fixture: String) = open(fixture).get()
+            .findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_search)
+        assertThat(search("plain.txt").isVisible).isTrue()
+        assertThat(search("bracket.stl").isVisible).isFalse()
     }
 
     /** A photo gets the tiling view, not a WebView. */
@@ -1006,6 +1032,51 @@ class ViewerActivityTest {
         val controller = start(intent)
         assertThat(controller.loadedUrl()).contains("viewer/pdf.html")
         assertThat(controller.loadedUrl()).doesNotContain("resume=")
+    }
+
+    /**
+     * The page is told the document's length on its URL whenever the provider says, and not
+     * otherwise. It cannot go by the Content-Length it is served with: the WebView sends one
+     * of its own, and for a file coming out of a zip through a pipe that one says 0. Seen on
+     * the emulator, where a model inside a zip opened as an empty one. The same bracket,
+     * stored and compressed, is one of each.
+     */
+    @Test
+    fun thePageIsToldTheLengthOnlyWhenTheProviderKnowsIt() {
+        val stl = Fixtures.bytes("bracket.stl")
+        assertThat(open("bracket.stl").loadedUrl()).contains("&length=${stl.size}&")
+
+        val file = File.createTempFile("models", ".zip").apply { deleteOnExit() }
+        java.util.zip.ZipOutputStream(file.outputStream()).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("stored.stl").apply {
+                method = java.util.zip.ZipEntry.STORED
+                size = stl.size.toLong()
+                compressedSize = stl.size.toLong()
+                crc = java.util.zip.CRC32().apply { update(stl) }.value
+            })
+            z.write(stl)
+            z.closeEntry()
+            z.putNextEntry(java.util.zip.ZipEntry("deflated.stl"))
+            z.write(stl)
+            z.closeEntry()
+        }
+        val archive = FixtureProvider.install().add("models.zip", file)
+        Robolectric.buildContentProvider(ArchiveProvider::class.java)
+            .create(ArchiveProvider.authority(context))
+        val raf = java.io.RandomAccessFile(file, "r")
+        val entries = ZipSource(raf.channel, 0, raf.length(), raf).use {
+            ZipReader.entries(it, java.util.Locale.US)
+        }
+        fun urlOf(name: String): String = start(
+            Intent()
+                .setComponent(ComponentName(context, ViewerActivity.ENTRY_VIEWER))
+                .setData(ArchiveProvider.uriFor(context, archive, entries.single { it.path == name }))
+        ).loadedUrl()
+
+        assertThat(urlOf("stored.stl")).contains("viewer/model.html")
+        assertThat(urlOf("stored.stl")).contains("&length=${stl.size}&")
+        assertThat(urlOf("deflated.stl")).contains("viewer/model.html")
+        assertThat(urlOf("deflated.stl")).doesNotContain("length=")
     }
 
     @Test

@@ -35,7 +35,7 @@ class ListingTest {
         const val AA = 4.5
 
         val ALL_BADGES: Map<String, Int> =
-            (WELCOME_BADGES + TXT_BADGE + FILE_BADGE + ZIP_BADGE).toMap() +
+            (WELCOME_BADGES + TXT_BADGE + FILE_BADGE + ZIP_BADGE + MODEL_BADGE).toMap() +
                 mapOf("DIR" to DIR_COLOR, "ADD" to ADD_COLOR)
     }
 
@@ -61,7 +61,7 @@ class ListingTest {
     fun theMeasuredRatiosAreStillWhatTheCommentSays() {
         val documented = mapOf(
             "PDF" to 6.54, "PPT" to 5.20, "FILE" to 4.65,
-            "DIR" to 4.90, "ADD" to 6.54,
+            "DIR" to 4.90, "ADD" to 6.54, "3D" to 7.91,
         )
         documented.forEach { (label, expected) ->
             assertThat(contrastWithWhite(ALL_BADGES.getValue(label)))
@@ -101,10 +101,24 @@ class ListingTest {
             "readme.md" to MD_BADGE,
             "main.kt" to TXT_BADGE,
             "photos.zip" to ZIP_BADGE,
+            "bracket.stl" to MODEL_BADGE,
         )
         expected.forEach { (name, badge) ->
             assertThat(badgeFor(name, null)).isEqualTo(badge)
         }
+    }
+
+    /**
+     * A model that arrives with no name to go on still says what it is, by the type Android
+     * gives a .stl. 3D rather than STL, because a model is what the file is, and STL is only
+     * one way of writing one down.
+     */
+    @Test
+    fun aModelIsLabelled3dWhateverItIsCalled() {
+        assertThat(MODEL_BADGE.first).isEqualTo("3D")
+        assertThat(badgeFor("attachment", "application/vnd.ms-pki.stl")).isEqualTo(MODEL_BADGE)
+        assertThat(MODEL_BADGE.second).isNotEqualTo(DOC_BADGE.second)
+        assertThat(MODEL_BADGE.second).isNotEqualTo(IMG_BADGE.second)
     }
 
     /**

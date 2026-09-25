@@ -22,6 +22,9 @@ enum class FileKind(val page: String) {
     MD("md.html"),
     TEXT("text.html"),
 
+    /** A 3D model, drawn with WebGL by a page of Gander's own. STL for now. */
+    MODEL("model.html"),
+
     /** A .zip, which is listed rather than drawn: see ArchiveBrowser. Issue #30. */
     ARCHIVE(""),
     UNSUPPORTED("unsupported.html");
@@ -39,6 +42,7 @@ enum class FileKind(val page: String) {
         private val sheetExt = setOf("xlsx", "xls", "xlsm", "xlsb", "xltx", "csv", "ods")
         private val slideExt = setOf("pptx", "ppsx", "pptm", "potx")
         private val mdExt = setOf("md", "markdown")
+        private val modelExt = setOf("stl")
         private val archiveExt = setOf("zip")
         private val videoExt = setOf(
             "mp4", "m4v", "mov", "mkv", "webm", "3gp", "3g2", "m2ts", "mts", "avi", "flv"
@@ -94,6 +98,21 @@ enum class FileKind(val page: String) {
             "application/vnd.openxmlformats-officedocument.presentationml.template",
         )
 
+        /**
+         * An STL, under every name it goes by. model/stl is the registered one, the two x.
+         * ones and application/sla are what Linux desktops and older servers say, and
+         * application/vnd.ms-pki.stl is what Android itself gives a .stl, having taken the
+         * extension for a Windows certificate trust list. That last is the type a file
+         * manager sends, so without it Gander would never be offered one.
+         */
+        private val modelMimes = setOf(
+            "model/stl",
+            "model/x.stl-binary",
+            "model/x.stl-ascii",
+            "application/sla",
+            "application/vnd.ms-pki.stl",
+        )
+
         /** Text whose type is not text/. SubRip's is the one Android 10 and later give a .srt. */
         private val textMimes = setOf("application/json", "application/xml", "application/x-subrip")
 
@@ -131,6 +150,7 @@ enum class FileKind(val page: String) {
             ext in slideExt -> PPTX
             ext in mdExt -> MD
             ext in textExt -> TEXT
+            ext in modelExt -> MODEL
             ext in archiveExt -> ARCHIVE
             mime == "application/pdf" -> PDF
             // Ahead of the audio branch, which would otherwise take it
@@ -140,6 +160,7 @@ enum class FileKind(val page: String) {
             mime in proseMimes -> PROSE
             mime in sheetMimes -> XLSX
             mime in slideMimes -> PPTX
+            mime in modelMimes -> MODEL
             mime == MIME_ZIP || mime == MIME_ZIP_WINDOWS -> ARCHIVE
             mime?.startsWith("image/") == true -> IMAGE_WEB
             mime?.startsWith("text/") == true -> TEXT
