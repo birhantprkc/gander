@@ -283,26 +283,47 @@ function vwModelFileLength() {
   return n > 0 ? n : -1;
 }
 
-/* Feeds [onBytes] the body of [r] a piece at a time, as it arrives. */
+/*
+ * The most the reader is handed at once. The stream's pieces are whatever size the browser
+ * picks, and the same 1.2 MB file came in anywhere from eighteen pieces to one. The page can
+ * step aside for a frame only between two handings, so a file that came whole would be read
+ * with the card frozen; cut to this, a frame is never more than a slice away.
+ */
+var VW_MODEL_SLICE = 256 * 1024;
+
+/* Feeds [onBytes] the body of [r] a slice at a time, as it arrives. */
 function vwModelStream(r, onBytes) {
+  var since = Date.now();
+
+  // A frame for the card, and the timeout after it
+  function breathe() {
+    return new Promise(function (resolve) {
+      requestAnimationFrame(function () { setTimeout(resolve, 0); });
+    }).then(function () { since = Date.now(); });
+  }
+
+  // [bytes] from [at] on, stepping aside once a tenth of a second has gone by
+  function feed(bytes, at) {
+    while (at < bytes.length) {
+      var end = Math.min(at + VW_MODEL_SLICE, bytes.length);
+      onBytes(bytes.subarray(at, end));
+      at = end;
+      if (Date.now() - since >= 100) {
+        return breathe().then(function () { return feed(bytes, at); });
+      }
+    }
+    return null;
+  }
+
   // A WebView too old for the Streams API has to take the body whole
   if (!r.body || !r.body.getReader) {
-    return r.arrayBuffer().then(function (buffer) { onBytes(new Uint8Array(buffer)); });
+    return r.arrayBuffer().then(function (buffer) { return feed(new Uint8Array(buffer), 0); });
   }
   var reader = r.body.getReader();
-  var since = Date.now();
   function next() {
     return reader.read().then(function (piece) {
-      if (piece.done) return;
-      onBytes(piece.value);
-      if (Date.now() - since < 100) return next();
-      // A frame for the card, and the timeout after it
-      return new Promise(function (resolve) {
-        requestAnimationFrame(function () { setTimeout(resolve, 0); });
-      }).then(function () {
-        since = Date.now();
-        return next();
-      });
+      if (piece.done) return null;
+      return Promise.resolve(feed(piece.value, 0)).then(next);
     });
   }
   return next().then(null, function (e) {

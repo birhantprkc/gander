@@ -560,14 +560,60 @@ window.cardFramed = false;
 """
 
 
-def test_a_model_that_takes_a_while_to_read_shows_the_card_while_it_is_read(viewer, page, made):
-    """The file is read on the page's own thread, and the reading steps aside every tenth of
-    a second so a frame can show how far it has got. Four hundred thousand triangles, 20 MB,
-    takes well over that on any machine."""
-    page.add_init_script(CARD_IN_A_FRAME)
-    open_model(viewer, page, made("slow.stl", sheet(448)))
-    assert state(page) == "drawn"
-    assert page.evaluate("() => window.cardFramed") is True
+# A response whose body is all there at once, as a single piece: what the browser makes of a
+# file now and then, and the case in which nothing but the page itself makes room for a frame.
+ONE_PIECE = """function onePiece(bytes) {
+  var given = false;
+  return { body: { getReader: function () { return {
+    read: function () {
+      var piece = given ? { done: true } : { done: false, value: bytes };
+      given = true;
+      return Promise.resolve(piece);
+    },
+    cancel: function () {}
+  }; } } };
+}"""
+
+
+def test_the_reading_steps_aside_for_a_frame_every_tenth_of_a_second(viewer, page):
+    """
+    The file is read on the page's own thread, which draws nothing until it is handed back,
+    so the reading steps aside every tenth of a second for a frame that shows how far it has
+    got. Tested with a body that is all there at once: a real download leaves gaps between
+    its pieces, frames slip into those whether or not the page steps aside, and the first
+    version of this test passed without the stepping aside three times in four. The reading
+    is slowed to a millisecond for every 2 KB, because otherwise how long it takes is the
+    machine's to say, and GitHub's runner read 20 MB in under a tenth of a second.
+    """
+    open_model(viewer, page, "bracket.stl")
+    frames = page.evaluate("() => {" + ONE_PIECE + """
+      var frames = 0, reading = true;
+      (function count() { if (reading) { frames++; requestAnimationFrame(count); } })();
+      function slow(bytes) {
+        var until = performance.now() + bytes.length / 2048;
+        while (performance.now() < until) { /* a slow phone's reading */ }
+      }
+      return vwModelStream(onePiece(new Uint8Array(1200000)), slow)
+        .then(function () { reading = false; return frames; });
+    }""")
+    # About six: the count's own first, then one after each of five slices of 128 ms
+    assert frames >= 4
+
+
+def test_a_piece_of_any_size_is_handed_to_the_reader_in_slices(viewer, page):
+    """
+    The browser hands a file over in pieces of its own choosing, and the same 1.2 MB came in
+    anywhere from eighteen pieces to one. The page can step aside only between two handings,
+    so a piece is cut into slices first, and one handed over whole still lets the card move.
+    """
+    open_model(viewer, page, "bracket.stl")
+    sizes = page.evaluate("() => {" + ONE_PIECE + """
+      var sizes = [];
+      return vwModelStream(onePiece(new Uint8Array(1000000)), function (b) { sizes.push(b.length); })
+        .then(function () { return sizes; });
+    }""")
+    assert sum(sizes) == 1000000
+    assert max(sizes) == 256 * 1024
 
 
 def test_a_model_read_in_a_moment_never_shows_the_card(viewer, page):
