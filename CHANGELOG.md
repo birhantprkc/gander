@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Gander's icon joins in with themed icons on Android 13 and later, and is drawn in the
+  wallpaper's colours when they are turned on. It used to keep its own colours.
+
 - Gander opens 3D models saved as .stl, the file 3D printers take. The model opens as a solid
   you can turn with one finger and zoom or move with two, and a double tap puts it back. Its
   size in millimetres is shown underneath. Binary and text STL both open, including binary
