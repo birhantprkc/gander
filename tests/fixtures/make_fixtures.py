@@ -1674,11 +1674,84 @@ def prose() -> None:
     rtf()
     doc()
 
+
+# ---------------------------------------------------------------------------
+# 3D models: one bracket, as the two kinds of STL
+# ---------------------------------------------------------------------------
+
+# An L-shaped bracket in millimetres: a plate 40 long and 5 thick with an upright 5 thick
+# and 30 tall at one end, 20 deep. Off the origin on purpose, X from 10, so the viewer has
+# to find the model's centre rather than assume it. The outline goes anticlockwise seen
+# from the front, which is from -Y looking along +Y.
+BRACKET_OUTLINE = [(10, 0), (50, 0), (50, 5), (15, 5), (15, 30), (10, 30)]
+BRACKET_DEPTH = (-10, 10)
+
+# The outline in four triangles, as corner indices, with no corner on another's edge
+BRACKET_CAP = [(0, 1, 2), (0, 2, 3), (0, 3, 5), (3, 4, 5)]
+
+
+def bracket_triangles():
+    """The bracket's twenty triangles, corners anticlockwise seen from outside."""
+    front, back = BRACKET_DEPTH
+    pts = BRACKET_OUTLINE
+    tris = []
+    for a, b, c in BRACKET_CAP:
+        tris.append([(pts[i][0], front, pts[i][1]) for i in (a, b, c)])
+        tris.append([(pts[i][0], back, pts[i][1]) for i in (a, c, b)])
+    for i, (ax, az) in enumerate(pts):
+        bx, bz = pts[(i + 1) % len(pts)]
+        af, ab = (ax, front, az), (ax, back, az)
+        bf, bb = (bx, front, bz), (bx, back, bz)
+        tris.append([af, bb, bf])
+        tris.append([af, ab, bb])
+    return tris
+
+
+def facet_normal(tri):
+    (ax, ay, az), (bx, by, bz), (cx, cy, cz) = tri
+    ux, uy, uz = bx - ax, by - ay, bz - az
+    vx, vy, vz = cx - ax, cy - ay, cz - az
+    n = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx)
+    length = sum(c * c for c in n) ** 0.5
+    return tuple(c / length for c in n)
+
+
+def models() -> None:
+    tris = bracket_triangles()
+
+    # Binary, with a header that begins "solid" the way SolidWorks and many others write
+    # theirs. That is how a text STL begins too, so a reader that trusts the first five
+    # bytes reads this one as text and finds nothing in it.
+    header = b"solid bracket, binary, from tests/fixtures/make_fixtures.py".ljust(80, b" ")
+    body = bytearray(header + struct.pack("<I", len(tris)))
+    for tri in tris:
+        body += struct.pack("<3f", *facet_normal(tri))
+        for corner in tri:
+            body += struct.pack("<3f", *corner)
+        body += b"\x00\x00"
+    (OUT / "bracket.stl").write_bytes(bytes(body))
+    written(OUT / "bracket.stl")
+
+    # The same triangles as text, the way SolidWorks writes that: Windows line endings and
+    # every number in exponent form
+    lines = ["solid bracket"]
+    for tri in tris:
+        lines.append("  facet normal %e %e %e" % facet_normal(tri))
+        lines.append("    outer loop")
+        for corner in tri:
+            lines.append("      vertex %e %e %e" % corner)
+        lines.append("    endloop")
+        lines.append("  endfacet")
+    lines.append("endsolid bracket")
+    (OUT / "bracket-ascii.stl").write_bytes(("\r\n".join(lines) + "\r\n").encode("ascii"))
+    written(OUT / "bracket-ascii.stl")
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, relatives, texts, images, audio,
-                 zips, prose):
+                 zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
     count = sum(1 for p in OUT.iterdir() if p.is_file())

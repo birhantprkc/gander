@@ -19,6 +19,7 @@ OPENING = [
     ("xlsx.html", "budget.xlsx"),
     ("md.html", "notes.md"),
     ("text.html", "plain.txt"),
+    ("model.html", "bracket.stl"),
 ]
 
 CARD = (
@@ -203,6 +204,8 @@ def test_a_small_document_is_still_read_inside_the_hold(viewer, page, html, fixt
     """And one that reads in a moment still never shows it."""
     if html == "pptx.html":
         pytest.skip("the deck's library fetches it itself")
+    if html == "model.html":
+        pytest.skip("the model is streamed rather than fetched whole; test_model.py times its card")
     watch_the_read(page)
     viewer(html, fixture)
     page.wait_for_function("() => 'cardWhileReading' in window", timeout=20000)

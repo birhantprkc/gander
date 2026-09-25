@@ -177,7 +177,13 @@ class ViewerServer:
         self.state.requests.clear()
 
     def url(self, page, name=None, ext=None, **params):
-        """The URL ViewerActivity would load for this page."""
+        """
+        The URL ViewerActivity would load for this page.
+
+        The length goes on it as ViewerActivity puts it there, whenever the file has one
+        and it is not 0. Pass length=None for a file whose provider would not say, as one
+        read out of a zip through a pipe will not.
+        """
         from urllib.parse import quote
         if ext is None and self.state.path is not None:
             ext = self.state.path.suffix.lstrip(".")
@@ -185,7 +191,10 @@ class ViewerServer:
             name = self.state.path.name
         query = [f"name={quote(name or 'file')}", f"ext={quote(ext or '')}"]
         query.append(f"ranged={1 if self.state.ranged else 0}")
-        query += [f"{k}={quote(str(v))}" for k, v in params.items()]
+        path = self.state.path
+        if "length" not in params and path is not None and path.is_file() and path.stat().st_size:
+            query.append(f"length={path.stat().st_size}")
+        query += [f"{k}={quote(str(v))}" for k, v in params.items() if v is not None]
         return f"{self.origin}/assets/viewer/{page}?" + "&".join(query)
 
     def ranged_requests(self):

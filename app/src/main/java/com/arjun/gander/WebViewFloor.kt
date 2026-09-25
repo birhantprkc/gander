@@ -61,7 +61,8 @@ internal fun searchesInPage(kind: FileKind, major: Int?): Boolean = when (kind) 
     FileKind.PDF -> true
     FileKind.DOCX, FileKind.PROSE, FileKind.MD, FileKind.TEXT, FileKind.XLSX, FileKind.PPTX ->
         major == null || major >= HIGHLIGHT_MIN_CHROMIUM_MAJOR
-    FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> false
+    FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.MODEL, FileKind.ARCHIVE,
+    FileKind.UNSUPPORTED -> false
 }
 
 /**
@@ -76,9 +77,11 @@ internal fun minChromiumMajor(kind: FileKind): Int? = when (kind) {
     FileKind.DOCX -> DOCX_PREVIEW_MIN_CHROMIUM_MAJOR
     FileKind.MD -> MARKED_MIN_CHROMIUM_MAJOR
     // Gander's own readers: scripts/js-floor.mjs puts every prose-*.js at Chromium 51
-    // or earlier, and they lean on nothing newer than JSZip does
+    // or earlier, and they lean on nothing newer than JSZip does. model.js and
+    // model-stl.js parse from 51 too, and the newest thing either calls is pointer
+    // events, from 55, which is older than the WebView Android 8 shipped with.
     FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.XLSX, FileKind.PPTX,
-    FileKind.PROSE, FileKind.TEXT, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> null
+    FileKind.PROSE, FileKind.TEXT, FileKind.MODEL, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> null
 }
 
 /**

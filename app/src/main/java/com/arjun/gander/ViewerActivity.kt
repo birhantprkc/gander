@@ -1012,7 +1012,10 @@ class ViewerActivity : AppCompatActivity() {
 
         val web = webView
         val blocked = webViewFloorParamsFor(kind, web?.settings?.userAgentString).isNotEmpty()
-        if (web == null || (kind == FileKind.PDF && !canPortSearch()) || blocked) {
+        // A 3D model is a picture drawn on a canvas, and the only words on its page are its
+        // size, so there is nothing in it to find
+        val wordless = kind == FileKind.MODEL
+        if (web == null || (kind == FileKind.PDF && !canPortSearch()) || blocked || wordless) {
             // No WebView at all, or a WebView too old to carry a message channel. The
             // second is close to unreachable: message channels landed long before the
             // Chromium 125 pdf.html already refuses to run below. Hiding the button is
@@ -1548,9 +1551,17 @@ class ViewerActivity : AppCompatActivity() {
                 // The load strategy is decided here, not in the page, so the headers we serve
                 // and the loader the page picks cannot disagree
                 val ranged = if (useRanges(total)) 1 else 0
+                // The length goes on the URL too, when the provider gave one, because the
+                // Content-Length a page sees is not ours. The WebView adds one of its own,
+                // made from what the stream has to hand when it starts, which for a file
+                // coming out of a zip through a pipe is nothing: a 1 KB model inside a zip
+                // arrived saying it was 0 bytes long. model.js reads it from here instead.
+                // Never 0, which is as likely to be a provider that could not tell as a file
+                // that is empty, and an empty one says so anyway when there is nothing to read.
                 web.loadUrl(
                     "https://$ASSET_HOST/assets/viewer/${kind.page}" +
                         "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
+                        (if (total > 0) "&length=$total" else "") +
                         "&night=$night" +
                         (if (resumeAt > 1) "&resume=$resumeAt" else "") +
                         webViewFloorParamsFor(kind, web.settings.userAgentString)

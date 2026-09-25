@@ -167,6 +167,12 @@ class FormatRegistryTest {
             "application/vnd.openxmlformats-officedocument.presentationml.template"
                 to FileKind.PPTX,
             "application/x-subrip" to FileKind.TEXT,
+            "model/stl" to FileKind.MODEL,
+            "model/x.stl-binary" to FileKind.MODEL,
+            "model/x.stl-ascii" to FileKind.MODEL,
+            "application/sla" to FileKind.MODEL,
+            // What Android calls a .stl, and so what a file manager sends one as
+            "application/vnd.ms-pki.stl" to FileKind.MODEL,
         ) + MACRO_ENABLED.flatMap { (mime, kind) ->
             listOf(mime to kind, mime.lowercase() to kind)
         }
@@ -214,7 +220,7 @@ class FormatRegistryTest {
             "VID" to listOf(listOf("video")),
             "AUD" to listOf(listOf("audio", "music", "sound")),
             "MD" to listOf(listOf("markdown")),
-            "ETC" to listOf(listOf("text", "code"), listOf("zip")),
+            "ETC" to listOf(listOf("text", "code"), listOf("zip"), listOf("3d model")),
         )
         WELCOME_BADGES.forEach { (label, _) ->
             expected.getValue(label).forEach { words ->

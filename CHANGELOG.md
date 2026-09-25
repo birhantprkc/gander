@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Gander opens 3D models saved as .stl, the file 3D printers take. The model opens as a solid
+  you can turn with one finger and zoom or move with two, and a double tap puts it back. Its
+  size in millimetres is shown underneath. Binary and text STL both open, including binary
+  files whose header begins with the word solid, as SolidWorks writes them. The viewer is
+  written for Gander rather than taken from a 3D library, and adds about 15 KB.
+
 - A document opened from an app that has to fetch it first, a cloud drive or a mail
   attachment say, no longer freezes the screen until it has arrived. Gander asked that app how
   long the file was, and a PDF's first bytes for the page it was left on, on the thread that
