@@ -74,6 +74,8 @@ should stay obviously so.
 | `locked-cyrillic.zip` | A password that is not ASCII, `пароль`: ZipCrypto in a Russian Windows machine's code page, CP866, and AES in UTF-8. |
 | `deflate64.zip` | Deflate64, method 9, from the generator's own encoder, since zlib has none: a stored block, a fixed and two dynamic ones, matches from past 32 KB and past 48 KB back, and lengths far past 258. 7-Zip reads it back. |
 | `names-mac.zip` | UTF-8 names with the flag clear, which is what macOS writes. |
+| `bracket.stl` | A 3D model: an L-shaped bracket 40 by 20 by 30 mm in twenty triangles, off the origin so the viewer has to find its middle. Binary, with a header that begins "solid" the way SolidWorks writes one, which is how a text STL begins too. |
+| `bracket-ascii.stl` | The same bracket as a text STL, the way SolidWorks writes that: Windows line endings and every number in exponent form. |
 
 The zips are written byte by byte rather than with `zipfile`, which sets the UTF-8 flag
 on every name that is not ASCII and so cannot write what Windows writes.
