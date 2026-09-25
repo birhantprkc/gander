@@ -35,6 +35,7 @@ FIXED_GROUND = [
     ("pdf.html", "six-pages.pdf"),
     ("pptx.html", "deck.pptx"),
     ("imgweb.html", "anim.gif"),
+    ("model.html", "bracket.stl"),
 ]
 
 # Of the themed pages, these three are the ones whose words Gander itself

@@ -8,6 +8,7 @@ import androidx.test.espresso.web.webdriver.DriverAtoms.getText
 import androidx.test.espresso.web.webdriver.Locator
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import com.google.common.truth.Truth.assertThat
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.not
 import org.junit.Before
@@ -117,4 +118,46 @@ class ViewerFormatsTest {
     @Test
     fun aRichTextFileRenders() =
         expect("memo.rtf", "#container", "Field Survey")
+
+    /**
+     * WebGL on the device's own graphics driver, which no browser test stands in for. The
+     * page says what it drew, and the pixels are read back off the graphics card in the same
+     * task as a fresh draw, since nothing keeps a finished frame any longer than that.
+     */
+    @Test
+    fun aThreeDModelIsDrawn() {
+        open("bracket.stl").use { scenario ->
+            WebViewProbe.await(
+                scenario,
+                "document.getElementById('model').getAttribute('data-state') === 'drawn'",
+                "the model to be drawn"
+            )
+            assertThat(WebViewProbe.text(scenario, "document.getElementById('size').textContent"))
+                .isEqualTo("40 × 20 × 30 mm")
+            val share = WebViewProbe.eval(scenario, MODEL_SHARE)?.toDoubleOrNull()
+            assertThat(share).isNotNull()
+            // Some of the screen and not all of it: a blank canvas is 0, a flooded one near 1
+            assertThat(share!!).isGreaterThan(0.02)
+            assertThat(share).isLessThan(0.9)
+        }
+    }
+
+    private companion object {
+        /** The share of the canvas that is not the ground, from every fourth pixel. */
+        const val MODEL_SHARE = """(function () {
+            vwModelDraw();
+            var c = document.getElementById('model');
+            var gl = c.getContext('webgl');
+            var px = new Uint8Array(c.width * c.height * 4);
+            gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            var g = vwModelGround.map(function (v) { return Math.round(v * 255); });
+            var model = 0, seen = 0;
+            for (var i = 0; i < px.length; i += 16) {
+              seen++;
+              if (Math.abs(px[i] - g[0]) + Math.abs(px[i + 1] - g[1]) +
+                  Math.abs(px[i + 2] - g[2]) > 30) model++;
+            }
+            return model / seen;
+        })()"""
+    }
 }
