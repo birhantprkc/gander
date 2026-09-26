@@ -23,6 +23,7 @@ import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
+import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -79,16 +80,27 @@ class ViewerActivity : AppCompatActivity() {
         private const val ASSET_HOST = "appassets.androidplatform.net"
 
         /**
-         * This activity again, under the name the manifest gives it for a file inside a zip.
+         * This activity again, under the name Gander's own screens open it by.
          *
          * An alias, so that it can be declared not exported and nothing outside Gander can
-         * start it. That matters because ArchiveProvider reads whatever archive its URI
-         * names, with Gander's access: a folder the reader granted, or a file in Recents. So
-         * an archive URI arriving any other way than from Gander's own list is turned away
-         * rather than opened. Nothing would leave the phone if it were not, since nothing can,
-         * but another app has no business deciding what Gander shows.
+         * start it, which lets the activity tell a file Gander chose from one another app
+         * handed it. The exported name is the door for other apps, and through it only a
+         * content URI from someone else's provider comes in, the grant that came with it
+         * being the whole of what Gander may read. Gander's own URIs and paths are refused
+         * there, because each reads with Gander's access rather than the sender's:
+         * - a file:// path or the path extra, anything Gander's own storage holds, such as
+         *   the Recents file, or /dev/zero, which never ends;
+         * - its FileProvider, which covers the cache and the thumbnails of the reader's
+         *   documents in it;
+         * - ArchiveProvider, which reads whatever archive its URI names: a folder the reader
+         *   granted, or a file in Recents.
+         * And only a file opened from Gander's own screens goes into Recents, so another app
+         * cannot plant an entry there under a name of its choosing.
+         *
+         * Nothing would leave the phone either way, since nothing can, but another app has
+         * no business deciding what Gander shows.
          */
-        const val ENTRY_VIEWER = "com.arjun.gander.ArchiveEntryViewer"
+        const val INTERNAL_VIEWER = "com.arjun.gander.InternalViewer"
 
         /**
          * How long the page readout stays up after the last scroll, and how long it
@@ -260,18 +272,21 @@ class ViewerActivity : AppCompatActivity() {
         toolbar.setNavigationOnClickListener { finish() }
         val container = findViewById<FrameLayout>(R.id.container)
 
-        // Files arrive via VIEW (data), the share sheet (EXTRA_STREAM),
-        // a plain path extra, or as shared text (EXTRA_TEXT).
-        val uri = intent.data
+        // Files arrive via VIEW (data), the share sheet (EXTRA_STREAM), a plain path extra
+        // from Gander itself, or as shared text (EXTRA_TEXT). Who sent them decides which
+        // of those may be opened: see INTERNAL_VIEWER.
+        val fromGander = componentName.className == INTERNAL_VIEWER
+        val handed = intent.data
             ?: IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
             ?: intent.getStringExtra(EXTRA_PATH)?.let { Uri.fromFile(File(it)) }
-            ?: sharedTextUri()
-        if (uri == null) {
+        if (handed != null && !fromGander && !mayOpenFromOutside(handed)) {
             finish()
             return
         }
-        // A file inside a zip, from anywhere but Gander's own list. See ENTRY_VIEWER.
-        if (ArchiveProvider.isEntry(this, uri) && componentName.className != ENTRY_VIEWER) {
+        // The shared-text file is written here, from text the sender handed over, so it
+        // is Gander's own URI but never one another app chose.
+        val uri = handed ?: sharedTextUri()
+        if (uri == null) {
             finish()
             return
         }
@@ -284,8 +299,10 @@ class ViewerActivity : AppCompatActivity() {
         // Picker selections carry a persistable grant; keep those in Recents.
         // Open-with and folder-browsed URIs throw here and are simply skipped. A file
         // inside a zip would too, but is kept out by name rather than by that: nothing
-        // in a zip is written to the phone, and Recents is on the phone.
-        if (uri.scheme == "content" && !ArchiveProvider.isEntry(this, uri)) {
+        // in a zip is written to the phone, and Recents is on the phone. Only from
+        // Gander's own screens, which is where the picker is: another app offering a
+        // persistable grant would otherwise get an entry, under a name of its choosing.
+        if (fromGander && uri.scheme == "content" && !ArchiveProvider.isEntry(this, uri)) {
             runCatching {
                 contentResolver.takePersistableUriPermission(
                     uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -401,9 +418,9 @@ class ViewerActivity : AppCompatActivity() {
             .setType(mime ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*")
             .putExtra(Intent.EXTRA_STREAM, shareUri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        // Not to Gander itself, as the home screen's share is not: a file from a zip
-        // would be turned away at the door (see ENTRY_VIEWER), which looks like a
-        // crash, and any other file is already open right here.
+        // Not to Gander itself, as the home screen's share is not: a file from a zip or
+        // the shared-text file would be turned away at the door (see INTERNAL_VIEWER),
+        // which looks like a crash, and any other file is already open right here.
         val chooser = Intent.createChooser(send, getString(R.string.share_file))
             .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(ComponentName(this, ViewerActivity::class.java)))
         // Some Android versions refuse to delegate a tree-derived grant and
@@ -1124,7 +1141,7 @@ class ViewerActivity : AppCompatActivity() {
      */
     private var pendingQuery: String = ""
 
-    /** One letter of command, then the payload. Read by onCommand() in pdf.html and find.js. */
+    /** One letter of command, then the payload. Read by onCommand() in pdf.mjs and find.js. */
     private inner class PortFinder : Finder {
         private fun send(s: String) {
             searchPort?.postMessage(WebMessageCompat(s))
@@ -1155,7 +1172,7 @@ class ViewerActivity : AppCompatActivity() {
      * an untrusted document and lets it call methods on it; this passes strings, in
      * the same direction the query parameters on the URL already go. Nothing on
      * either side is evaluated, and what comes back is read as three integers and
-     * dropped if it is anything else. See the note beside vwAskPassword in pdf.html
+     * dropped if it is anything else. See the note beside vwAskPassword in pdf.mjs
      * about why that boundary is most of what keeps a document away from the app.
      *
      * Posted on page finished rather than at load, because the listener that takes it
@@ -1188,8 +1205,10 @@ class ViewerActivity : AppCompatActivity() {
                 }
             })
         searchPort = mine
+        // Addressed to Gander's own origin rather than to "*", so the port is only ever
+        // handed to a page served from it, whatever the WebView is showing by then.
         WebViewCompat.postWebMessage(
-            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), Uri.parse("*"))
+            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), Uri.parse("https://$ASSET_HOST"))
         // Anything typed while there was nowhere to send it.
         if (pendingQuery.isNotEmpty()) mine.postMessage(WebMessageCompat(PortCommand.query(pendingQuery)))
         // And any night mode tapped in the same window. Compared against what the URL
@@ -1228,6 +1247,23 @@ class ViewerActivity : AppCompatActivity() {
             f.writeText(text)
             Uri.fromFile(f)
         }.getOrNull()
+    }
+
+    /**
+     * What the exported viewer takes from another app: a content URI on somebody else's
+     * provider, read with the grant that came with it. Never a path, and never one of
+     * Gander's own providers, all of which are named under its package and read with
+     * Gander's access rather than the sender's. Read the way Android reads it to find the
+     * provider: the authority decoded, and whatever is before its last @ left off.
+     * content://0@... names the same provider, the 0 being the phone's own user, and so
+     * does the same with the @ written as %40, whose host is not the provider's, since the
+     * host is split out of the authority as written.
+     */
+    private fun mayOpenFromOutside(uri: Uri): Boolean {
+        val authority = uri.authority?.substringAfterLast('@') ?: return false
+        return uri.scheme == "content" &&
+            !authority.equals(packageName, ignoreCase = true) &&
+            !authority.startsWith("$packageName.", ignoreCase = true)
     }
 
     private fun resolveDisplayName(uri: Uri): String {
@@ -1403,7 +1439,11 @@ class ViewerActivity : AppCompatActivity() {
 
         with(web.settings) {
             javaScriptEnabled = true
-            domStorageEnabled = true
+            // Off, which is also the default, and said here so it stays off. Nothing
+            // Gander ships reads or writes it, and on a page that renders an untrusted
+            // document it is only a place for script that should never have run to leave
+            // something behind for the next document to find.
+            domStorageEnabled = false
             builtInZoomControls = true
             displayZoomControls = false
             setSupportZoom(true)
@@ -1440,6 +1480,14 @@ class ViewerActivity : AppCompatActivity() {
              * than to change five viewers on the strength of one.
              */
             if (kind == FileKind.PDF) minimumFontSize = 1
+        }
+
+        // Cookies go for the same reason as DOM storage. Nothing here ever sets one, since
+        // every response comes from this app, so the jar could only hold what a document's
+        // own script put there.
+        CookieManager.getInstance().apply {
+            setAcceptCookie(false)
+            setAcceptThirdPartyCookies(web, false)
         }
 
         val assetLoader = WebViewAssetLoader.Builder()
@@ -1491,21 +1539,32 @@ class ViewerActivity : AppCompatActivity() {
                 view: WebView,
                 request: WebResourceRequest
             ): WebResourceResponse? {
+                val url = request.url
                 // The document is served here rather than through WebViewAssetLoader
                 // because a PathHandler is only given the path, and answering range
                 // requests needs the Range header off the request itself.
-                if (request.url.host == ASSET_HOST &&
-                    request.url.path?.startsWith("/doc/") == true
+                if (url.scheme == "https" && url.host == ASSET_HOST &&
+                    url.path?.startsWith("/doc/") == true
                 ) {
                     return docResponse(uri, mime, documentTotal, request.requestHeaders["Range"])
                 }
-                return assetLoader.shouldInterceptRequest(request.url)
+                return assetLoader.shouldInterceptRequest(url)?.withViewerPolicy() ?: when (url.scheme) {
+                    // Anything else a page asks the network for is answered here, with
+                    // nothing, instead of being handed on to the network stack. The missing
+                    // INTERNET permission would stop it there, but that would make one
+                    // control the whole of the guarantee; this is a second one, and it
+                    // holds even for a request from script that should never have run.
+                    "http", "https" -> notFound()
+                    // data: is bytes the page already holds. file: and content: are
+                    // refused by allowFileAccess and allowContentAccess above.
+                    else -> null
+                }
             }
 
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
-            ): Boolean = request.url.host != ASSET_HOST
+            ): Boolean = !isViewerPage(request.url)
         }
 
         // Any scroll at all is what brings the readout up; the number in it comes from
@@ -1635,8 +1694,13 @@ class ViewerActivity : AppCompatActivity() {
             // threshold one bulk read wins; above it, reading the lot dominates.
             val rangeable = useRanges(total)
             val span = if (rangeable) range?.let { parseRange(it, total) } else null
+            // The document is on the pages' own host, which ViewerPolicy trusts for
+            // scripts and styles. nosniff means the browser will only run it as either
+            // if its type says it is one, so markup that a renderer let slip cannot load
+            // a crafted file as the script that script-src 'self' would otherwise allow.
+            val nosniff = "X-Content-Type-Options" to "nosniff"
             if (span == null) {
-                val headers = mutableMapOf<String, String>()
+                val headers = mutableMapOf(nosniff)
                 if (rangeable) headers["Accept-Ranges"] = "bytes"
                 if (total >= 0) headers["Content-Length"] = total.toString()
                 WebResourceResponse(
@@ -1648,6 +1712,7 @@ class ViewerActivity : AppCompatActivity() {
                 WebResourceResponse(
                     mime, null, 206, "Partial Content",
                     mapOf(
+                        nosniff,
                         "Accept-Ranges" to "bytes",
                         "Content-Range" to "bytes $start-$end/$total",
                         "Content-Length" to (end - start + 1).toString()
@@ -1656,11 +1721,32 @@ class ViewerActivity : AppCompatActivity() {
                 )
             }
         } catch (e: Exception) {
-            WebResourceResponse(
-                "text/plain", "utf-8", 404, "Not Found",
-                null, ByteArrayInputStream(ByteArray(0))
-            )
+            notFound()
         }
+    }
+
+    /** See [ViewerPolicy]: the header is what carries the policy into the pdf.js worker. */
+    private fun WebResourceResponse.withViewerPolicy(): WebResourceResponse = apply {
+        responseHeaders = responseHeaders.orEmpty() + ("Content-Security-Policy" to ViewerPolicy.CSP)
+    }
+
+    private fun notFound(): WebResourceResponse = WebResourceResponse(
+        "text/plain", "utf-8", 404, "Not Found",
+        null, ByteArrayInputStream(ByteArray(0))
+    )
+
+    /**
+     * Gander's own pages, which is everything a viewer may navigate to: unsupported.html
+     * hands a file on to text.html, and a link inside a document may jump to a heading in
+     * the page it is on. Nothing off this host is opened, in the viewer or anywhere else,
+     * so a link cannot hand the browser a URL either. Nor the document at /doc/, the one
+     * thing on the host that is not Gander's: opened as a page, a file would be rendered
+     * as whatever its type says rather than by the viewer that makes it safe to look at.
+     */
+    private fun isViewerPage(url: Uri): Boolean {
+        val path = url.path ?: return false
+        return url.scheme == "https" && url.host == ASSET_HOST &&
+            path.startsWith("/assets/viewer/") && path.endsWith(".html") && ".." !in path
     }
 
     /**

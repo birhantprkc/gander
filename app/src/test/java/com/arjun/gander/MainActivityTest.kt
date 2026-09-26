@@ -212,7 +212,7 @@ class MainActivityTest {
         holder.itemView.performClick()
 
         val started = shadowOf(controller.get()).nextStartedActivity
-        assertThat(started.component!!.className).isEqualTo(ViewerActivity::class.java.name)
+        assertThat(started.component!!.className).isEqualTo(ViewerActivity.INTERNAL_VIEWER)
         assertThat(started.data.toString()).contains("six-pages.pdf")
         assertThat(started.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION).isNotEqualTo(0)
     }

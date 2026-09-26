@@ -7,7 +7,7 @@ PDF with a photograph in it, and none of the other samples has one.
 
 TWO THINGS HERE ARE LOAD BEARING AND NEITHER IS OBVIOUS.
 
-1. WHICH CROP OF THE PHOTO. `looksLikePaper()` in pdf.html calls an image paper, and
+1. WHICH CROP OF THE PHOTO. `looksLikePaper()` in pdf.mjs calls an image paper, and
    turns it over with the text, when its mean saturation is under PROBE_SATURATION
    (0.15) AND more than PROBE_PAPER (0.25) of it is near white. A snowy scene is pale
    and unsaturated, which is a scanned page's signature, so the obvious crop of the
@@ -46,7 +46,7 @@ OUT.mkdir(exist_ok=True)
 SOURCE = HERE.parent.parent / "docs/screenshots/v1.14/raw/photo.png"
 PLATE_BOX = (0, 1300, 830, 1780)          # see note 1: the low, wooded, unsnowy corner
 
-# pdf.html's own thresholds. Keep in step with PROBE_SATURATION / PROBE_PAPER there.
+# pdf.mjs's own thresholds. Keep in step with PROBE_SATURATION / PROBE_PAPER there.
 PROBE_SATURATION, PROBE_PAPER = 0.15, 0.25
 
 INK = colors.HexColor("#1a1a1a")
@@ -69,7 +69,7 @@ S = {
 
 
 def measure(im):
-    """pdf.html's looksLikePaper(), on a 64x64 sample. Returns (saturation, pale)."""
+    """pdf.mjs's looksLikePaper(), on a 64x64 sample. Returns (saturation, pale)."""
     q = im.convert("RGB").resize((64, 64))
     pale = sat = 0
     for r, g, b in q.getdata():

@@ -48,7 +48,7 @@ condition survey with one photographic plate. Viewer screens need no debug-overl
 overflow, `screencap`.
 
 **THE TRAP, and it nearly shipped a screenshot that disproved its own caption.**
-`looksLikePaper()` in `pdf.html` turns an image over with the text when its mean
+`looksLikePaper()` in `pdf.mjs` turns an image over with the text when its mean
 saturation is under `PROBE_SATURATION` (0.15) **and** more than `PROBE_PAPER` (0.25) of it
 is near white. That is a scanned page's signature, and it is also a **snowy scene's**. The
 sample world's only photograph is a winter cityscape, and the obvious crop of it measures

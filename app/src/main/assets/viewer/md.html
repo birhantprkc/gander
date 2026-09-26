@@ -2,6 +2,9 @@
 <html>
 <head>
 <meta charset="utf-8">
+<!-- The policy in ViewerPolicy.kt, which says why each part is there. ViewerPolicyTest
+     keeps this copy word for word the same as that one, in every page. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Markdown</title>
 <link rel="stylesheet" href="app.css">
@@ -68,20 +71,6 @@
 <article id="content" data-vw-find></article>
 <script src="app.js"></script>
 <script src="find.js"></script>
-<script>
-/* Nothing is read below marked's floor. The card is already up, and the library in the
-   head either did not parse, below Chromium 80, or would fail on its first document,
-   below 92: issue #31, where this said "marked is not defined" instead. See
-   vwWebViewTooOld in app.js. */
-if (!vwWebViewTooOld("Markdown files")) {
-  vwFetchDoc("text")
-    .then(function (txt) {
-      var html = marked.parse(txt, { gfm: true, breaks: false });
-      document.getElementById("content").innerHTML = DOMPurify.sanitize(html);
-      vwStatusDone();
-    })
-    .catch(function (e) { vwError("Could not render this Markdown file", String(e)); });
-}
-</script>
+<script src="md.js"></script>
 </body>
 </html>

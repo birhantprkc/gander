@@ -139,6 +139,29 @@ function vwFitHeight() {
   document.documentElement.style.setProperty("--vw-fit", window.innerHeight + "px");
 }
 
+/*
+ * Takes the address off every link in a rendered document that is not a web or mail
+ * address, a phone number or a jump within the page.
+ *
+ * docx-preview copies a link's target out of the file into href without looking at it,
+ * and PPTXjs and SheetJS write theirs into markup too, so a crafted document can carry
+ * a javascript: link, or one to another of Gander's pages. The page's policy already
+ * refuses to run the first and ViewerActivity to open the second; this makes both
+ * plain text, which is also what they look like to anyone who taps them. A list of
+ * what may stay rather than of what must go, because browsers read "java\nscript:" as
+ * javascript: and a list of bad schemes would have to know every such spelling.
+ */
+function vwDisarmLinks(root) {
+  var links = root.querySelectorAll("a[href], area[href]");
+  for (var i = 0; i < links.length; i++) {
+    var href = links[i].getAttribute("href").trim();
+    if (href.charAt(0) === "#") continue;
+    var scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href);
+    if (scheme && /^(https?|mailto|tel)$/i.test(scheme[1])) continue;
+    links[i].removeAttribute("href");
+  }
+}
+
 function vwDocUrl() {
   return "/doc/file" + (vwExt ? "." + vwExt : "");
 }

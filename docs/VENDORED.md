@@ -15,12 +15,12 @@ commit.
 
 | File | Project | Version | License | Upstream |
 | --- | --- | --- | --- | --- |
-| `pdf.min.mjs` | pdf.js (legacy build) | 5.7.284 | Apache-2.0 | https://github.com/mozilla/pdf.js |
-| `pdf.worker.min.mjs` | pdf.js worker (legacy build) | 5.7.284 | Apache-2.0 | https://github.com/mozilla/pdf.js |
-| `cmaps/` (169 files) | Adobe CMap resources, redistributed by pdf.js | 1990-2009, via pdf.js 5.7.284 | BSD-3-Clause | https://github.com/adobe-type-tools/cmap-resources |
-| `wasm/openjpeg.wasm` | OpenJPEG, compiled and redistributed by pdf.js | via pdf.js 5.7.284 | BSD-2-Clause | https://github.com/uclouvain/openjpeg |
-| `wasm/jbig2.wasm` | PDFium's JBIG2 decoder, compiled and redistributed by pdf.js | via pdf.js 5.7.284 | BSD-3-Clause and Apache-2.0 | https://pdfium.googlesource.com/pdfium/ |
-| `wasm/LICENSE_*` (4 files) | licence texts for the two decoders above | via pdf.js 5.7.284 | see above | https://github.com/mozilla/pdf.js |
+| `pdf.min.mjs` | pdf.js (legacy build) | 6.3.289 | Apache-2.0 | https://github.com/mozilla/pdf.js |
+| `pdf.worker.min.mjs` | pdf.js worker (legacy build) | 6.3.289 | Apache-2.0 | https://github.com/mozilla/pdf.js |
+| `cmaps/` (169 files) | Adobe CMap resources, redistributed by pdf.js | 1990-2009, via pdf.js 6.3.289 | BSD-3-Clause | https://github.com/adobe-type-tools/cmap-resources |
+| `wasm/openjpeg.wasm` | OpenJPEG, compiled and redistributed by pdf.js | via pdf.js 6.3.289 | BSD-2-Clause | https://github.com/uclouvain/openjpeg |
+| `wasm/jbig2.wasm` | PDFium's JBIG2 decoder, compiled and redistributed by pdf.js | via pdf.js 6.3.289 | BSD-3-Clause and Apache-2.0 | https://pdfium.googlesource.com/pdfium/ |
+| `wasm/LICENSE_*` (4 files) | licence texts for the two decoders above | via pdf.js 6.3.289 | see above | https://github.com/mozilla/pdf.js |
 | `jszip3.min.js` | JSZip | 3.10.1 | MIT or GPL-3.0 dual | https://github.com/Stuk/jszip |
 | `docx-preview.min.js` | docx-preview | 0.4.0 | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
 | `xlsx.full.min.js` | SheetJS Community Edition | 0.20.3 | Apache-2.0 | https://git.sheetjs.com/sheetjs/sheetjs |
@@ -57,7 +57,7 @@ silently for whatever was trimmed.
 `wasm/` holds the two image decoders pdf.js keeps in WebAssembly rather than in
 its bundle. Since pdf.js 4 the JPEG 2000 decoder (`openjpeg.wasm`, 252 KB) and
 the JBIG2 one (`jbig2.wasm`, 105 KB) are fetched by the worker at the moment it
-meets an image that needs one, and the `wasmUrl` option in `pdf.html` is the
+meets an image that needs one, and the `wasmUrl` option in `pdf.mjs` is the
 only way to say where they are.
 
 They fail exactly the way the CMaps do. The worker warns to the console, returns
@@ -115,11 +115,20 @@ so neither sets a floor today.
 cannot parse never runs, so the page has no way to report the problem from inside
 itself. That makes the Chromium floor a fact to check rather than a preference.
 
-- The legacy build of 5.7.284 supports **Chromium 125 and newer** (Mozilla's
-  pdf.js FAQ). That number is `PDFJS_MIN_CHROMIUM_MAJOR` in
+- The legacy build of 6.3.289 supports **Chromium 125 and newer**: pdf.js 6.0
+  set that floor in PR 21152, the same number the FAQ gave for 5.7.284. That
+  number is `PDFJS_MIN_CHROMIUM_MAJOR` in
   `app/src/main/java/com/arjun/gander/WebViewFloor.kt`, compared against the
-  WebView actually in use. Below it, `pdf.html` shows a card explaining
-  that Android System WebView needs updating instead of loading the renderer.
+  WebView actually in use. Below it, `pdf.html` shows a card explaining that
+  Android System WebView needs updating instead of loading the renderer.
+- **Every viewer page runs under the Content Security Policy in `ViewerPolicy.kt`.**
+  It allows no eval and no fetch off the page's own host, and allows WebAssembly,
+  which the worker compiles for its JPEG 2000 and JBIG2 decoders and for every
+  PostScript function a PDF carries. A new version that needs anything else is
+  refused quietly: the browser reports it and the page carries on without it. The
+  viewer tests fail on any such report from a page, but the worker takes its policy
+  from the header ViewerActivity sends, which the test server does not, so only the
+  device tests see what the worker is refused.
 - **Chromium 138 is the ceiling on Android 8.0, 8.1 and 9.0.** Chromium 139
   requires Android 10, so those releases will never receive a newer WebView, and
   minSdk here is 26. A pdf.js version needing more than 138 therefore does not
@@ -131,7 +140,7 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
   writes only `left`, `top`, `font-family` and three custom properties on each span:
   `--font-height`, `--scale-x` and `--rotate`. It never writes `font-size` or
   `transform`; the stylesheet has to turn those properties into both, and the scale
-  hook in 5.7.284 is `--total-scale-factor` (the older `--scale-factor` is not read).
+  hook in 6.3.289 is `--total-scale-factor` (the older `--scale-factor` is not read).
   Get any of it wrong and nothing throws and nothing looks broken, because the text is
   transparent and the picture underneath is still correct. It shows up only as a
   selection covering the wrong words or a search highlight stopping short of the word
@@ -143,7 +152,7 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
   face as the chunks stream past, so pdf.js measures each run in the typeface the page
   was set in rather than in a generic. Without it, `--scale-x` corrects a run's total
   width and leaves every character position inside it wrong, which is a search
-  highlight landing short. Five things about 5.7.284 make it work, and none is
+  highlight landing short. Five things about 6.3.289 make it work, and none is
   documented API:
   - `textContent.styles` is keyed by `font.loadedName`, and `item.fontName` is that
     same key, so the mapping is direct rather than a lookup.
@@ -204,11 +213,12 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
   figures spent 684 ms deciding what they were and nothing on the desktop said so.
 
 Bumping pdf.js means editing together the two `pdf.*.mjs` rows above, `PDFJS` in
-`scripts/fetch-viewer-libs.sh`, and `PDFJS_MIN_CHROMIUM_MAJOR`. The card's wording
-lives in `pdf.html` and reads both version numbers out of the query string, so it
-needs no edit. It also reads `locked`, which says the reader has no way to update
-the WebView and selects wording that does not ask them to; that flag is about the
-phone rather than about pdf.js, so a version bump does not affect it either.
+`scripts/fetch-viewer-libs.sh`, and `PDFJS_MIN_CHROMIUM_MAJOR`. The card's
+wording lives in `app.js`, called from `pdf-setup.js`, and reads both version
+numbers out of the query string, so it needs no edit. It also reads `locked`,
+which says the reader has no way to update the WebView and selects wording that
+does not ask them to; that flag is about the phone rather than about pdf.js, so
+a version bump does not affect it either.
 
 Notes for packagers (F-Droid and friends): the minified files are unmodified
 upstream distribution artifacts. If unminified sources are required, every

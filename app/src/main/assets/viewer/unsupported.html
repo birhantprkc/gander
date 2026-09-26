@@ -2,6 +2,9 @@
 <html>
 <head>
 <meta charset="utf-8">
+<!-- The policy in ViewerPolicy.kt, which says why each part is there. ViewerPolicyTest
+     keeps this copy word for word the same as that one, in every page. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Unknown format</title>
 <link rel="stylesheet" href="app.css">
@@ -47,22 +50,6 @@
   <p class="caveat" id="caveat">If it isn't text, you'll see random characters.</p>
 </div>
 <script src="app.js"></script>
-<script>
-document.getElementById("fname").textContent = vwName;
-var hint = document.getElementById("hint");
-if (vwExt === "ppt") {
-  hint.textContent =
-    "This is a legacy Office format (.ppt). If you re-save it as .pptx, Gander can display it.";
-} else {
-  // Nothing useful to add; leave the card to the action below
-  hint.style.display = "none";
-}
-
-document.getElementById("asText").addEventListener("click", function () {
-  location.replace(
-    "text.html?name=" + encodeURIComponent(vwName) + "&ext=" + encodeURIComponent(vwExt)
-  );
-});
-</script>
+<script src="unsupported.js"></script>
 </body>
 </html>

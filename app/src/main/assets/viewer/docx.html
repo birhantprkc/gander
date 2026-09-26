@@ -2,6 +2,9 @@
 <html>
 <head>
 <meta charset="utf-8">
+<!-- The policy in ViewerPolicy.kt, which says why each part is there. ViewerPolicyTest
+     keeps this copy word for word the same as that one, in every page. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Word document</title>
 <link rel="stylesheet" href="app.css">
 <style>
@@ -85,105 +88,6 @@
 <div id="container" data-vw-find></div>
 <script src="app.js"></script>
 <script src="find.js"></script>
-<script>
-/* Word bullet lists use Symbol/Wingdings private-use characters (U+F000 range)
-   that Android has no glyphs for. Swap them for Unicode equivalents. */
-function fixSymbolChars(root) {
-  var map = {
-    0xF0B7: "•", 0xF0A7: "▪", 0xF0A8: "◦", 0xF076: "❖",
-    0xF0D8: "➢", 0xF0FC: "✓", 0xF0B0: "°", 0xF0D0: "➔"
-  };
-  var pua = new RegExp("[\\uF000-\\uF0FF]", "g");
-  var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  var n;
-  while ((n = walker.nextNode())) {
-    pua.lastIndex = 0;
-    if (pua.test(n.nodeValue)) {
-      pua.lastIndex = 0;
-      n.nodeValue = n.nodeValue.replace(pua, function (c) {
-        return map[c.charCodeAt(0)] || "•";
-      });
-    }
-  }
-}
-
-/*
- * Scale the pages so the widest of them fills the screen, for the zoom in the stylesheet.
- *
- * The widest and not the first: a document can mix portrait and landscape sections, and
- * sizing off page one would push a landscape page past the layout width, widen the
- * viewport for the whole document, and shrink every portrait page to pay for it. Taking
- * the widest means nothing overflows and the pages keep their real proportions to each
- * other, which is the point of drawing them as paper at all.
- *
- * That is a trade, and only for a document that mixes the two. Measured on such a one:
- * its portrait pages go from 80.2% of the screen to 76.1%, while its landscape page goes
- * from 103.7%, which is to say wider than the screen and needing a sideways drag to read,
- * to 98.5% and whole. A document of one orientation, which is nearly all of them, only
- * gains: 83% to 98%.
- *
- * The ratio is reset to 1 before measuring rather than divided out of the last one,
- * because a zoomed element reports its zoomed width and two roundings of that would
- * drift. Writing the property forces the recalculation that the read below needs.
- *
- * That reset is doing a second job, and it is the reason not to optimise it away. Whether
- * getBoundingClientRect reports a zoomed element's box with the zoom in it changed when
- * zoom was standardised, around Chromium 128: WebView 152 includes it and WebView 103,
- * checked on an emulator, does not. Measuring at 1 means this never has to know which,
- * because at 1 the two agree. The rendering is right on both; it is only the reading back
- * that differs, which is worth knowing before believing a rect on an older engine.
- *
- * A page already wider than the screen, which a landscape one is, comes out under 1 and
- * is shrunk to fit. That is the same size it reaches today by overflowing and making the
- * WebView zoom out to fit it, and it costs the document nothing, but it keeps the layout
- * viewport at 980 where the overflow route moves it.
- *
- * Not re-run on rotation, where vwFitHeight is. The width this divides by is the WebView's
- * own layout width, which is 980 in both orientations because there is no viewport meta
- * for the turn to reinterpret, so the ratio a rotation would arrive at is the one already
- * set. Checked on the phone: 1.181 in portrait and in landscape.
- */
-function fitPageWidth() {
-  var wrap = document.querySelector(".docx-wrapper");
-  var pages = wrap ? wrap.querySelectorAll("section.docx") : [];
-  if (!pages.length) return;
-
-  wrap.style.setProperty("--vw-page-zoom", "1");
-  var pad = getComputedStyle(wrap);
-  var room = wrap.clientWidth -
-    parseFloat(pad.paddingLeft || 0) - parseFloat(pad.paddingRight || 0);
-
-  var widest = 0;
-  for (var i = 0; i < pages.length; i++) {
-    widest = Math.max(widest, pages[i].getBoundingClientRect().width);
-  }
-  if (room > 0 && widest > 0) wrap.style.setProperty("--vw-page-zoom", room / widest);
-}
-
-/* Nothing is read below docx-preview's floor. The card is already up, and the library
-   in the head may not even have parsed, which below Chromium 80 it cannot: issue #31,
-   where this said "docx is not defined" instead. See vwWebViewTooOld in app.js. */
-if (!vwWebViewTooOld("Word documents")) {
-  vwFetchDoc("buffer")
-    .then(function (buf) {
-      return docx.renderAsync(buf, document.getElementById("container"), null, {
-        inWrapper: true,
-        breakPages: true,
-        renderHeadersFooters: true,
-        ignoreLastRenderedPageBreak: true,
-        experimental: true
-      });
-    })
-    .then(function () {
-      fixSymbolChars(document.getElementById("container"));
-      /* Width first: it decides whether the document still overflows 980, which is the
-         one thing that moves the height vwFitHeight is about to read. */
-      fitPageWidth();
-      vwFitHeight();
-      vwStatusDone();
-    })
-    .catch(function (e) { vwError("Could not render this Word document", String(e)); });
-}
-</script>
+<script src="docx.js"></script>
 </body>
 </html>

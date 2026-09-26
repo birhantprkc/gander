@@ -63,6 +63,36 @@
 - A file you remove from Recents, or that drops off the end of the list, now takes Gander's access
   to it along with it. Android used to go on letting Gander open it until the app was uninstalled.
 
+- PDFs are now drawn by pdf.js 6.3.289, up from 5.7.284, which falls inside CVE-2026-16633.
+  That flaw needs pdf.js's own scripting switched on, which Gander has never done, so it could
+  not reach Gander, and the policy every viewer page now carries closes it a second way.
+  Updating takes the version out of the range that security scanners flag.
+
+- Another app can no longer make Gander open Gander's own files, such as its list of recent
+  files or the thumbnails of your documents. The viewer used to accept a file path, or an
+  address on one of Gander's own storage providers, from any app, and read it with Gander's
+  access. It now takes only what the other app is sharing itself, and only files opened from
+  Gander's own screens are added to Recents.
+
+- Script inside a document can no longer run. Every viewer page now carries a Content Security
+  Policy that allows only Gander's own code. Before this, a Word file could embed a web page
+  whose script ran as soon as the document opened, and a link in one could run script when
+  tapped. It could not send anything anywhere, since Gander has no internet permission, but it
+  ran. Links in Word, PowerPoint and Excel files that lead anywhere but a website, an email
+  address, a phone number or another place in the document are now plain text.
+
+- Anything a document's page asks for that Gander does not serve is now answered with nothing
+  inside the app. Before, it was handed to Android's network stack and stopped only by Gander
+  having no internet permission, so that one missing permission was the whole of the
+  guarantee; now there are two. The viewer also keeps no cookies or page storage, and cannot be
+  sent to any page but Gander's own.
+
+- Moving to a new phone no longer copies Gander's list of recent files across. Backups were
+  already off, but from Android 12 a phone-to-phone transfer follows rules of its own, and
+  Gander had set none. Gander also opts out of the usage reports Android System WebView sends
+  Google about the apps it runs in, and turns off Safe Browsing, which has nothing to check
+  when the only pages loaded are Gander's own.
+
 - On a phone whose Android System WebView is too old for PDFs, the message saying so now stays
   on screen. It was being replaced a moment later by "Something went wrong while rendering" and
   an unexpected-token error that explained nothing (thanks @XZY123lol, who brought this over

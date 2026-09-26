@@ -28,6 +28,8 @@ import androidx.test.espresso.web.webdriver.Locator
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.common.truth.Truth.assertThat
 import java.io.File
@@ -84,7 +86,7 @@ class ArchiveDeviceTest {
     private fun openEntry(archive: String, path: String): ActivityScenario<ViewerActivity> =
         ActivityScenario.launch(
             Intent()
-                .setComponent(ComponentName(target, ViewerActivity.ENTRY_VIEWER))
+                .setComponent(ComponentName(target, ViewerActivity.INTERNAL_VIEWER))
                 .setData(entryUri(archive, path))
         )
 
@@ -275,6 +277,24 @@ class ArchiveDeviceTest {
     }
 
     /**
+     * The password is tried on the list's loader thread, which Espresso cannot see, so for a
+     * moment after the key is pressed the box is still up and the UI looks idle. Asked about
+     * the file's viewer in that moment, Espresso went looking for it inside the password box
+     * and found nothing: seen on an Android 9 emulator straight after a cold boot, where the
+     * try took nearly two seconds. The box did close and the file did open; the question was
+     * just asked too soon. So wait for the file's own viewer to be in front first.
+     */
+    private fun waitForTheFileToOpen() = waitFor("the file to open") {
+        var open = false
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            open = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .any { activity -> activity.intent?.data?.let { ArchiveProvider.isEntry(activity, it) } == true }
+        }
+        open.takeIf { it }
+    }
+
+    /**
      * The whole of it on a device: the box, the password tried against the file, and the file
      * decrypted into the pipe on its way to the text viewer.
      */
@@ -284,6 +304,7 @@ class ArchiveDeviceTest {
             rows(it)
             onView(allOf(withId(R.id.title), withText("zipcrypto.txt"))).perform(click())
             unlockWith("gander")
+            waitForTheFileToOpen()
             onWebView()
                 .withElement(findElement(Locator.CSS_SELECTOR, "#content"))
                 .check(webMatches(getText(), containsString("Plain text, opened by the text viewer")))
@@ -417,7 +438,7 @@ class ArchiveDeviceTest {
         }
     }
 
-    /** Only Gander's own list can open one of these. See ViewerActivity.ENTRY_VIEWER. */
+    /** Only Gander's own list can open one of these. See ViewerActivity.INTERNAL_VIEWER. */
     @Test
     fun aFileInsideAZipIsRefusedFromOutsideTheList() {
         val intent = Intent(target, ViewerActivity::class.java)
