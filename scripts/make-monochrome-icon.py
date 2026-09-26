@@ -97,8 +97,9 @@ def grown(path, by):
     return union(path, band(path, 2 * by))
 
 
-def shrunk(path, by):
-    return minus(path, band(path, 2 * by))
+def rim(path, width):
+    """The strip [width] wide just inside [path]'s outline."""
+    return pathops.op(path, band(path, 2 * width), pathops.PathOp.INTERSECTION)
 
 
 def corner_notch(fold):
@@ -161,7 +162,7 @@ def main():
             # fold, so the front card hides that corner as though it were square.
             cover = union(cover, grown(corner_notch(card["fold"]), GAP))
         ink = minus(ink, cover)
-        ink = union(ink, minus(card["paper"], shrunk(card["paper"], OUTLINE)), card["fold"])
+        ink = union(ink, rim(card["paper"], OUTLINE), card["fold"])
         if card is cards[-1]:
             ink = union(ink, card["badge"], card["line1"], card["line2"])
 
