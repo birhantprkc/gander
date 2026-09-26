@@ -10,10 +10,10 @@
 
 - Gander opens 3D models saved as .stl, the file 3D printers take. The model opens as a solid
   you can turn any way with one finger, over the top and underneath as freely as round the side,
-  and zoom, twist or move with two, and a double tap puts it back. Its size in millimetres is
-  shown underneath. Binary and text STL both open, including binary files whose header begins
-  with the word solid, as SolidWorks writes them. The viewer is written for Gander rather than
-  taken from a 3D library, and adds about 15 KB.
+  and flick to leave it turning. Two fingers zoom, twist or move it, and a double tap puts it
+  back. Its size in millimetres is shown underneath. Binary and text STL both open, including
+  binary files whose header begins with the word solid, as SolidWorks writes them. The viewer is
+  written for Gander rather than taken from a 3D library, and adds about 15 KB.
 
 - Gander is offered for files an app knows only as binary, which is how WhatsApp sends a file
   whose type it has no name for, a .stl among them, and why it labels one BIN. Gander goes by

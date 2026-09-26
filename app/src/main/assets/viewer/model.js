@@ -17,8 +17,8 @@
  *
  * Z is up, as it is in every slicer and in the CAD programs STL files come out of, and the
  * model opens seen from the front right and a little above. One finger turns it freely, the
- * way the finger goes. Two pinch to zoom, twist to roll it round and move it, all about the
- * point between them, and a double tap puts it back.
+ * way the finger goes, and a flick carries it on. Two pinch to zoom, twist to roll it round
+ * and move it, all about the point between them, and a double tap puts it back.
  */
 
 /* Where the camera starts: turned this far round from the front, and this far up. */
@@ -83,6 +83,19 @@ var VW_MODEL_TAP_MS = 300;
 var VW_MODEL_TAP_SLOP = 10;
 var VW_MODEL_DOUBLE_MS = 350;
 var VW_MODEL_DOUBLE_SLOP = 40;
+
+/*
+ * A flick. How fast the finger was going over its last VW_MODEL_FLICK_MS before it lifted
+ * carries the model on, losing about two thirds of that speed every VW_MODEL_COAST_MS, until
+ * it is too slow to see. A finger that stopped before it lifted carries nothing on, and the
+ * next touch catches the model. Speeds are in CSS pixels a millisecond; the least that counts
+ * is Android's own least fling, 50 dp a second.
+ */
+var VW_MODEL_FLICK_MS = 80;
+var VW_MODEL_FLICK_MIN = 0.05;
+var VW_MODEL_FLICK_MAX = 4;
+var VW_MODEL_COAST_MS = 350;
+var VW_MODEL_COAST_STOP = 0.01;
 
 var VW_MODEL_VERTEX = [
   "attribute vec3 aPos;",
@@ -663,6 +676,7 @@ function vwModelDraw() {
 // ---------------------------------------------------------------------------
 
 function vwModelReset() {
+  vwModelCoast = null;
   vwModelView = vwModelStartView();
   vwModelQueue();
 }
@@ -761,13 +775,59 @@ function vwModelZoomAt(x, y, factor) {
 
 /*
  * Every finger on the model, by pointer id, where it was last seen. One turns the model, and
- * two pinch, twist and move it. A mouse turns it with the left button and moves it with the right
- * or with Shift, which is for testing on a computer as much as anything.
+ * two pinch, twist and move it. A mouse turns it with the left button and moves it with the
+ * right or with Shift, which is for testing on a computer as much as anything.
  */
 var vwModelFingers = {};
 var vwModelFingerCount = 0;
 var vwModelPress = null;
 var vwModelLastTap = null;
+
+/* A flick still carrying the model on: its speed, and when it last moved it. */
+var vwModelCoast = null;
+
+/* Where a turning finger has been lately: its last VW_MODEL_FLICK_MS, and the point before. */
+function vwModelTrail(trail, t, x, y) {
+  trail.push({ t: t, x: x, y: y });
+  while (trail.length > 2 && t - trail[1].t > VW_MODEL_FLICK_MS) trail.shift();
+}
+
+/* Carries the model on after a finger lifted at [t], the way its [trail] was going. */
+function vwModelFling(trail, t) {
+  var first = trail[0], last = trail[trail.length - 1];
+  if (t - last.t > VW_MODEL_FLICK_MS || !(last.t > first.t)) return;
+  var vx = (last.x - first.x) / (last.t - first.t);
+  var vy = (last.y - first.y) / (last.t - first.t);
+  var speed = Math.sqrt(vx * vx + vy * vy);
+  if (!(speed > VW_MODEL_FLICK_MIN)) return;
+  // Android's Remove animations setting, which reaches the page as reduced motion
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var cap = Math.min(1, VW_MODEL_FLICK_MAX / speed);
+  vwModelCoast = { vx: vx * cap, vy: vy * cap, t: t };
+  requestAnimationFrame(vwModelCoasting);
+}
+
+/* One frame of a flick: as far as the speed carries the model since the last, then slower. */
+function vwModelCoasting(now) {
+  var c = vwModelCoast;
+  if (!c) return;
+  if (!vwModelMesh) {
+    vwModelCoast = null;
+    return;
+  }
+  // A frame held back by a busy phone, or by the page being out of sight, counts as a short one
+  var dt = Math.max(0, Math.min(now - c.t, 50));
+  var keep = Math.exp(-dt / VW_MODEL_COAST_MS);
+  // The distance a speed covers while falling away like that: v * T * (1 - e^(-dt / T))
+  var travel = VW_MODEL_COAST_MS * (1 - keep);
+  vwModelTurn(c.vx * travel, c.vy * travel);
+  vwModelQueue();
+  c.vx *= keep;
+  c.vy *= keep;
+  c.t = now;
+  if (Math.sqrt(c.vx * c.vx + c.vy * c.vy) < VW_MODEL_COAST_STOP) vwModelCoast = null;
+  else requestAnimationFrame(vwModelCoasting);
+}
 
 function vwModelOtherFinger(id) {
   for (var key in vwModelFingers) {
@@ -777,6 +837,8 @@ function vwModelOtherFinger(id) {
 }
 
 function vwModelDown(e) {
+  // A touch catches a model still turning from a flick
+  vwModelCoast = null;
   // Nothing to move until there is a model, and nothing yet to measure a move against
   if (!vwModelMesh) return;
   if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 2) return;
@@ -785,7 +847,8 @@ function vwModelDown(e) {
   vwModelFingers[e.pointerId] = {
     x: e.clientX,
     y: e.clientY,
-    pans: e.pointerType === "mouse" && (e.button === 2 || e.shiftKey)
+    pans: e.pointerType === "mouse" && (e.button === 2 || e.shiftKey),
+    trail: [{ t: e.timeStamp, x: e.clientX, y: e.clientY }]
   };
   vwModelFingerCount++;
   vwModelPress = vwModelFingerCount === 1
@@ -805,7 +868,10 @@ function vwModelMove(e) {
   }
   if (vwModelFingerCount === 1) {
     if (finger.pans) vwModelPan(x - finger.x, y - finger.y);
-    else vwModelTurn(x - finger.x, y - finger.y);
+    else {
+      vwModelTurn(x - finger.x, y - finger.y);
+      vwModelTrail(finger.trail, e.timeStamp, x, y);
+    }
   } else {
     var other = vwModelOtherFinger(e.pointerId);
     if (other) {
@@ -831,7 +897,8 @@ function vwModelMove(e) {
 }
 
 function vwModelUp(e) {
-  if (!vwModelFingers[e.pointerId]) return;
+  var finger = vwModelFingers[e.pointerId];
+  if (!finger) return;
   delete vwModelFingers[e.pointerId];
   vwModelFingerCount--;
   var press = vwModelPress;
@@ -846,6 +913,10 @@ function vwModelUp(e) {
     } else {
       vwModelLastTap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
     }
+  }
+  // Only a finger that turned the model alone, from the moment it went down
+  if (e.type === "pointerup" && press && press.id === e.pointerId && press.moved && !finger.pans) {
+    vwModelFling(finger.trail, e.timeStamp);
   }
   if (vwModelFingerCount === 0) vwModelPress = null;
 }
