@@ -1203,15 +1203,17 @@ class ViewerActivity : AppCompatActivity() {
      * What the exported viewer takes from another app: a content URI on somebody else's
      * provider, read with the grant that came with it. Never a path, and never one of
      * Gander's own providers, all of which are named under its package and read with
-     * Gander's access rather than the sender's. The host rather than the authority, as
-     * ArchiveProvider.isEntry does: content://0@... names the same provider, the 0 being
-     * the phone's own user, and Android strips it before the provider sees the URI.
+     * Gander's access rather than the sender's. Read the way Android reads it to find the
+     * provider: the authority decoded, and whatever is before its last @ left off.
+     * content://0@... names the same provider, the 0 being the phone's own user, and so
+     * does the same with the @ written as %40, whose host is not the provider's, since the
+     * host is split out of the authority as written.
      */
     private fun mayOpenFromOutside(uri: Uri): Boolean {
-        val host = uri.host ?: return false
+        val authority = uri.authority?.substringAfterLast('@') ?: return false
         return uri.scheme == "content" &&
-            !host.equals(packageName, ignoreCase = true) &&
-            !host.startsWith("$packageName.", ignoreCase = true)
+            !authority.equals(packageName, ignoreCase = true) &&
+            !authority.startsWith("$packageName.", ignoreCase = true)
     }
 
     private fun resolveDisplayName(uri: Uri): String {

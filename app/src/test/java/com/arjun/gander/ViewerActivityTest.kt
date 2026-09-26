@@ -481,7 +481,8 @@ class ViewerActivityTest {
     /**
      * Nor one of Gander's own content URIs, which read with Gander's access too: the
      * FileProvider covers the cache, where the thumbnails of the reader's documents are. By
-     * host, so the 0@ spelling of the same authority is refused as well, as for zips.
+     * the authority Android finds the provider with, so the 0@ spelling of the same one is
+     * refused as well, as for zips, and so is 0%40, whose host is not the provider's.
      */
     @Test
     fun anotherAppCannotHaveGanderOpenItsOwnProviders() {
@@ -489,6 +490,7 @@ class ViewerActivityTest {
         listOf(
             "content://$own/cache/thumbs/0.png",
             "content://0@$own/cache/thumbs/0.png",
+            "content://0%40$own/cache/thumbs/0.png",
             "content://${own.uppercase()}/cache/thumbs/0.png",
             "content://${context.packageName}/anything",
         ).forEach { url ->
