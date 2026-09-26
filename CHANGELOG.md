@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each
   other and from the cream behind them. They used to run together into one white shape.

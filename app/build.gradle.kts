@@ -13,8 +13,8 @@ android {
         applicationId = "com.arjun.gander"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "1.17"
+        versionCode = 21
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // A device test that hangs blocks the whole nightly run behind it, and
