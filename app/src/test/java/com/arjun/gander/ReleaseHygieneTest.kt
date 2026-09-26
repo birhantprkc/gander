@@ -36,7 +36,7 @@ class ReleaseHygieneTest {
          * `cat short_description.txt full_description.txt | shasum -a 256` prints
          * from that folder.
          */
-        const val TRANSLATED_FROM = "ebc008681247d847e2f96d3eb03c2fb255e06e6c982442bca9ec7bf50766166f"
+        const val TRANSLATED_FROM = "81e0a45ac2f27f0b1ea383873fec1425081062a64cc69bfcff62c837e8906173"
 
         /** Every listing language beside the English, read off the disk. */
         val TRANSLATIONS: List<File> = LISTING.listFiles { f -> f.isDirectory && f.name != "en-US" }

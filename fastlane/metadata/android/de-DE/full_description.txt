@@ -5,13 +5,16 @@ Gander ist ein Offline-Viewer für Dokumente auf Android. Öffnen Sie ein PDF, e
 Alle Formate, die man Ihnen typischerweise schickt:
 
 - PDF-Dokumente, Seite für Seite, mit Zwei-Finger-Zoom
-- Word-Dokumente (.docx)
+- Word-Dokumente (.docx, auch Word 97-2003 .doc)
+- OpenDocument-Text (.odt) und Rich Text (.rtf)
 - Excel-Tabellen (.xlsx, .xls, .xlsm, .xlsb, .csv, .ods), mit Registerkarten bei Arbeitsmappen aus mehreren Tabellenblättern
 - PowerPoint-Folien (.pptx)
 - Fotos: JPG, PNG, WebP, HEIC, BMP, GIF, SVG, AVIF und mehr
 - Videos: MP4, MKV, WebM, MOV und mehr
 - Audio: MP3, M4A, FLAC, WAV, OGG, Opus
 - Markdown, reiner Text und Quellcode
+- Zip-Archive (.zip)
+- 3D-Modelle (.stl)
 
 Von Grund auf privat, und Sie können das prüfen
 
@@ -40,7 +43,7 @@ Rund 5 MB, ein einziges Paket, das auf jedem Prozessor läuft, ganz ohne native 
 Ganz ehrlich: Was Gander nicht ist
 
 - Gander ist ein Viewer, kein Editor
-- Alte binäre .doc- und .ppt-Dateien werden nicht unterstützt. Binäre .xls-Dateien schon
+- Alte binäre .ppt-Dateien werden nicht unterstützt. Binäre .xls- und .doc-Dateien schon
 - Komplexe PowerPoint-Präsentationen werden nur annähernd dargestellt, und Diagramme in Tabellenkalkulationen werden nicht angezeigt
 - Zum Anzeigen von PDFs ist Android System WebView 125 oder neuer nötig, und Gander weist Sie deutlich darauf hin, wenn Ihre Version älter ist
 - Die App selbst ist auf Englisch

@@ -5,13 +5,16 @@ GanderはAndroid用のオフライン文書ビューアーです。PDF、Word文
 よく送られてくる形式にひと通り対応
 
 - PDF文書：ページごとに表示、ピンチで拡大縮小
-- Word文書（.docx）
+- Word文書（.docx、Word 97-2003の.doc）
+- OpenDocumentテキスト（.odt）、リッチテキスト（.rtf）
 - Excelの表計算ファイル（.xlsx、.xls、.xlsm、.xlsb、.csv、.ods）：複数シートのブックはタブで切り替え
 - PowerPointのスライド（.pptx）
 - 写真：JPG、PNG、WebP、HEIC、BMP、GIF、SVG、AVIFなど
 - 動画：MP4、MKV、WebM、MOVなど
 - 音声：MP3、M4A、FLAC、WAV、OGG、Opus
 - Markdown、プレーンテキスト、ソースコード
+- Zipアーカイブ（.zip）
+- 3Dモデル（.stl）
 
 設計段階からプライバシーを保護。自分で確認もできます
 
@@ -40,7 +43,7 @@ Ganderは、渡されたファイルを開きます。システムのファイ�
 できないことも正直に
 
 - Ganderはビューアーであり、エディターではありません
-- 古いバイナリ形式の.docと.pptには対応していません。バイナリ形式の.xlsには対応しています
+- 古いバイナリ形式の.pptには対応していません。バイナリ形式の.xlsと.docには対応しています
 - PowerPointの複雑なスライドは完全には再現されず、表計算のグラフは描画されません
 - PDFの表示にはAndroid System WebView 125以降が必要です。古い場合はGanderがはっきりお知らせします
 - アプリ自体の表示は英語です
