@@ -39,6 +39,9 @@ class FormatRegistryTest {
             "application/vnd.ms-powerpoint.presentation.macroEnabled.12" to FileKind.PPTX,
         )
 
+        /** Not a format but the lack of one, claimed for a file an app knows only as binary. */
+        const val GENERIC_BINARY = "application/octet-stream"
+
         /** Every mimeType the manifest claims, in declaration order with duplicates. */
         fun claimedMimes(): List<String> =
             Regex("""android:mimeType="([^"]+)"""").findAll(MANIFEST)
@@ -123,7 +126,7 @@ class FormatRegistryTest {
      */
     @Test
     fun everyFormatTheManifestClaimsCanBeRoutedByMimeAlone() {
-        val claimed = mimesFor("VIEW") - "application/octet-stream"
+        val claimed = mimesFor("VIEW") - GENERIC_BINARY
         val wildcards = claimed.filter { it.endsWith("/*") }
         val exact = claimed.filterNot { it.endsWith("/*") }
 
@@ -152,8 +155,8 @@ class FormatRegistryTest {
     @Test
     fun aFileSentAsAGenericBinaryIsOffered() {
         listOf(Intent.ACTION_VIEW, Intent.ACTION_SEND).forEach { action ->
-            assertWithMessage("$action offers the viewer for application/octet-stream")
-                .that(resolves(action, "application/octet-stream")).isTrue()
+            assertWithMessage("$action offers the viewer for $GENERIC_BINARY")
+                .that(resolves(action, GENERIC_BINARY)).isTrue()
         }
     }
 

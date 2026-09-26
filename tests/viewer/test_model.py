@@ -676,17 +676,25 @@ def flick(page, dx, dy, at=(490, 800), steps=6, hold=0):
     page.evaluate(FINGER, [at[0], at[1], dx, dy, steps, 12, hold])
 
 
+def view(page):
+    """The camera's view: which ways are right, up and back from it, its zoom and target."""
+    return page.evaluate("() => vwModelView")
+
+
+def coast(page):
+    """How fast a flick is still turning the model, in CSS pixels a millisecond, or None."""
+    return page.evaluate("() => vwModelCoast && Math.hypot(vwModelCoast.vx, vwModelCoast.vy)")
+
+
 def turned_round(page, start):
     """How far a sideways turn has taken the camera round the model from [start], in radians."""
-    back = page.evaluate("() => vwModelView.back")
+    back = view(page)["back"]
     return math.atan2(-dot(back, start["right"]), dot(back, start["back"]))
 
 
 def turn_pixels(page, degrees):
     """How far a finger moves to turn the model through [degrees]."""
-    return round(page.evaluate(
-        f"() => {degrees} * Math.PI / 180 * Math.min(vwModelCss.w, vwModelCss.h) / VW_MODEL_TURN"
-    ))
+    return round(math.radians(degrees) / page.evaluate("() => vwModelRadiansPerPixel()"))
 
 
 def dot(a, b):
@@ -701,11 +709,11 @@ def test_the_side_under_the_finger_goes_with_it(viewer, page):
     open_model(viewer, page, "bracket.stl")
     start = page.evaluate("() => vwModelStartView()")
     drag(page, 120, 0)
-    assert dot(page.evaluate("() => vwModelView.back"), start["right"]) < -0.2
+    assert dot(view(page)["back"], start["right"]) < -0.2
 
     page.mouse.dblclick(490, 400)
     drag(page, 0, 120)
-    assert dot(page.evaluate("() => vwModelView.back"), start["up"]) > 0.2
+    assert dot(view(page)["back"], start["up"]) > 0.2
 
 
 def test_turning_over_the_top_has_no_stop(viewer, page):
@@ -735,11 +743,11 @@ def test_a_sideways_drag_turns_about_the_screens_upright_from_any_angle(viewer, 
     """
     open_model(viewer, page, "bracket.stl")
     drag(page, 0, turn_pixels(page, 80), at=(490, 300))
-    up = page.evaluate("() => vwModelView.up")
-    right = page.evaluate("() => vwModelView.right")
+    before = view(page)
     drag(page, -200, 0)
-    assert page.evaluate("() => vwModelView.up") == pytest.approx(up, abs=1e-9)
-    assert dot(page.evaluate("() => vwModelView.right"), right) < 0.9
+    after = view(page)
+    assert after["up"] == pytest.approx(before["up"], abs=1e-9)
+    assert dot(after["right"], before["right"]) < 0.9
 
 
 def test_a_flick_carries_the_model_on_until_it_slows_to_a_stop(viewer, page):
@@ -750,11 +758,11 @@ def test_a_flick_carries_the_model_on_until_it_slows_to_a_stop(viewer, page):
     open_model(viewer, page, "bracket.stl")
     start = page.evaluate("() => vwModelStartView()")
     flick(page, 90, 0)
-    speed = page.evaluate("() => vwModelCoast && Math.hypot(vwModelCoast.vx, vwModelCoast.vy)")
+    speed = coast(page)
     lifted = turned_round(page, start)
     assert speed and speed > 0.1
     page.wait_for_timeout(100)
-    assert page.evaluate("() => Math.hypot(vwModelCoast.vx, vwModelCoast.vy)") < speed
+    assert coast(page) < speed
     page.wait_for_function("() => vwModelCoast === null", timeout=5000)
     stopped = turned_round(page, start)
     assert stopped > lifted + 0.1
@@ -765,18 +773,18 @@ def test_a_flick_carries_the_model_on_until_it_slows_to_a_stop(viewer, page):
 def test_a_finger_that_stops_before_it_lifts_carries_nothing_on(viewer, page):
     open_model(viewer, page, "bracket.stl")
     flick(page, 90, 0, hold=150)
-    assert page.evaluate("() => vwModelCoast") is None
+    assert coast(page) is None
 
 
 def test_a_touch_catches_a_flick(viewer, page):
     open_model(viewer, page, "bracket.stl")
     flick(page, 90, 0)
-    assert page.evaluate("() => vwModelCoast") is not None
+    assert coast(page) is not None
     page.mouse.down()
-    assert page.evaluate("() => vwModelCoast") is None
-    held = page.evaluate("() => vwModelView.back")
+    assert coast(page) is None
+    held = view(page)["back"]
     page.wait_for_timeout(150)
-    assert page.evaluate("() => vwModelView.back") == held
+    assert view(page)["back"] == held
     page.mouse.up()
 
 
@@ -785,7 +793,7 @@ def test_reduced_motion_turns_the_flick_off(viewer, page):
     page.emulate_media(reduced_motion="reduce")
     open_model(viewer, page, "bracket.stl")
     flick(page, 90, 0)
-    assert page.evaluate("() => vwModelCoast") is None
+    assert coast(page) is None
 
 
 def test_turning_before_the_model_arrives_does_nothing(viewer, page):
@@ -896,10 +904,10 @@ def test_two_fingers_twist_to_roll_it(viewer, page):
         " return [r.left + r.width / 2, r.top + r.height / 2]; }"
     )
     twist(page.context.new_cdp_session(page), (cx, cy), 60, 90)
-    view = page.evaluate("() => vwModelView")
-    assert dot(view["up"], start["right"]) == pytest.approx(-1, abs=0.01)
-    assert dot(view["back"], start["back"]) == pytest.approx(1, abs=1e-6)
-    assert view["zoom"] == pytest.approx(1, abs=0.01)
+    now = view(page)
+    assert dot(now["up"], start["right"]) == pytest.approx(-1, abs=0.01)
+    assert dot(now["back"], start["back"]) == pytest.approx(1, abs=1e-6)
+    assert now["zoom"] == pytest.approx(1, abs=0.01)
     _, (x2, y2) = model_in(picture(page))
     # A quarter clockwise, with y down the screen: (dx, dy) becomes (-dy, dx)
     assert abs(x2 - (cx - (y - cy))) < 15 and abs(y2 - (cy + (x - cx))) < 15

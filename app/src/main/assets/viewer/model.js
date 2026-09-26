@@ -605,6 +605,7 @@ function vwModelResize() {
 
 function vwModelDraw() {
   vwModelDrawQueued = false;
+  if (vwModelCoast) vwModelCoasting();
   var gl = vwModelGl;
   var mesh = vwModelMesh;
   var p = vwModelProgram;
@@ -681,6 +682,28 @@ function vwModelReset() {
   vwModelQueue();
 }
 
+function vwModelDot(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function vwModelCross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+function vwModelUnit(p) {
+  var n = Math.sqrt(vwModelDot(p, p));
+  return [p[0] / n, p[1] / n, p[2] / n];
+}
+
+/*
+ * [p] turned about the line [k] through an angle whose cosine is [c] and sine [s]. Rodrigues:
+ * the part along the line stays, and the part across it turns.
+ */
+function vwModelRotated(p, k, c, s) {
+  var along = vwModelDot(k, p), kp = vwModelCross(k, p);
+  return [0, 1, 2].map(function (i) { return p[i] * c + kp[i] * s + k[i] * along * (1 - c); });
+}
+
 /*
  * Turns the camera [a] radians about [k], a line through the point it looks at, given in the
  * model's terms. The model turns the other way on the screen, and stays where the file put it.
@@ -688,25 +711,14 @@ function vwModelReset() {
 function vwModelSpin(k, a) {
   var v = vwModelView;
   var c = Math.cos(a), s = Math.sin(a);
-  // Rodrigues: the part along the line stays, the part across it turns through [a]
-  function turned(p) {
-    var along = k[0] * p[0] + k[1] * p[1] + k[2] * p[2];
-    var kp = [k[1] * p[2] - k[2] * p[1], k[2] * p[0] - k[0] * p[2], k[0] * p[1] - k[1] * p[0]];
-    return [0, 1, 2].map(function (i) { return p[i] * c + kp[i] * s + k[i] * along * (1 - c); });
-  }
-  function unit(p) {
-    var n = Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
-    return [p[0] / n, p[1] / n, p[2] / n];
-  }
   // Squared up again every move, so that thousands of small turns never add up to a skew
-  var back = unit(turned(v.back));
-  var right = turned(v.right);
-  var lean = right[0] * back[0] + right[1] * back[1] + right[2] * back[2];
-  right = unit([right[0] - lean * back[0], right[1] - lean * back[1], right[2] - lean * back[2]]);
+  var back = vwModelUnit(vwModelRotated(v.back, k, c, s));
+  var right = vwModelRotated(v.right, k, c, s);
+  var lean = vwModelDot(right, back);
+  right = vwModelUnit([0, 1, 2].map(function (i) { return right[i] - lean * back[i]; }));
   v.back = back;
   v.right = right;
-  v.up = [back[1] * right[2] - back[2] * right[1], back[2] * right[0] - back[0] * right[2],
-    back[0] * right[1] - back[1] * right[0]];
+  v.up = vwModelCross(back, right);
 }
 
 /*
@@ -719,7 +731,7 @@ function vwModelTurn(dx, dy) {
   if (!(d > 0)) return;
   var v = vwModelView;
   vwModelSpin([0, 1, 2].map(function (i) { return (dy * v.right[i] + dx * v.up[i]) / d; }),
-    -d * VW_MODEL_TURN / Math.max(1, Math.min(vwModelCss.w, vwModelCss.h)));
+    -d * vwModelRadiansPerPixel());
 }
 
 /*
@@ -738,6 +750,11 @@ function vwModelTwistAt(x, y, a) {
   }));
 }
 
+/* How far a finger turns the model, in radians per CSS pixel. */
+function vwModelRadiansPerPixel() {
+  return VW_MODEL_TURN / Math.max(1, Math.min(vwModelCss.w, vwModelCss.h));
+}
+
 /* How far the point the camera looks at is, in the model's units, per CSS pixel. */
 function vwModelUnitsPerPixel(zoom) {
   return 2 * VW_MODEL_DISTANCE * (vwModelFit / zoom) / vwModelCss.h;
@@ -752,14 +769,15 @@ function vwModelMoveBy(d) {
 }
 
 /* Moves the point the camera looks at [x] to its right and [y] up. */
-function vwModelShift(cam, x, y) {
-  vwModelMoveBy([0, 1, 2].map(function (i) { return cam.right[i] * x + cam.up[i] * y; }));
+function vwModelShift(x, y) {
+  var v = vwModelView;
+  vwModelMoveBy([0, 1, 2].map(function (i) { return v.right[i] * x + v.up[i] * y; }));
 }
 
 /* Moves the model with a finger: [dx, dy] CSS pixels, down the screen positive. */
 function vwModelPan(dx, dy) {
   var units = vwModelUnitsPerPixel(vwModelView.zoom);
-  vwModelShift(vwModelCamera(vwModelView), -dx * units, dy * units);
+  vwModelShift(-dx * units, dy * units);
 }
 
 /* Zooms by [factor], keeping the point under ([x], [y]) where it is. */
@@ -769,8 +787,7 @@ function vwModelZoomAt(x, y, factor) {
   if (to === from) return;
   var drift = vwModelUnitsPerPixel(from) - vwModelUnitsPerPixel(to);
   vwModelView.zoom = to;
-  vwModelShift(vwModelCamera(vwModelView),
-    (x - vwModelCss.w / 2) * drift, (vwModelCss.h / 2 - y) * drift);
+  vwModelShift((x - vwModelCss.w / 2) * drift, (vwModelCss.h / 2 - y) * drift);
 }
 
 /*
@@ -804,29 +821,31 @@ function vwModelFling(trail, t) {
   if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   var cap = Math.min(1, VW_MODEL_FLICK_MAX / speed);
   vwModelCoast = { vx: vx * cap, vy: vy * cap, t: t };
-  requestAnimationFrame(vwModelCoasting);
+  vwModelQueue();
 }
 
-/* One frame of a flick: as far as the speed carries the model since the last, then slower. */
-function vwModelCoasting(now) {
+/*
+ * One frame of a flick, taken by vwModelDraw before it draws: as far as the speed carries the
+ * model since the last, then slower, and another frame asked for until it stops.
+ */
+function vwModelCoasting() {
   var c = vwModelCoast;
-  if (!c) return;
   if (!vwModelMesh) {
     vwModelCoast = null;
     return;
   }
+  var now = performance.now();
   // A frame held back by a busy phone, or by the page being out of sight, counts as a short one
   var dt = Math.max(0, Math.min(now - c.t, 50));
   var keep = Math.exp(-dt / VW_MODEL_COAST_MS);
   // The distance a speed covers while falling away like that: v * T * (1 - e^(-dt / T))
   var travel = VW_MODEL_COAST_MS * (1 - keep);
   vwModelTurn(c.vx * travel, c.vy * travel);
-  vwModelQueue();
   c.vx *= keep;
   c.vy *= keep;
   c.t = now;
   if (Math.sqrt(c.vx * c.vx + c.vy * c.vy) < VW_MODEL_COAST_STOP) vwModelCoast = null;
-  else requestAnimationFrame(vwModelCoasting);
+  else vwModelQueue();
 }
 
 function vwModelOtherFinger(id) {
@@ -875,18 +894,16 @@ function vwModelMove(e) {
   } else {
     var other = vwModelOtherFinger(e.pointerId);
     if (other) {
-      var before = Math.sqrt(Math.pow(finger.x - other.x, 2) + Math.pow(finger.y - other.y, 2));
-      var after = Math.sqrt(Math.pow(x - other.x, 2) + Math.pow(y - other.y, 2));
+      // The line from the other finger to this one, before this move and after it
+      var bx = finger.x - other.x, by = finger.y - other.y;
+      var ax = x - other.x, ay = y - other.y;
+      var before = Math.sqrt(bx * bx + by * by), after = Math.sqrt(ax * ax + ay * ay);
       var mx = (x + other.x) / 2, my = (y + other.y) / 2;
       vwModelPan(mx - (finger.x + other.x) / 2, my - (finger.y + other.y) / 2);
       if (before > 0 && after > 0) {
         vwModelZoomAt(mx, my, after / before);
-        // How far the line between the two fingers turned, the short way round
-        var twist = Math.atan2(y - other.y, x - other.x) -
-          Math.atan2(finger.y - other.y, finger.x - other.x);
-        if (twist > Math.PI) twist -= 2 * Math.PI;
-        else if (twist < -Math.PI) twist += 2 * Math.PI;
-        vwModelTwistAt(mx, my, twist);
+        // How far that line turned, the short way round
+        vwModelTwistAt(mx, my, Math.atan2(bx * ay - by * ax, bx * ax + by * ay));
       }
     }
   }
@@ -902,8 +919,9 @@ function vwModelUp(e) {
   delete vwModelFingers[e.pointerId];
   vwModelFingerCount--;
   var press = vwModelPress;
-  if (e.type === "pointerup" && press && press.id === e.pointerId && !press.moved &&
-      e.timeStamp - press.t < VW_MODEL_TAP_MS) {
+  // The finger that went down alone, lifted rather than taken away
+  var lifted = e.type === "pointerup" && press && press.id === e.pointerId;
+  if (lifted && !press.moved && e.timeStamp - press.t < VW_MODEL_TAP_MS) {
     var last = vwModelLastTap;
     if (last && e.timeStamp - last.t < VW_MODEL_DOUBLE_MS &&
         Math.abs(e.clientX - last.x) < VW_MODEL_DOUBLE_SLOP &&
@@ -915,9 +933,7 @@ function vwModelUp(e) {
     }
   }
   // Only a finger that turned the model alone, from the moment it went down
-  if (e.type === "pointerup" && press && press.id === e.pointerId && press.moved && !finger.pans) {
-    vwModelFling(finger.trail, e.timeStamp);
-  }
+  if (lifted && press.moved && !finger.pans) vwModelFling(finger.trail, e.timeStamp);
   if (vwModelFingerCount === 0) vwModelPress = null;
 }
 
