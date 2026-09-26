@@ -12,6 +12,7 @@ same as one read whole, and which files it refuses.
 """
 
 import io
+import math
 import struct
 
 import pytest
@@ -787,6 +788,55 @@ def test_two_fingers_pinch_to_zoom(viewer, page):
     assert page.evaluate("() => vwModelView.zoom") == pytest.approx(2, abs=0.01)
     grown, _ = model_in(picture(page))
     assert grown > covered * 1.5
+
+
+def twist(cdp, centre, radius, degrees, steps=12):
+    """Two fingers either side of [centre], turned [degrees] clockwise on the screen about it."""
+    def fingers(turned):
+        a = math.radians(turned)
+        dx, dy = radius * math.cos(a), radius * math.sin(a)
+        return [(centre[0] + dx, centre[1] + dy), (centre[0] - dx, centre[1] - dy)]
+    touch(cdp, "touchStart", fingers(0))
+    for k in range(1, steps + 1):
+        touch(cdp, "touchMove", fingers(degrees * k / steps))
+    touch(cdp, "touchEnd", [])
+
+
+def test_two_fingers_twist_to_roll_it(viewer, page):
+    """
+    Two fingers turned a quarter clockwise about the middle of the screen roll the model a
+    quarter clockwise with them, without zooming it. The camera rolls the other way, so its
+    up ends where its right was, turned round, and the model's middle, which is not the
+    screen's, goes a quarter of the way round the fingers.
+    """
+    open_model(viewer, page, "bracket.stl")
+    start = page.evaluate("() => vwModelStartView()")
+    _, (x, y) = model_in(picture(page))
+    cx, cy = page.evaluate(
+        "() => { const r = vwModelCanvas.getBoundingClientRect();"
+        " return [r.left + r.width / 2, r.top + r.height / 2]; }"
+    )
+    twist(page.context.new_cdp_session(page), (cx, cy), 60, 90)
+    view = page.evaluate("() => vwModelView")
+    assert dot(view["up"], start["right"]) == pytest.approx(-1, abs=0.01)
+    assert dot(view["back"], start["back"]) == pytest.approx(1, abs=1e-6)
+    assert view["zoom"] == pytest.approx(1, abs=0.01)
+    _, (x2, y2) = model_in(picture(page))
+    # A quarter clockwise, with y down the screen: (dx, dy) becomes (-dy, dx)
+    assert abs(x2 - (cx - (y - cy))) < 15 and abs(y2 - (cy + (x - cx))) < 15
+
+
+def test_a_twist_turns_the_model_about_the_point_between_the_fingers(viewer, page):
+    """
+    Like the pinch, the twist holds still whatever is under the fingers. Half a turn with
+    them off to one side of the model swings the model's middle round to the far side.
+    """
+    open_model(viewer, page, "bracket.stl")
+    _, (x, y) = model_in(picture(page))
+    at = (x + 150, y + 100)
+    twist(page.context.new_cdp_session(page), at, 60, 180, steps=24)
+    _, (x2, y2) = model_in(picture(page))
+    assert abs(x2 - (2 * at[0] - x)) < 15 and abs(y2 - (2 * at[1] - y)) < 15
 
 
 def test_one_finger_turns_it(viewer, page):

@@ -17,8 +17,8 @@
  *
  * Z is up, as it is in every slicer and in the CAD programs STL files come out of, and the
  * model opens seen from the front right and a little above. One finger turns it freely, the
- * way the finger goes, two pinch to zoom about the point between them and move it, and a
- * double tap puts it back.
+ * way the finger goes. Two pinch to zoom, twist to roll it round and move it, all about the
+ * point between them, and a double tap puts it back.
  */
 
 /* Where the camera starts: turned this far round from the front, and this far up. */
@@ -668,18 +668,12 @@ function vwModelReset() {
 }
 
 /*
- * Turns the model the way a finger moved, [dx, dy] CSS pixels with down positive: about the
- * line across the screen at right angles to the move, so the side under the finger goes with
- * it, from any angle and as far as the finger goes. The camera turns the other way about the
- * same line, which comes to the same picture and keeps the model where the file put it.
+ * Turns the camera [a] radians about [k], a line through the point it looks at, given in the
+ * model's terms. The model turns the other way on the screen, and stays where the file put it.
  */
-function vwModelTurn(dx, dy) {
-  var d = Math.sqrt(dx * dx + dy * dy);
-  if (!(d > 0)) return;
+function vwModelSpin(k, a) {
   var v = vwModelView;
-  var a = -d * VW_MODEL_TURN / Math.max(1, Math.min(vwModelCss.w, vwModelCss.h));
   var c = Math.cos(a), s = Math.sin(a);
-  var k = [0, 1, 2].map(function (i) { return (dy * v.right[i] + dx * v.up[i]) / d; });
   // Rodrigues: the part along the line stays, the part across it turns through [a]
   function turned(p) {
     var along = k[0] * p[0] + k[1] * p[1] + k[2] * p[2];
@@ -701,17 +695,51 @@ function vwModelTurn(dx, dy) {
     back[0] * right[1] - back[1] * right[0]];
 }
 
+/*
+ * Turns the model the way a finger moved, [dx, dy] CSS pixels with down positive: about the
+ * line across the screen at right angles to the move, so the side under the finger goes with
+ * it, from any angle and as far as the finger goes.
+ */
+function vwModelTurn(dx, dy) {
+  var d = Math.sqrt(dx * dx + dy * dy);
+  if (!(d > 0)) return;
+  var v = vwModelView;
+  vwModelSpin([0, 1, 2].map(function (i) { return (dy * v.right[i] + dx * v.up[i]) / d; }),
+    -d * VW_MODEL_TURN / Math.max(1, Math.min(vwModelCss.w, vwModelCss.h)));
+}
+
+/*
+ * Rolls the model [a] radians clockwise on the screen, the way two fingers twisted, keeping
+ * the point under ([x], [y]) where it is: the camera rolls the other way about the line it
+ * looks along, and the point it looks at moves to hold that one still.
+ */
+function vwModelTwistAt(x, y, a) {
+  var units = vwModelUnitsPerPixel(vwModelView.zoom);
+  var ox = (x - vwModelCss.w / 2) * units, oy = (vwModelCss.h / 2 - y) * units;
+  var right = vwModelView.right, up = vwModelView.up;
+  vwModelSpin(vwModelView.back, a);
+  var now = vwModelView;
+  vwModelMoveBy([0, 1, 2].map(function (i) {
+    return (right[i] - now.right[i]) * ox + (up[i] - now.up[i]) * oy;
+  }));
+}
+
 /* How far the point the camera looks at is, in the model's units, per CSS pixel. */
 function vwModelUnitsPerPixel(zoom) {
   return 2 * VW_MODEL_DISTANCE * (vwModelFit / zoom) / vwModelCss.h;
 }
 
-/* Moves the point the camera looks at, never so far that the model leaves the screen. */
-function vwModelShift(cam, x, y) {
+/* Moves the point the camera looks at by [d], never so far that the model leaves the screen. */
+function vwModelMoveBy(d) {
   var t = vwModelView.target;
-  for (var i = 0; i < 3; i++) t[i] += cam.right[i] * x + cam.up[i] * y;
+  for (var i = 0; i < 3; i++) t[i] += d[i];
   var len = Math.sqrt(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
   if (len > 1) for (var j = 0; j < 3; j++) t[j] /= len;
+}
+
+/* Moves the point the camera looks at [x] to its right and [y] up. */
+function vwModelShift(cam, x, y) {
+  vwModelMoveBy([0, 1, 2].map(function (i) { return cam.right[i] * x + cam.up[i] * y; }));
 }
 
 /* Moves the model with a finger: [dx, dy] CSS pixels, down the screen positive. */
@@ -732,8 +760,8 @@ function vwModelZoomAt(x, y, factor) {
 }
 
 /*
- * Every finger on the model, by pointer id, where it was last seen. One turns the model and
- * two pinch and move it. A mouse turns it with the left button and moves it with the right
+ * Every finger on the model, by pointer id, where it was last seen. One turns the model, and
+ * two pinch, twist and move it. A mouse turns it with the left button and moves it with the right
  * or with Shift, which is for testing on a computer as much as anything.
  */
 var vwModelFingers = {};
@@ -785,7 +813,15 @@ function vwModelMove(e) {
       var after = Math.sqrt(Math.pow(x - other.x, 2) + Math.pow(y - other.y, 2));
       var mx = (x + other.x) / 2, my = (y + other.y) / 2;
       vwModelPan(mx - (finger.x + other.x) / 2, my - (finger.y + other.y) / 2);
-      if (before > 0 && after > 0) vwModelZoomAt(mx, my, after / before);
+      if (before > 0 && after > 0) {
+        vwModelZoomAt(mx, my, after / before);
+        // How far the line between the two fingers turned, the short way round
+        var twist = Math.atan2(y - other.y, x - other.x) -
+          Math.atan2(finger.y - other.y, finger.x - other.x);
+        if (twist > Math.PI) twist -= 2 * Math.PI;
+        else if (twist < -Math.PI) twist += 2 * Math.PI;
+        vwModelTwistAt(mx, my, twist);
+      }
     }
   }
   finger.x = x;
