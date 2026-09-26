@@ -16,16 +16,14 @@
  * the app is in the background. When that happens the file is simply read again.
  *
  * Z is up, as it is in every slicer and in the CAD programs STL files come out of, and the
- * model opens seen from the front right and a little above. One finger turns it, two pinch
- * to zoom about the point between them and move it, and a double tap puts it back.
+ * model opens seen from the front right and a little above. One finger turns it freely, the
+ * way the finger goes, two pinch to zoom about the point between them and move it, and a
+ * double tap puts it back.
  */
 
 /* Where the camera starts: turned this far round from the front, and this far up. */
 var VW_MODEL_YAW = 30 * Math.PI / 180;
 var VW_MODEL_PITCH = 22 * Math.PI / 180;
-
-/* Short of straight down or straight up, where turning about Z stops meaning anything. */
-var VW_MODEL_PITCH_LIMIT = 89 * Math.PI / 180;
 
 /*
  * The camera's distance from the model, in the model's own radius. Far enough that the
@@ -147,7 +145,7 @@ var vwModelGround = [0, 0, 0];
 /* Each read of the file has a number, so one overtaken by a lost context can tell. */
 var vwModelRun = 0;
 
-var vwModelView = { yaw: VW_MODEL_YAW, pitch: VW_MODEL_PITCH, zoom: 1, target: [0, 0, 0] };
+var vwModelView = vwModelStartView();
 
 /* The tangent of half the screen's height at zoom 1, fitted to the model and the screen. */
 var vwModelFit = 1;
@@ -507,18 +505,34 @@ function vwModelFrame(mesh) {
   return { centre: c, half: h, radius: r > 0 ? r : 1 };
 }
 
+/*
+ * The view a model opens with, and a double tap goes back to. The camera's way of facing is
+ * kept as the three directions that are right, up and back from it, in the model's terms,
+ * rather than as angles round and up. Angles have to be measured from somewhere, which is
+ * what put a stop at the top and turned every sideways move about the model's Z, whichever
+ * way it was being looked at. See vwModelTurn.
+ */
+function vwModelStartView() {
+  var cp = Math.cos(VW_MODEL_PITCH), sp = Math.sin(VW_MODEL_PITCH);
+  var cy = Math.cos(VW_MODEL_YAW), sy = Math.sin(VW_MODEL_YAW);
+  return {
+    right: [cy, sy, 0],
+    up: [-sy * sp, cy * sp, cp],
+    back: [cp * sy, -cp * cy, sp],
+    zoom: 1,
+    target: [0, 0, 0]
+  };
+}
+
 /* Where the camera is, and which ways are right, up and forward from it. */
 function vwModelCamera(view) {
-  var cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
-  var cy = Math.cos(view.yaw), sy = Math.sin(view.yaw);
-  var back = [cp * sy, -cp * cy, sp];
-  var t = view.target;
+  var t = view.target, back = view.back;
   return {
     eye: [t[0] + back[0] * VW_MODEL_DISTANCE, t[1] + back[1] * VW_MODEL_DISTANCE,
       t[2] + back[2] * VW_MODEL_DISTANCE],
     back: back,
-    right: [cy, sy, 0],
-    up: [-sy * sp, cy * sp, cp]
+    right: view.right,
+    up: view.up
   };
 }
 
@@ -547,7 +561,7 @@ function vwModelFitLens() {
   var mesh = vwModelMesh;
   if (!mesh) return;
   var frame = vwModelFrame(mesh);
-  var cam = vwModelCamera({ yaw: VW_MODEL_YAW, pitch: VW_MODEL_PITCH, target: [0, 0, 0] });
+  var cam = vwModelCamera(vwModelStartView());
   var aspect = vwModelCss.w / vwModelCss.h;
   var line = vwModelSizeLine.getBoundingClientRect();
   var band = line.height > 0 ? vwModelCss.h - line.top + 8 : 0;
@@ -649,15 +663,42 @@ function vwModelDraw() {
 // ---------------------------------------------------------------------------
 
 function vwModelReset() {
-  vwModelView = { yaw: VW_MODEL_YAW, pitch: VW_MODEL_PITCH, zoom: 1, target: [0, 0, 0] };
+  vwModelView = vwModelStartView();
   vwModelQueue();
 }
 
+/*
+ * Turns the model the way a finger moved, [dx, dy] CSS pixels with down positive: about the
+ * line across the screen at right angles to the move, so the side under the finger goes with
+ * it, from any angle and as far as the finger goes. The camera turns the other way about the
+ * same line, which comes to the same picture and keeps the model where the file put it.
+ */
 function vwModelTurn(dx, dy) {
-  var rate = VW_MODEL_TURN / Math.max(1, Math.min(vwModelCss.w, vwModelCss.h));
-  vwModelView.yaw -= dx * rate;
-  vwModelView.pitch = Math.max(-VW_MODEL_PITCH_LIMIT,
-    Math.min(VW_MODEL_PITCH_LIMIT, vwModelView.pitch + dy * rate));
+  var d = Math.sqrt(dx * dx + dy * dy);
+  if (!(d > 0)) return;
+  var v = vwModelView;
+  var a = -d * VW_MODEL_TURN / Math.max(1, Math.min(vwModelCss.w, vwModelCss.h));
+  var c = Math.cos(a), s = Math.sin(a);
+  var k = [0, 1, 2].map(function (i) { return (dy * v.right[i] + dx * v.up[i]) / d; });
+  // Rodrigues: the part along the line stays, the part across it turns through [a]
+  function turned(p) {
+    var along = k[0] * p[0] + k[1] * p[1] + k[2] * p[2];
+    var kp = [k[1] * p[2] - k[2] * p[1], k[2] * p[0] - k[0] * p[2], k[0] * p[1] - k[1] * p[0]];
+    return [0, 1, 2].map(function (i) { return p[i] * c + kp[i] * s + k[i] * along * (1 - c); });
+  }
+  function unit(p) {
+    var n = Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+    return [p[0] / n, p[1] / n, p[2] / n];
+  }
+  // Squared up again every move, so that thousands of small turns never add up to a skew
+  var back = unit(turned(v.back));
+  var right = turned(v.right);
+  var lean = right[0] * back[0] + right[1] * back[1] + right[2] * back[2];
+  right = unit([right[0] - lean * back[0], right[1] - lean * back[1], right[2] - lean * back[2]]);
+  v.back = back;
+  v.right = right;
+  v.up = [back[1] * right[2] - back[2] * right[1], back[2] * right[0] - back[0] * right[2],
+    back[0] * right[1] - back[1] * right[0]];
 }
 
 /* How far the point the camera looks at is, in the model's units, per CSS pixel. */

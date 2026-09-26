@@ -641,6 +641,73 @@ def test_dragging_turns_the_model_and_a_double_tap_puts_it_back(viewer, page):
     assert changed(start, picture(page)) == 0
 
 
+def drag(page, dx, dy, at=(490, 800)):
+    page.mouse.move(*at)
+    page.mouse.down()
+    page.mouse.move(at[0] + dx, at[1] + dy, steps=8)
+    page.mouse.up()
+
+
+def turn_pixels(page, degrees):
+    """How far a finger moves to turn the model through [degrees]."""
+    return round(page.evaluate(
+        f"() => {degrees} * Math.PI / 180 * Math.min(vwModelCss.w, vwModelCss.h) / VW_MODEL_TURN"
+    ))
+
+
+def dot(a, b):
+    return sum(x * y for x, y in zip(a, b))
+
+
+def test_the_side_under_the_finger_goes_with_it(viewer, page):
+    """
+    A drag to the right takes the camera round to the left, which carries the front of the
+    model to the right with the finger. A drag down takes the camera up, and the front down.
+    """
+    open_model(viewer, page, "bracket.stl")
+    start = page.evaluate("() => vwModelStartView()")
+    drag(page, 120, 0)
+    assert dot(page.evaluate("() => vwModelView.back"), start["right"]) < -0.2
+
+    page.mouse.dblclick(490, 400)
+    drag(page, 0, 120)
+    assert dot(page.evaluate("() => vwModelView.back"), start["up"]) > 0.2
+
+
+def test_turning_over_the_top_has_no_stop(viewer, page):
+    """
+    A drag down tips the model towards the reader and keeps on tipping it, past looking
+    straight down and on round underneath, where it used to stop just short of the top. A
+    whole turn's worth of dragging brings back the picture it started from.
+    """
+    open_model(viewer, page, "bracket.stl")
+    start = picture(page)
+    whole = turn_pixels(page, 360)
+    left = whole
+    while left > 0:
+        step = min(400, left)
+        drag(page, 0, step, at=(490, 300))
+        if left == whole:
+            assert changed(start, picture(page)) > 0.01
+        left -= step
+    assert changed(start, picture(page)) < 0.005
+
+
+def test_a_sideways_drag_turns_about_the_screens_upright_from_any_angle(viewer, page):
+    """
+    Tipped over far enough to be looked down on, a sideways drag still turns the model left
+    or right on the screen. Turning it about its own Z, as it used to, spun it round like a
+    record from up there instead. About the screen's upright, the screen's up stays put.
+    """
+    open_model(viewer, page, "bracket.stl")
+    drag(page, 0, turn_pixels(page, 80), at=(490, 300))
+    up = page.evaluate("() => vwModelView.up")
+    right = page.evaluate("() => vwModelView.right")
+    drag(page, -200, 0)
+    assert page.evaluate("() => vwModelView.up") == pytest.approx(up, abs=1e-9)
+    assert dot(page.evaluate("() => vwModelView.right"), right) < 0.9
+
+
 def test_turning_before_the_model_arrives_does_nothing(viewer, page):
     """Until the model is there, there is no screen size or lens to measure a move against,
     and a pinch on the empty page would leave the model to open somewhere off to one side."""
@@ -661,8 +728,7 @@ def test_turning_before_the_model_arrives_does_nothing(viewer, page):
         route.continue_()
     page.wait_for_function(DONE, timeout=20000)
     assert page.evaluate(
-        "() => vwModelView.zoom === 1 && vwModelView.yaw === VW_MODEL_YAW &&"
-        " vwModelView.pitch === VW_MODEL_PITCH && vwModelView.target.every(v => v === 0)"
+        "() => JSON.stringify(vwModelView) === JSON.stringify(vwModelStartView())"
     )
 
 
