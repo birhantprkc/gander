@@ -95,6 +95,11 @@
                 <data android:mimeType="model/x.stl-ascii" />
                 <data android:mimeType="application/sla" />
                 <data android:mimeType="application/vnd.ms-pki.stl" />
+                <!-- A file an app knows only as binary. WhatsApp sends one whose type it has
+                     no name for this way, a .stl among them, and shows it as BIN. Android
+                     matches on the type alone, never the file's name, so this is the only way
+                     Gander is offered one. Once it is here it goes by its name: see FileKind. -->
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -132,6 +137,7 @@
                 <data android:mimeType="model/x.stl-ascii" />
                 <data android:mimeType="application/sla" />
                 <data android:mimeType="application/vnd.ms-pki.stl" />
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
 

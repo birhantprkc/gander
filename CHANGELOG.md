@@ -15,6 +15,10 @@
   with the word solid, as SolidWorks writes them. The viewer is written for Gander rather than
   taken from a 3D library, and adds about 15 KB.
 
+- Gander is offered for files an app knows only as binary, which is how WhatsApp sends a file
+  whose type it has no name for, a .stl among them, and why it labels one BIN. Gander goes by
+  the file's name, so such a file opens in its usual viewer.
+
 - A document opened from an app that has to fetch it first, a cloud drive or a mail
   attachment say, no longer freezes the screen until it has arrived. Gander asked that app how
   long the file was, and a PDF's first bytes for the page it was left on, on the thread that

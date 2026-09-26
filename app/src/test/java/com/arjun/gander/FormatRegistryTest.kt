@@ -116,11 +116,16 @@ class FormatRegistryTest {
      * routinely sends, arrives with a MIME type and nothing else. If the
      * manifest claims a type that [FileKind.detect] cannot place, Gander
      * offers itself in the chooser and then shows the unsupported card.
+     *
+     * Except application/octet-stream, which is not a format but the lack of
+     * one: it is what WhatsApp sends a file as when it has no name for its type,
+     * a .stl among them. Such a file comes with its name, and goes by that.
      */
     @Test
     fun everyFormatTheManifestClaimsCanBeRoutedByMimeAlone() {
-        val wildcards = mimesFor("VIEW").filter { it.endsWith("/*") }
-        val exact = mimesFor("VIEW").filterNot { it.endsWith("/*") }
+        val claimed = mimesFor("VIEW") - "application/octet-stream"
+        val wildcards = claimed.filter { it.endsWith("/*") }
+        val exact = claimed.filterNot { it.endsWith("/*") }
 
         // Wildcards are checked with a representative type each
         val representative = mapOf(
@@ -137,6 +142,18 @@ class FormatRegistryTest {
         exact.forEach { mime ->
             assertThat("$mime routes to: ${FileKind.detect("", mime)}")
                 .isNotEqualTo("$mime routes to: ${FileKind.UNSUPPORTED}")
+        }
+    }
+
+    /**
+     * WhatsApp shares a .stl, and anything else it has no type for, as a generic
+     * binary. Without this Gander is left out of both the share sheet and Open with.
+     */
+    @Test
+    fun aFileSentAsAGenericBinaryIsOffered() {
+        listOf(Intent.ACTION_VIEW, Intent.ACTION_SEND).forEach { action ->
+            assertWithMessage("$action offers the viewer for application/octet-stream")
+                .that(resolves(action, "application/octet-stream")).isTrue()
         }
     }
 
